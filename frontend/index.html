@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ModelPulseX — LLM Performance Observatory</title>
+    <meta name="description" content="Real-world performance of FREE OpenCode Zen + OpenRouter models — live TPS, TTFT, uptime over 7 days." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              border: 'hsl(240 5% 18%)',
+              card: 'hsl(240 6% 10%)',
+              muted: 'hsl(240 3% 14%)',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
+      body{font-family: Inter, ui-sans-serif, system-ui; background:#0a0a0f; color:#e8e8ef}
+      .mono{font-family: JetBrains Mono, monospace}
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

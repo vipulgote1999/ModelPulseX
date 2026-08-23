@@ -1,0 +1,4 @@
+/* minimal global — tailwind via CDN covers utilities; this adds scroll and focus polish */
+* { scrollbar-width: thin; scrollbar-color: #3a3a4a transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background:#2a2a36; border-radius:999px; }

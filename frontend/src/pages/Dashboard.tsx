@@ -1,0 +1,109 @@
+import { useMemo, useState } from "react";
+import { useLeaderboard } from "../hooks/useLeaderboard";
+import { useHistory } from "../hooks/useHistory";
+import SummaryCards from "../components/SummaryCards";
+import Leaderboard from "../components/Leaderboard";
+import TpsChart from "../charts/TpsChart";
+import TtftChart from "../charts/TtftChart";
+import ReliabilityChart from "../charts/ReliabilityChart";
+import ComparePanel from "../components/ComparePanel";
+import RecommendationCards from "../components/RecommendationCards";
+
+export default function Dashboard() {
+  const [range, setRange] = useState("7d");
+  const [benchmark, setBenchmark] = useState("all");
+  const [provider, setProvider] = useState<string | undefined>(undefined);
+  const [sort, setSort] = useState("overall");
+  const [profile, setProfile] = useState("balanced");
+  const [selected, setSelected] = useState<number[]>([]);
+
+  const { data, loading, error } = useLeaderboard({ range, benchmark, sort, provider, profile });
+  const rows = data?.leaderboard ?? [];
+  const history = useHistory(selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id), range, benchmark);
+
+  const tpsSeries = useMemo(() => {
+    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id))
+      .map((id) => {
+        const meta = rows.find((r) => r.model_id === id);
+        const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_tps: (p as unknown as { median_tps: number | null }).median_tps ?? null })) };
+      })
+      .filter((s) => s.points.length > 0);
+  }, [history.data, selected, rows]);
+
+  const ttftSeries = useMemo(() => {
+    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id))
+      .map((id) => {
+        const meta = rows.find((r) => r.model_id === id);
+        const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? null })) };
+      })
+      .filter((s) => s.points.length > 0);
+  }, [history.data, selected, rows]);
+
+  const reliabilityModels = useMemo(() => {
+    const ids = selected.length ? selected : rows.slice(0, 4).map((r) => r.model_id);
+    return ids.map((id) => {
+      const meta = rows.find((r) => r.model_id === id);
+      return { display_name: meta?.display_name ?? String(id), provider: meta?.provider ?? "", points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, success_rate: (p as unknown as { success_rate: number | null }).success_rate ?? null })) };
+    });
+  }, [history.data, selected, rows]);
+
+  if (loading) return <div className="max-w-[1400px] mx-auto px-4 py-10 text-zinc-400">Loading leaderboard… checking free models from OpenCode Zen + OpenRouter.</div>;
+  if (error) return <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">Failed to load: {String(error)} — try refresh. Discovery runs hourly; queue may be catching up. API: /api/health</div>;
+
+  return (
+    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+      {/* freshness */}
+      <div className={`rounded-lg border px-3 py-2 text-sm flex flex-wrap gap-3 items-center ${data?.meta.is_stale ? "bg-amber-950/40 border-amber-800 text-amber-200" : "bg-emerald-950/30 border-emerald-800 text-emerald-200"}`}>
+        <span className="font-semibold">{data?.meta.is_stale ? (data?.meta.stale_message ?? "STALE DATA") : (data?.meta.live ?? "● LIVE")}</span>
+        <span className="text-zinc-400">Last benchmark: {data?.meta.last_benchmark ? new Date(data.meta.last_benchmark).toLocaleString() : "never"} · Last aggregate: {data?.meta.last_aggregate ? new Date(data.meta.last_aggregate).toLocaleString() : "—"} · Last discovery: {data?.meta.last_discovery ? new Date(data.meta.last_discovery).toLocaleString() : "—"}</span>
+        <span className="ml-auto text-[11px] text-zinc-500">{rows.length ? `${rows.length} models · ${data?.range} ${data?.benchmark} sort:${data?.sort} profile:${data?.profile}` : ""}</span>
+      </div>
+
+      <SummaryCards summary={data?.summary as unknown as { free_models: number; online_now: number; best_tps: unknown; best_ttft: unknown; benchmarks_24h: number }} meta={data?.meta as unknown as { is_stale: boolean; live: string | null; stale_message: string | null }} leaderboard={rows as unknown as Array<{ uptime_7d: number | null; overall_score: number | null }>} />
+
+      {/* controls */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <select value={range} onChange={(e) => setRange(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
+          <option value="1h">1h</option><option value="24h">24h</option><option value="3d">3d</option><option value="7d">7d</option>
+        </select>
+        <select value={benchmark} onChange={(e) => setBenchmark(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
+          <option value="all">All benchmarks</option><option value="short">Short</option><option value="medium">Medium</option><option value="coding">Coding</option>
+        </select>
+        <select value={provider ?? ""} onChange={(e) => setProvider(e.target.value || undefined)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
+          <option value="">All providers</option><option value="opencode_zen">OpenCode Zen</option><option value="openrouter">OpenRouter</option>
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
+          <option value="overall">Overall Score</option><option value="tps">Fastest (TPS)</option><option value="ttft">Lowest TTFT</option><option value="uptime">Most Reliable</option>
+        </select>
+        <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
+          <option value="balanced">Balanced</option><option value="fastest">Fastest</option><option value="latency">Lowest Latency</option><option value="reliable">Most Reliable</option><option value="coding">Coding</option>
+        </select>
+        <span className="text-xs text-zinc-500 ml-auto hidden lg:inline">Measured TPS (not provider-reported) · TTFT = first_token - started · range affects charts (hourly aggregates)</span>
+      </div>
+
+      <RecommendationCards rows={rows as unknown as Array<{ display_name: string; model: string; provider: string; tps_now: number | null; ttft_now: number | null; uptime_7d: number | null; overall_score: number | null }>} />
+
+      <div>
+        <div className="text-sm font-semibold mb-2">Live leaderboard — sortable · filters above · 7d retention (Previously Free kept 7d with last result)</div>
+        <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
+      </div>
+
+      <TpsChart series={tpsSeries} range={range} />
+      <TtftChart series={ttftSeries} />
+
+      <ReliabilityChart models={reliabilityModels} />
+
+      <ComparePanel selected={selected.length ? selected : rows.slice(0, 2).map((r) => r.model_id)} />
+
+      {selected.length > 0 && (
+        <button onClick={() => setSelected([])} className="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear selection ({selected.length})</button>
+      )}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-xs text-zinc-500">
+        <b className="text-zinc-300">Only necessary data stored:</b> raw benchmark_runs 7–14d TTL, hourly aggregates 30–90d, incidents/model metadata indefinite. No response bodies. If a model leaves FREE (goes paid), it shows <span className="text-amber-300">Previously Free</span> with its last 7d results frozen until TTL, per spec.
+      </div>
+    </div>
+  );
+}
