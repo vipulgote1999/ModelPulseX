@@ -1,0 +1,41 @@
+epic: e01
+slug: cloudflare-observatory
+title: Cloudflare-Native LLM Performance Observatory
+wsjf: 13
+status: in_progress
+stories:
+  - id: e01s01
+    title: Scaffold Wrangler+D1+Queue+DO+Cron+TS+Tests
+    status: pending
+    points: 3
+    verify: "npm run typecheck && npm test"
+  - id: e01s02
+    title: D1 schema + migrations + provider interface + dynamic discovery (Zen+OR)
+    status: pending
+    points: 5
+    verify: "npm run migrate -- --local && npm test -- test/discovery.test.ts"
+  - id: e01s03
+    title: Real streaming benchmark engine (TTFT/TPS, 3 workloads, correct calc)
+    status: pending
+    points: 5
+    verify: "npm test -- test/benchmark.test.ts"
+  - id: e01s04
+    title: Queue consumer + Cron scheduler + Durable Object live SSE + circuit breaker
+    status: pending
+    points: 5
+    verify: "npm test -- test/queue-do.test.ts"
+  - id: e01s05
+    title: API endpoints + aggregation + retention + incidents + comparison + scoring
+    status: pending
+    points: 8
+    verify: "npm test -- test/api.test.ts"
+  - id: e01s06
+    title: React dashboard — leaderboard, 7-day graphs, reliability/error, freshness
+    status: pending
+    points: 8
+    verify: "npm run build && npm run typecheck"
+  - id: e01s07
+    title: Verify all 16 gates, deploy docs, local run (wrangler dev), methodology
+    status: pending
+    points: 3
+    verify: "npm test && npm run typecheck && npm run build"

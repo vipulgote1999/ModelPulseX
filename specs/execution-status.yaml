@@ -1,0 +1,17 @@
+epics:
+  e01:
+    status: completed
+    stories:
+      e01s01-scaffold: completed
+      e01s02-db-and-discovery: completed
+      e01s03-benchmark-engine: completed
+      e01s04-queue-cron-do: completed
+      e01s05-api-and-aggregation: completed
+      e01s06-frontend: completed
+      e01s07-verify-and-deploy: completed
+  e02:
+    status: pending
+    stories: {}
+  e03:
+    status: pending
+    stories: {}

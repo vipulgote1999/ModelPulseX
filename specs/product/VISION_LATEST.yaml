@@ -1,0 +1,24 @@
+product: ModelPulseX
+vision: >
+  Production-ready Cloudflare-native LLM Performance Observatory that continuously measures
+  and displays the real-world performance of FREE models via OpenCode Zen and OpenRouter,
+  answering "which free model should I use right now, and which has been best over the last 7 days?"
+principles:
+  - "Every number traces back to a real streaming benchmark; no fake or provider-reported TPS."
+  - "Dynamic discovery only; never hardcode free-model lists; verifyFree gate before any benchmark."
+  - "Cloudflare-first: Workers + D1 + Queues + Cron + Durable Objects, no external DB/Redis/K8s."
+  - "7-day high-resolution observability with economical retention (raw 7-14d, hourly 30-90d)."
+  - "Live leaderboard + 7-day TPS/TTFT/reliability/error graphs + provider comparison are P0."
+personas:
+  - name: Builder choosing a free model now
+    need: "See live TPS/TTFT/uptime now vs 7d to pick best provider for this hour."
+  - name: Operator tracking reliability
+    need: "See uptime, incidents, error breakdowns over 7d to decide fallback chains."
+  - name: Viewer comparing same model across providers
+    need: "See OpenCode Zen vs OpenRouter for same model with recommendation based on data."
+success:
+  - "Leaderboard live-updates via SSE without refresh."
+  - "TPS = output_tokens/generation_time, TTFT = first_token - started computed from streaming."
+  - "FREE filtering accurate; previously-free retains last result."
+  - "Queue/Cron/DO/D1 all operate within Cloudflare limits with concurrency caps."
+  - "Dashboard freshness: LIVE / STALE banner never lies about staleness."

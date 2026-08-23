@@ -1,0 +1,19 @@
+session:
+  project: ModelPulseX
+  active_flow: sustain
+  active_epic_id: e01
+  active_story_id: null
+  branch: main
+  workflow_mode: solo-git
+  deployment:
+    url: https://modelpulsex.workers.dev
+    account_id: null
+    deployed_at: 2026-08-23
+  handoff:
+    next_skill: null
+    summary: "e01 completed — 29 FREE models live, LIVE leaderboard, 7d retention, sparkline+intelligence, queue+cron+DO verified locally; ready for wrangler deploy"
+  metrics:
+    story_start: null
+git:
+  remote: null
+  branch: main

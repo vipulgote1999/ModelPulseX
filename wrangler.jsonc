@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "modelpulsex",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/frontend",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "modelpulsex-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "BENCH_QUEUE", "queue": "bench-queue" }],
+    "consumers": [{ "queue": "bench-queue", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "dead_letter_queue": "bench-dlq" }]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE_DO", "class_name": "PerformanceDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PerformanceDO"] }],
+  "triggers": {
+    "crons": ["*/5 * * * *", "0 * * * *"]
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    "MAX_GLOBAL_CONCURRENCY": "10",
+    "MAX_OPENCODE_CONCURRENCY": "3",
+    "MAX_OPENROUTER_CONCURRENCY": "5",
+    "MAX_SAME_MODEL_CONCURRENCY": "1",
+    "BENCHMARK_TIMEOUT_MS": "30000",
+    "INCIDENT_THRESHOLD": "3"
+  }
+  // secrets (never in file):
+  // wrangler secret put OPENCODE_API_KEY
+  // wrangler secret put OPENROUTER_API_KEY
+  // wrangler secret put ADMIN_TOKEN
+}

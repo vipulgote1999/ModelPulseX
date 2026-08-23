@@ -1,0 +1,5 @@
+# Copy to .dev.vars and fill — never commit real keys
+OPENCODE_API_KEY=
+OPENROUTER_API_KEY=
+ADMIN_TOKEN=local-admin-token-change-me
+CORS_ORIGIN=http://localhost:5173

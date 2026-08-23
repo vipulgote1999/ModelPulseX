@@ -1,0 +1,23 @@
+release:
+  version: 0.1.0
+  name: ModelPulseX Observatory v1
+  target: Cloudflare-native FREE model observatory — dynamic discovery, streaming benchmarks, 7-day metrics, live leaderboard
+epics:
+  - id: e01
+    slug: cloudflare-observatory
+    title: Cloudflare-Native LLM Performance Observatory
+    summary: End-to-end Worker+D1+Queue+Cron+DO API + React live dashboard fulfilling P0 spec (s1-40) with verifyFree, TPS/TTFT, 7d aggregates, provider comparison, scoring.
+    wsjf: 13
+    status: in_progress
+  - id: e02
+    slug: scoring-and-methodology
+    title: Scoring, Recommendations & Methodology Hardening
+    summary: Overall Score profiles, recommendation cards, /methodology page, sweep of edge cases (Previously Free 7d retention, estimation flags, stale banners) — P1.
+    wsjf: 6
+    status: pending
+  - id: e03
+    slug: extra-provider-and-ops
+    title: Extra Provider + Ops Polish
+    summary: Third provider adapter trivially added, daily aggregates indefinite, public API docs, perf tuning, deploy hardening — P2.
+    wsjf: 3
+    status: pending

@@ -1,0 +1,57 @@
+core_value: "Continuously measured, real-world performance of every FREE OpenCode Zen + OpenRouter model — which is fastest, lowest-latency, most reliable right now and over the last 7 days."
+
+summary: |
+  ModelPulseX is a Cloudflare-native LLM Performance Observatory that dynamically discovers FREE models,
+  streams benchmarks to capture true TTFT/TPS, stores 7-day high-resolution history via hourly aggregates,
+  and serves a live leaderboard with 7-day TPS/TTFT/reliability/error graphs plus same-model provider
+  comparison and weighted Overall Score with recommendation cards.  Built on Workers + D1 + Queues + Cron
+  + Durable Objects SSE.  No hard-coded model lists, no fake data, no unnecessary storage.
+
+in_scope:
+  - "Cloudflare-first stack: Workers API, D1 with migrations (providers/models/benchmark_runs/hourly_model_stats/availability_incidents/benchmark_config), Queues for distributed benchmark jobs, Cron */5 * * * * benchmark scheduler + 0 * * * * aggregation/cleanup, Durable Object live SSE broadcast. Local dev via wrangler dev with simulated D1/Queue/DO."
+  - "Provider abstraction LLMProvider {getProviderName, discoverModels, getModelMetadata, benchmarkModel} with OpenCodeZenProvider and OpenRouterProvider; env-secrets for keys; verifyFree() gate before any queued job; UNKNOWN pricing skipped; Previously Free retains history and displays last result for 7d."
+  - "Dynamic model discovery: OpenRouter pricing.prompt==0 && pricing.completion==0; Zen *-free suffix + big-pickle; stored fields provider/provider_model_id/display_name/context_length/capabilities/input_price/output_price/is_free/first_seen/last_seen/active; hourly refresh + admin POST /api/admin/discover."
+  - "Real benchmark engine via streaming fetch: captures request_started_at, first_token_at, completed_at, input/output tokens, ttft_ms, generation_ms, tps, status {SUCCESS,TIMEOUT,RATE_LIMITED,PROVIDER_ERROR,MODEL_UNAVAILABLE,STREAM_ERROR,UNKNOWN_ERROR}, http_status; TPS = output_tokens / generation_time (completed-first_token), TTFT = first_token - started; source-aware token count with estimation flag."
+  - "Three benchmark workloads with fixed deterministic prompts: short (latency), medium (sustained), coding (algorithm implement+complexity); isolated per benchmark_type, never cross-compare categories identically."
+  - "Historical storage retention: raw 7-14d, hourly 30-90d, daily/meta indefinite; hourly aggregates (avg/median/p90/p95 TPS/TTFT, success_rate, uptime, request_count) precomputed so frontend never scans raw for charts; cleanup job removes raw beyond TTL, never deletes aggregates before 30d."
+  - "Public API: GET /api/providers, /api/models, /api/leaderboard, /api/models/:id, /api/models/:id/history, /api/models/:id/incidents, /api/compare, /api/health, GET /api/live (SSE via DO). Query ?range=1h|24h|7d&provider=&benchmark= supports leaderboard history, graphs, comparison. Protected admin POST /api/admin/discover, /benchmark, /reaggregate, /cleanup via ADMIN_TOKEN."
+  - "Frontend dashboard (React Vite Tailwind shadcn Recharts): header LIVE, summary cards (free models/online now/best TPS/TTFT/reliability/benchmarks/24h), sortable live leaderboard (Rank,Model,Provider,TPS now/1h/24h/7d,TTFT,7d uptime,error%,status,last test) with provider/model/benchmark/sort filters, 7-day TPS graph, 7-day TTFT graph, reliability timeline (█/░), error graph grouped by error_type, same-model provider comparison table with metric winner + recommended provider, scoring Overall Score (40% TPS 25% TTFT 25% Reliability 10% Consistency) normalized + profiles (Balanced/Fastest/Lowest Latency/Most Reliable/Coding), recommendation cards (BEST OVERALL/FASTEST NOW/LOWEST TTFT/MOST RELIABLE/BEST CODING/BEST CONSISTENCY) linking to measurements, freshness banners (● LIVE / STALE DATA + last benchmark/discovery/aggregate) and live SSE updates (EventSource -> DO)."
+  - "Concurrency design: global 10, opencode 3, openrouter 5, per-model 1 configurable; 429 Retry-After respected with exponential backoff + jitter + provider circuit breakers; queue batching + retries; duplicate scheduler prevention via DO."
+  - "Cost + security: zero-cost verifyFree pre-queue; secrets only as wrangler secrets; no keys in bundle/D1/API/logs; admin endpoints protected."
+  - "Transparency /methodology page: explains TPS/TTFT formulas, prompts, frequency, token counting, free detection, uptime, scoring, retention, limitations (provider load, routing, time, streaming, prompt size)."
+  - "Testing: vitest covering TPS/TTFT/token calc, free detection, discovery, adapters, 429/timeout/retry, downtime/uptime, aggregates, scoring, D1 queries, SSE events; mocked provider APIs, no real credits."
+
+out_of_scope:
+  - "Paid models or any model whose FREE status is UNKNOWN — never benchmarked, never shown as free."
+  - "Storing response bodies or full request payloads; response truncated to metrics only unless debug flag."
+  - "Node/Python/Celery/Redis/Postgres/K8s infrastructure — Cloudflare primitives only."
+  - "LLM-based scoring/recommendation — formulas only."
+  - "Additional providers beyond OpenCode Zen + OpenRouter in v1; extension point prepared but not shipped."
+  - "Native mobile apps — browser SPA + PWA offline cache only."
+
+constraints:
+  - "Cloudflare limits: bounded worker execution windows, ephemeral scheduler, Queue consumer batch ≤100, D1 500MB soft; all jobs short + retryable, not long-running."
+  - "wrangler dev must run with local D1/Queue/DO via --local or remote bindings; npm install && npx wrangler dev is the only required local deps."
+  - "Timestamps UTC internally; UI converts to user tz; TTFT/TPS computed from streaming first-byte, not provider-reported."
+  - "D1 is SoT for history, DO for live broadcast only; never persist history in DO."
+
+success_criteria:
+  - "GET /api/models returns dynamically discovered free models only; paid/unknown excluded; previously-free marked and retained."
+  - "Benchmark job measures streaming TTFT/TPS correctly; TPS = outputTokens / (completed-firstToken) verified via tests."
+  - "Leaderboard returns sortable 1h/24h/7d metrics computed from hourly aggregates + recent raw live sample."
+  - "7-day TPS/TTFT graphs render from hourly aggregates for 1h/24h/3d/7d ranges with multi-model comparison."
+  - "Same-model provider comparison (when model exists on both providers) shows per-provider TPS/TTFT/uptime/error with winner and recommended provider derived from data."
+  - "Live SSE push updates dashboard without refresh on each benchmark.completed; freshness banner accurate."
+  - "Reliability graph shows 7d uptime/downtime/incidents/longest outage per model; error graph grouped correctly."
+  - "Scoring Overall Score formula verified and profile switching re-weights deterministically."
+  - "D1 migrations apply cleanly; cleanup retains 7d raw; aggregation populates hourly_model_stats hourly."
+  - "wrangler deploy succeeds; deployment docs cover D1 creation, queue, DO, cron, secrets, env configs."
+  - "vitest + typecheck green; real benchmark consumes provider APIs without skipping UNKNOWN."
+  - "If model disappears from free, dashboard shows previously-free badge and last result for 7d."
+
+references:
+  - "project_prompy.txt.txt (40 sections)"
+  - "specs/research/FREE_MODELS_LATEST.md"
+  - "specs/tech-architecture/tech-stack.md"
+  - "free-llm-router src/config.ts as negative example for hard-coded lists (DO NOT replicate)"
+

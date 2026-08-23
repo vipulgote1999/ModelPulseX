@@ -1,0 +1,19 @@
+glossary:
+  - term: TTFT
+    def: "Time to first token = first_token_at - request_started_at (ms)"
+  - term: TPS
+    def: "Tokens per second = output_tokens / generation_time where generation_time=completed_at - first_token_at; measured from streaming, not total duration"
+  - term: FREE
+    def: "Zero input AND zero output cost as confirmed by provider pricing metadata; otherwise UNKNOWN and not benchmarked"
+  - term: Previously Free
+    def: "Model that was free but is now paid/inactive; stops scheduling but retains historical measurements shown as such"
+  - term: Benchmark
+    def: "Standardized prompt run per benchmark_type (short/medium/coding) with deterministic workload"
+  - term: Hourly Aggregate
+    def: "Per-model per-hour stats: avg/median/p90/p95 TPS/TTFT, success_rate, uptime, request_count; used for 7-day charts"
+  - term: Incident
+    def: "Outage starts after N consecutive failures (configurable) and ends on success; stores started_at, ended_at, duration, reason"
+  - term: Overall Score
+    def: "0.40*tps_score +0.25*ttft_score+0.25*reliability+0.10*consistency normalized across active free models; profiles reweight"
+  - term: VerifyFree
+    def: "Pre-queue gate that confirms model's pricing status is FREE; skip if UNKNOWN/paid"
