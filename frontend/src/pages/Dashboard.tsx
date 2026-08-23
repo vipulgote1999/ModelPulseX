@@ -1,13 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, lazy, Suspense } from "react";
 import { useLeaderboard } from "../hooks/useLeaderboard";
 import { useHistory } from "../hooks/useHistory";
 import SummaryCards from "../components/SummaryCards";
 import Leaderboard from "../components/Leaderboard";
-import TpsChart from "../charts/TpsChart";
-import TtftChart from "../charts/TtftChart";
-import ReliabilityChart from "../charts/ReliabilityChart";
-import ComparePanel from "../components/ComparePanel";
 import RecommendationCards from "../components/RecommendationCards";
+
+// Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
+const TpsChart = lazy(() => import("../charts/TpsChart"));
+const TtftChart = lazy(() => import("../charts/TtftChart"));
+const ReliabilityChart = lazy(() => import("../charts/ReliabilityChart"));
+const ComparePanel = lazy(() => import("../components/ComparePanel"));
+
+function ChartFallback() {
+  return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500 animate-pulse">Loading chart…</div>;
+}
 
 export default function Dashboard() {
   const [range, setRange] = useState("7d");
@@ -16,30 +22,40 @@ export default function Dashboard() {
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
   const [selected, setSelected] = useState<number[]>([]);
+  const [providers, setProviders] = useState<Array<{ name: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/providers").then(r=>r.json()).then((j: unknown)=>setProviders(((j as { providers?: Array<{name:string}> }).providers??[]) as Array<{name:string}>)).catch(()=>{});
+  }, []);
 
   const { data, loading, error } = useLeaderboard({ range, benchmark, sort, provider, profile });
   const rows = data?.leaderboard ?? [];
-  const history = useHistory(selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id), range, benchmark);
+  // Only fetch history when rows ready — avoid fetching before leaderboard (was causing extra round trip on mount)
+  const historyIds = useMemo(() => {
+    if (rows.length === 0) return [];
+    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id));
+  }, [selected, rows]);
+  const history = useHistory(historyIds, range, benchmark);
 
   const tpsSeries = useMemo(() => {
-    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id))
+    return historyIds
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_tps: (p as unknown as { median_tps: number | null }).median_tps ?? null })) };
       })
       .filter((s) => s.points.length > 0);
-  }, [history.data, selected, rows]);
+  }, [history.data, historyIds, rows]);
 
   const ttftSeries = useMemo(() => {
-    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id))
+    return historyIds
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? null })) };
       })
       .filter((s) => s.points.length > 0);
-  }, [history.data, selected, rows]);
+  }, [history.data, historyIds, rows]);
 
   const reliabilityModels = useMemo(() => {
     const ids = selected.length ? selected : rows.slice(0, 4).map((r) => r.model_id);
@@ -49,8 +65,17 @@ export default function Dashboard() {
     });
   }, [history.data, selected, rows]);
 
-  if (loading) return <div className="max-w-[1400px] mx-auto px-4 py-10 text-zinc-400">Loading leaderboard… checking free models from OpenCode Zen + OpenRouter.</div>;
-  if (error) return <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">Failed to load: {String(error)} — try refresh. Discovery runs hourly; queue may be catching up. API: /api/health</div>;
+  if (loading) return (
+    <div className="max-w-[1400px] mx-auto px-4 py-10 space-y-4">
+      <div className="h-6 w-64 bg-zinc-800 animate-pulse rounded" />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {Array.from({length:6}).map((_,i)=><div key={i} className="h-24 bg-zinc-900 animate-pulse rounded-xl border border-zinc-800" />)}
+      </div>
+      <div className="h-[400px] bg-zinc-900 animate-pulse rounded-xl border border-zinc-800" />
+      <p className="text-sm text-zinc-500">Loading leaderboard… checking free models from all configured providers.</p>
+    </div>
+  );
+  if (error) return <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">Failed to load: {String(error)} — try refresh. Discovery runs hourly; queue may be catching up. API: <a className="underline" href="/api/health">/api/health</a></div>;
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -72,7 +97,29 @@ export default function Dashboard() {
           <option value="all">All benchmarks</option><option value="short">Short</option><option value="medium">Medium</option><option value="coding">Coding</option>
         </select>
         <select value={provider ?? ""} onChange={(e) => setProvider(e.target.value || undefined)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
-          <option value="">All providers</option><option value="opencode_zen">OpenCode Zen</option><option value="openrouter">OpenRouter</option>
+          <option value="">All providers</option>
+          {providers.map(p=> <option key={p.name} value={p.name}>{p.name}</option>)}
+          {/* fallback static when providers not yet loaded */}
+          {providers.length===0 && <>
+            <option value="opencode_zen">opencode_zen</option>
+            <option value="openrouter">openrouter</option>
+            <option value="groq">groq</option>
+            <option value="cerebras">cerebras</option>
+            <option value="gemini">gemini</option>
+            <option value="nvidia">nvidia</option>
+            <option value="sambanova">sambanova</option>
+            <option value="mistral">mistral</option>
+            <option value="agnes_ai">agnes_ai</option>
+            <option value="aionlabs">aionlabs</option>
+            <option value="kilocode">kilocode</option>
+            <option value="glhf">glhf</option>
+            <option value="nscale">nscale</option>
+            <option value="speka">speka</option>
+            <option value="nexaapi">nexaapi</option>
+            <option value="orcarouter">orcarouter</option>
+            <option value="ninerouter">ninerouter</option>
+            <option value="tokenrouter">tokenrouter</option>
+          </>}
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
           <option value="overall">Overall Score</option><option value="tps">Fastest (TPS)</option><option value="ttft">Lowest TTFT</option><option value="uptime">Most Reliable</option>
@@ -90,12 +137,20 @@ export default function Dashboard() {
         <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
       </div>
 
-      <TpsChart series={tpsSeries} range={range} />
-      <TtftChart series={ttftSeries} />
+      <Suspense fallback={<ChartFallback />}>
+        <TpsChart series={tpsSeries} range={range} />
+      </Suspense>
+      <Suspense fallback={<ChartFallback />}>
+        <TtftChart series={ttftSeries} />
+      </Suspense>
 
-      <ReliabilityChart models={reliabilityModels} />
+      <Suspense fallback={<ChartFallback />}>
+        <ReliabilityChart models={reliabilityModels} />
+      </Suspense>
 
-      <ComparePanel selected={selected.length ? selected : rows.slice(0, 2).map((r) => r.model_id)} />
+      <Suspense fallback={<ChartFallback />}>
+        <ComparePanel selected={selected.length ? selected : rows.slice(0, 2).map((r) => r.model_id)} />
+      </Suspense>
 
       {selected.length > 0 && (
         <button onClick={() => setSelected([])} className="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear selection ({selected.length})</button>

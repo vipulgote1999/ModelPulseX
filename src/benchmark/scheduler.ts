@@ -8,7 +8,7 @@ import { providerFor } from "../providers/index";
 // Queue message shape
 export interface BenchJob {
   model_id: number;
-  provider: "opencode_zen" | "openrouter";
+  provider: string; // ProviderName widened for new providers
   provider_model_id: string;
   benchmark_type: BenchmarkType;
   display_name: string;
@@ -26,7 +26,7 @@ export async function runDiscovery(env: Env): Promise<{ discovered: number; adde
   let total = 0;
   const added: string[] = [];
   for (const [pname, metas] of byProvider) {
-    const pid = await ensureProvider(env.DB, pname as "opencode_zen" | "openrouter");
+    const pid = await ensureProvider(env.DB, pname as import("../types").ProviderName);
     const seen = new Set<string>();
     for (const meta of metas) {
       seen.add(meta.provider_model_id);
@@ -44,42 +44,60 @@ export async function runDiscovery(env: Env): Promise<{ discovered: number; adde
 
 export async function scheduleBenchmarks(env: Env): Promise<{ enqueued: number }> {
   const concurrency = getConcurrency(env as unknown as Record<string, unknown>);
-  // count queued + recently running via DB last minute + provider caps simplified: just cap per tick
+  // Single batched query — no N+1 loop (previously fetched ids then re-queried per model)
   const active = await env.DB.prepare(
-    "SELECT m.provider_model_id as provider_model_id, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.active=1 AND m.free_status='FREE'",
-  ).all<{ provider_model_id: string; provider: string }>();
+    "SELECT m.id, m.display_name, m.provider_model_id, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.active=1 AND m.free_status='FREE' ORDER BY p.name, m.display_name",
+  ).all<{ id: number; display_name: string; provider_model_id: string; provider: string }>();
 
   // pick models round-robin; each model gets one benchmark_type per cron cycle (rotate)
   const hour = new Date().getUTCHours();
   const benchTypes: BenchmarkType[] = ["short", "medium", "coding"];
-  const chosenType: BenchmarkType = benchTypes[hour % 3]!; // rotate across cron 5m ticks? simpler use hour
-  // But to satisfy frequent checks, schedule all three types spread via queue batching across ticks.
-  // For every 5m we schedule ONE type; 7-day retention needs enough samples
+  const chosenType: BenchmarkType = benchTypes[hour % 3]!;
   const jobs: BenchJob[] = [];
-  // group by provider to enforce caps
+  // group by provider to enforce caps — dynamic via config map, fallback to proportional share when new provider not in old cap list
   const perProvider: Record<string, number> = {};
   let global = 0;
   const perModelSeen = new Set<string>();
-  for (const row of active.results ?? []) {
+  // Build cap map: supports arbitrary providers via concurrency map or env overrides
+  const capMap = concurrency as unknown as Record<string, number>;
+  const defaultCap = Math.max(2, Math.floor(concurrency.maxGlobal / 4));
+  for (const row of (active.results ?? []) as typeof active.results) {
     if (global >= concurrency.maxGlobal) break;
-    const providerCap = row.provider === "opencode_zen" ? concurrency.maxOpencode : concurrency.maxOpenrouter;
+    // dynamic cap: check per-provider cap else fallback to default share
+    let providerCap: number;
+    if (row.provider === "opencode_zen") providerCap = concurrency.maxOpencode;
+    else if (row.provider === "openrouter") providerCap = concurrency.maxOpenrouter;
+    else if (row.provider === "groq") providerCap = concurrency.maxGroq;
+    else if (row.provider === "cerebras") providerCap = concurrency.maxCerebras;
+    else if (row.provider === "gemini") providerCap = concurrency.maxGemini;
+    else if (row.provider === "nvidia") providerCap = concurrency.maxNvidia;
+    else if (row.provider === "sambanova") providerCap = concurrency.maxSambanova;
+    else if (row.provider === "mistral") providerCap = concurrency.maxMistral;
+    else if (row.provider === "agnes_ai") providerCap = concurrency.maxAgnesAi;
+    else if (row.provider === "aionlabs") providerCap = concurrency.maxAionlabs;
+    else if (row.provider === "kilocode") providerCap = concurrency.maxKilocode;
+    else if (row.provider === "glhf") providerCap = concurrency.maxGlhf;
+    else if (row.provider === "nscale") providerCap = concurrency.maxNscale;
+    else if (row.provider === "speka") providerCap = concurrency.maxSpeka;
+    else if (row.provider === "nexaapi") providerCap = concurrency.maxNexaapi;
+    else if (row.provider === "orcarouter") providerCap = concurrency.maxOrcarouter;
+    else if (row.provider === "ninerouter") providerCap = concurrency.maxNinerouter;
+    else if (row.provider === "tokenrouter") providerCap = concurrency.maxTokenrouter;
+    else {
+      const key = `max${row.provider.charAt(0).toUpperCase()}${row.provider.slice(1)}`;
+      providerCap = capMap[key] ?? defaultCap;
+    }
     const cur = perProvider[row.provider] ?? 0;
     if (cur >= providerCap) continue;
     const key = row.provider + ":" + row.provider_model_id;
     if (perModelSeen.has(key)) continue;
-    if ((perModelSeen.size >= concurrency.maxSameModel * 1000)) { /* allow many but enforce per-model 1 per tick via set */ }
     perModelSeen.add(key);
-    // fetch model id
-    const mrow = await env.DB.prepare("SELECT m.id, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.provider_model_id=? AND p.name=?")
-      .bind(row.provider_model_id, row.provider)
-      .first<{ id: number; display_name: string }>();
-    if (!mrow) continue;
     jobs.push({
-      model_id: mrow.id,
-      provider: row.provider as "opencode_zen" | "openrouter",
+      model_id: row.id,
+      provider: row.provider,
       provider_model_id: row.provider_model_id,
       benchmark_type: chosenType,
-      display_name: mrow.display_name,
+      display_name: row.display_name,
     });
     perProvider[row.provider] = cur + 1;
     global++;
@@ -121,7 +139,7 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
     first_seen: "",
     last_seen: "",
   };
-  let result;
+  let result: import("../types").BenchmarkResult;
   try {
     result = await prov.benchmarkModel(model as unknown as import("../types").Model, workload);
   } catch (e) {
@@ -138,15 +156,15 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
       status: "UNKNOWN_ERROR" as const,
       error_type: msg.slice(0, 500),
       http_status: null,
-      provider: job.provider,
+      provider: job.provider as import("../types").ProviderName,
       model: job.provider_model_id,
       benchmark_type: job.benchmark_type,
       token_estimation_method: "heuristic" as const,
     };
   }
-  await insertBenchmarkRun(env.DB, job.model_id, result);
-  // handle incident detection (simple: if >threshold consecutive failures create/update incident)
-  await updateIncidents(env, job.model_id, result);
+  await insertBenchmarkRun(env.DB, job.model_id, result as import("../types").BenchmarkResult);
+  // handle incident detection
+  await updateIncidents(env, job.model_id, result as unknown as { status: string; request_started_at: string; error_type?: string | null });
   // broadcast via DO
   try {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));

@@ -3,7 +3,7 @@ import type { BenchmarkDefinition, BenchmarkResult, BenchmarkStatus } from "../t
 import { computeGenerationMs, computeTPS, computeTTFT, estimateTokensHeuristic } from "../utils/metrics";
 
 export interface BenchmarkOpts {
-  provider: "opencode_zen" | "openrouter";
+  provider: string; // ProviderName (widened for new providers)
   providerModelId: string;
   apiUrl: string; // full /v1/chat/completions url
   apiKey: string | undefined;
@@ -27,8 +27,11 @@ export function classifyStatus(status: number | null, timedOut: boolean, streamE
 export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkResult> {
   const startedAtMs = Date.now();
   const startedAtIso = new Date(startedAtMs).toISOString();
+  const startedPerf = typeof performance !== "undefined" && performance.now ? performance.now() : startedAtMs;
   let firstTokenAtMs: number | null = null;
+  let firstPerf: number | null = null;
   let completedAtMs: number | null = null;
+  let completedPerf: number | null = null;
   let outputText = "";
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -37,6 +40,7 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
   let errorType: string | null = null;
   let timedOut = false;
   let streamError = false;
+  let isReasoning = false;
 
   const body = {
     model: opts.providerModelId,
@@ -121,10 +125,16 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
               if (typeof j.usage.total_tokens === "number" && inputTokens == null) {
                 // estimate input if not separately given
               }
+              // detect reasoning models (OpenRouter reports reasoning_tokens)
+              const rt = (j.usage as Record<string, unknown>).completion_tokens_details as Record<string, unknown> | undefined;
+              const rt2 = (j.usage as Record<string, unknown>).reasoning_tokens as unknown;
+              if (typeof rt?.reasoning_tokens === "number" && (rt.reasoning_tokens as number) > 0) isReasoning = true;
+              if (typeof rt2 === "number" && (rt2 as number) > 0) isReasoning = true;
             }
             const delta = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.text ?? "";
             if (delta && firstTokenAtMs == null) {
               firstTokenAtMs = Date.now();
+              firstPerf = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
             }
             if (typeof delta === "string") outputText += delta;
           } catch {
@@ -134,6 +144,7 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
       }
     }
     completedAtMs = Date.now();
+    completedPerf = typeof performance !== "undefined" && performance.now ? performance.now() : completedAtMs;
     // fallback token count if provider didn't return usage
     if (outputTokens == null) {
       const est = estimateTokensHeuristic(outputText);
@@ -163,7 +174,11 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
       httpStatus,
       opts,
       tokenEstimationMethod,
-      outputText, // for internal compute but not persisted
+      outputText,
+      startedPerf,
+      firstPerf,
+      completedPerf,
+      isReasoning,
     );
   } catch (e: unknown) {
     clearTimeout(timeout);
@@ -204,17 +219,41 @@ function finalize(
   opts: BenchmarkOpts,
   tokenEstimationMethod: "provider" | "heuristic",
   _outputText?: string,
+  startPerf?: number | null,
+  firstPerf?: number | null,
+  completedPerf?: number | null,
+  isReasoning?: boolean,
 ): BenchmarkResult {
   const startedMs = new Date(startedAtIso).getTime();
   const firstMs = firstTokenAtIso ? new Date(firstTokenAtIso).getTime() : null;
   const completedMs = completedAtIso ? new Date(completedAtIso).getTime() : null;
-  let ttft = computeTTFT(startedMs, firstMs);
-  let gen = computeGenerationMs(firstMs, completedMs);
-  let tps = computeTPS(outputTokens, gen);
+  // Use high-res perf if available, else fallback to Date
+  let ttft: number | null = null;
+  let gen: number | null = null;
+  if (startPerf != null && firstPerf != null) {
+    ttft = Math.round(firstPerf - startPerf);
+  } else {
+    ttft = computeTTFT(startedMs, firstMs);
+  }
+  if (firstPerf != null && completedPerf != null) {
+    gen = Math.round(completedPerf - firstPerf);
+  } else {
+    gen = computeGenerationMs(firstMs, completedMs);
+  }
+  // For reasoning models where provider buffers all tokens, observed gen is ~1ms — clamp to avoid 10k+ TPS inflation
+  // Use total duration as fallback for reasoning, else min 20ms clamp
+  let genForTps = gen;
+  if (isReasoning && gen != null) {
+    // reasoning: server thinks before first token, so total = ttft + gen is true wall time
+    const total = ttft != null && gen != null ? ttft + gen : null;
+    if (total != null && total > 0) genForTps = total;
+  }
+  if (genForTps != null && genForTps < 20) genForTps = 20;
+  let tps = computeTPS(outputTokens, genForTps);
   // Edge: streaming chunk handled in same tick -> TTFT/generation 0 but status SUCCESS -> clamp to minimal measurable
   if (status === "SUCCESS" && firstMs != null && completedMs != null) {
-    if (ttft === 0) ttft = 1;
-    if (gen === 1 && outputTokens != null && tps == null) tps = computeTPS(outputTokens, 1);
+    if (ttft === 0 || ttft === null) ttft = 1;
+    if ((gen === 0 || gen === null) && outputTokens != null && tps == null) tps = computeTPS(outputTokens, 20);
   }
   // if not SUCCESS, null out ttft/tps
   const ttft_ms = status === "SUCCESS" ? ttft : null;
@@ -232,7 +271,7 @@ function finalize(
     status,
     error_type: errorType,
     http_status: httpStatus,
-    provider: opts.provider,
+    provider: opts.provider as import("../types").ProviderName,
     model: opts.providerModelId,
     benchmark_type: opts.benchmark.type,
     token_estimation_method: tokenEstimationMethod,

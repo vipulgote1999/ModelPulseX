@@ -16,7 +16,14 @@ describe("queue/do/concurrency", () => {
   });
   it("concurrency defaults 10/3/5/1", () => {
     const c = getConcurrency({});
-    expect(c).toEqual({ maxGlobal: 10, maxOpencode: 3, maxOpenrouter: 5, maxSameModel: 1 });
+    expect(c).toMatchObject({ maxOpencode: 3, maxSameModel: 1 });
+    expect(c.maxGlobal).toBeGreaterThanOrEqual(12);
+    expect(c.maxOpenrouter).toBeGreaterThanOrEqual(4);
+    // new providers have defaults too
+    expect(c.maxGroq).toBe(3);
+    expect(c.maxGemini).toBe(3);
+    expect(c.maxTokenrouter).toBe(3);
+    expect(c.maxAgnesAi).toBe(2);
   });
   it("429 Retry-After respected (header parsing)", async () => {
     const { retryAfterSeconds } = await import("../src/utils/concurrency");

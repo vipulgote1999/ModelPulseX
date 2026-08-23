@@ -29,9 +29,25 @@
   },
   "observability": { "enabled": true },
   "vars": {
-    "MAX_GLOBAL_CONCURRENCY": "10",
+    "MAX_GLOBAL_CONCURRENCY": "16",
     "MAX_OPENCODE_CONCURRENCY": "3",
-    "MAX_OPENROUTER_CONCURRENCY": "5",
+    "MAX_OPENROUTER_CONCURRENCY": "4",
+    "MAX_GROQ_CONCURRENCY": "3",
+    "MAX_CEREBRAS_CONCURRENCY": "2",
+    "MAX_GEMINI_CONCURRENCY": "3",
+    "MAX_NVIDIA_CONCURRENCY": "2",
+    "MAX_SAMBANOVA_CONCURRENCY": "1",
+    "MAX_MISTRAL_CONCURRENCY": "2",
+    "MAX_AGNES_AI_CONCURRENCY": "2",
+    "MAX_AIONLABS_CONCURRENCY": "2",
+    "MAX_KILOCODE_CONCURRENCY": "2",
+    "MAX_GLHF_CONCURRENCY": "2",
+    "MAX_NSCALE_CONCURRENCY": "2",
+    "MAX_SPEKA_CONCURRENCY": "2",
+    "MAX_NEXAAPI_CONCURRENCY": "2",
+    "MAX_ORCAROUTER_CONCURRENCY": "2",
+    "MAX_NINEROUTER_CONCURRENCY": "2",
+    "MAX_TOKENROUTER_CONCURRENCY": "3",
     "MAX_SAME_MODEL_CONCURRENCY": "1",
     "BENCHMARK_TIMEOUT_MS": "30000",
     "INCIDENT_THRESHOLD": "3"
@@ -39,5 +55,21 @@
   // secrets (never in file):
   // wrangler secret put OPENCODE_API_KEY
   // wrangler secret put OPENROUTER_API_KEY
+  // wrangler secret put GROQ_API_KEY
+  // wrangler secret put CEREBRAS_API_KEY
+  // wrangler secret put GEMINI_API_KEY
+  // wrangler secret put NVIDIA_API_KEY
+  // wrangler secret put SAMBANOVA_API_KEY
+  // wrangler secret put MISTRAL_API_KEY
+  // wrangler secret put AGNES_API_KEY
+  // wrangler secret put AIONLABS_API_KEY
+  // wrangler secret put KILOCODE_API_KEY
+  // wrangler secret put GLHF_API_KEY
+  // wrangler secret put NSCALE_API_KEY
+  // wrangler secret put SPEKA_API_KEY
+  // wrangler secret put NEXAAPI_API_KEY
+  // wrangler secret put ORCAROUTER_API_KEY
+  // wrangler secret put NINEROUTER_API_KEY
+  // wrangler secret put TOKENROUTER_API_KEY
   // wrangler secret put ADMIN_TOKEN
 }

@@ -1,0 +1,16 @@
+Provider	Free Tier Details	OpenAI-Compatible Base URL
+Agnes AI	Permanently free; 20-30 RPM; No credit card required	https://apihub.agnes-ai.com/v1
+Aion Labs	Permanent free tier; 15 RPM, 20K tokens/day; No credit card required	https://api.aionlabs.ai/v1
+Kilo Code	No credit card required; ~200 requests/hr, 1M context	https://api.aimlapi.com/v1
+Glhf.chat	Free OpenAI-compatible API; 30 RPM; Unlimited usage on free models	https://glhf.chat/api/openai/v1
+Nscale	Free tier; 128K context, OpenAI-compatible	https://inference.api.nscale.com/v1
+NVIDIA NIM	Completely free; No credit card; New users receive 1,000 free inference credits	https://integrate.api.nvidia.com/v1
+Speka AI	10 RPM, $1 in monthly credits; No credit card required	https://speka.me/v1
+SambaNova AI	20 requests/day, 200K tokens/day	https://api.sambanova.ai/v1
+NexaAPI	Free tier; No credit card required	https://api.nexa-api.com/v1
+OrcaRouter	4 flagship models offered completely free ($0/token)	https://api.orcarouter.ai/v1
+Ox Alpha (Stealth)	Free for one week from August 20, 2026; 1M context window	https://openrouter.ai/api/v1
+TokenReply	Lightweight inference hub	(Search did not return a specific base URL; please check provider documentation)
+9Router	Local/remote AI gateway; OpenAI-compatible	https://9router.com/v1 (Cloud) or http://localhost:20128 (Local)
+OmniRoute	Local-first AI API proxy router	http://localhost:20128/v1 (Local)
+Note: Free tier details and base URLs are subject to change. Always refer to the official provider documentation for the most current information.

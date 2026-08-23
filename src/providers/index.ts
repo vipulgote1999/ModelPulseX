@@ -1,9 +1,44 @@
 import type { Env, LLMProvider, ModelMetadata } from "../types";
 import { OpenCodeZenProvider } from "./opencode-zen";
 import { OpenRouterProvider } from "./openrouter";
+import { GroqProvider } from "./groq";
+import { CerebrasProvider } from "./cerebras";
+import { GeminiProvider } from "./gemini";
+import { NvidiaProvider } from "./nvidia";
+import { SambanovaProvider } from "./sambanova";
+import { MistralProvider } from "./mistral";
+import { AgnesAiProvider } from "./agnes_ai";
+import { AionLabsProvider } from "./aionlabs";
+import { KiloCodeProvider } from "./kilocode";
+import { GlhfProvider } from "./glhf";
+import { NscaleProvider } from "./nscale";
+import { SpekaProvider } from "./speka";
+import { NexaApiProvider } from "./nexaapi";
+import { OrcaRouterProvider } from "./orcarouter";
+import { NineRouterProvider } from "./ninerouter";
+import { TokenRouterProvider } from "./tokenrouter";
 
 export function getProviders(env: Env): LLMProvider[] {
-  return [new OpenCodeZenProvider(env), new OpenRouterProvider(env)];
+  return [
+    new OpenCodeZenProvider(env),
+    new OpenRouterProvider(env),
+    new GroqProvider(env),
+    new CerebrasProvider(env),
+    new GeminiProvider(env),
+    new NvidiaProvider(env),
+    new SambanovaProvider(env),
+    new MistralProvider(env),
+    new AgnesAiProvider(env),
+    new AionLabsProvider(env),
+    new KiloCodeProvider(env),
+    new GlhfProvider(env),
+    new NscaleProvider(env),
+    new SpekaProvider(env),
+    new NexaApiProvider(env),
+    new OrcaRouterProvider(env),
+    new NineRouterProvider(env),
+    new TokenRouterProvider(env),
+  ];
 }
 
 export async function discoverAll(env: Env): Promise<ModelMetadata[]> {

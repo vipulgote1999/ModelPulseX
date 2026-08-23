@@ -10,6 +10,19 @@ export default defineConfig({
   build: {
     outDir: "../dist/frontend",
     emptyOutDir: true,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 600,
+    minify: "esbuild",
+    // disable eager modulepreload for lazy recharts — was 612ms preload even though lazy
+    modulePreload: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          // recharts intentionally NOT manualChunk — let dynamic import split it so it loads only when charts visible
+        },
+      },
+    },
   },
   resolve: {
     alias: {

@@ -1,6 +1,25 @@
 /** Shared types — single source for API, DB, provider, and frontend. */
 
-export type ProviderName = "opencode_zen" | "openrouter";
+export type ProviderName =
+  | "opencode_zen"
+  | "openrouter"
+  | "groq"
+  | "cerebras"
+  | "gemini"
+  | "nvidia"
+  | "sambanova"
+  | "mistral"
+  | "cloudflare"
+  | "agnes_ai"
+  | "aionlabs"
+  | "kilocode"
+  | "glhf"
+  | "nscale"
+  | "speka"
+  | "nexaapi"
+  | "orcarouter"
+  | "ninerouter"
+  | "tokenrouter";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
 export type BenchmarkType = "short" | "medium" | "coding";
 export type BenchmarkStatus =
@@ -181,12 +200,46 @@ export interface Env {
   LIVE_DO: DurableObjectNamespace;
   OPENCODE_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  CEREBRAS_API_KEY?: string;
+  GEMINI_API_KEY?: string;
+  NVIDIA_API_KEY?: string;
+  SAMBANOVA_API_KEY?: string;
+  MISTRAL_API_KEY?: string;
+  AGNES_API_KEY?: string;
+  AIONLABS_API_KEY?: string;
+  KILOCODE_API_KEY?: string;
+  GLHF_API_KEY?: string;
+  NSCALE_API_KEY?: string;
+  SPEKA_API_KEY?: string;
+  NEXAAPI_API_KEY?: string;
+  ORCAROUTER_API_KEY?: string;
+  NINEROUTER_API_KEY?: string;
+  TOKENROUTER_API_KEY?: string;
   ADMIN_TOKEN?: string;
   CORS_ORIGIN?: string;
   MAX_GLOBAL_CONCURRENCY?: string;
   MAX_OPENCODE_CONCURRENCY?: string;
   MAX_OPENROUTER_CONCURRENCY?: string;
+  MAX_GROQ_CONCURRENCY?: string;
+  MAX_CEREBRAS_CONCURRENCY?: string;
+  MAX_GEMINI_CONCURRENCY?: string;
+  MAX_NVIDIA_CONCURRENCY?: string;
+  MAX_SAMBANOVA_CONCURRENCY?: string;
+  MAX_MISTRAL_CONCURRENCY?: string;
+  MAX_AGNES_AI_CONCURRENCY?: string;
+  MAX_AIONLABS_CONCURRENCY?: string;
+  MAX_KILOCODE_CONCURRENCY?: string;
+  MAX_GLHF_CONCURRENCY?: string;
+  MAX_NSCALE_CONCURRENCY?: string;
+  MAX_SPEKA_CONCURRENCY?: string;
+  MAX_NEXAAPI_CONCURRENCY?: string;
+  MAX_ORCAROUTER_CONCURRENCY?: string;
+  MAX_NINEROUTER_CONCURRENCY?: string;
+  MAX_TOKENROUTER_CONCURRENCY?: string;
   MAX_SAME_MODEL_CONCURRENCY?: string;
   BENCHMARK_TIMEOUT_MS?: string;
   INCIDENT_THRESHOLD?: string;
+  // allow arbitrary provider concurrency envs
+  [key: string]: string | D1Database | Queue | DurableObjectNamespace | undefined;
 }

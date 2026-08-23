@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 export interface LeaderboardResp {
   leaderboard: Array<{
@@ -6,7 +6,7 @@ export interface LeaderboardResp {
     model_id: number;
     model: string;
     display_name: string;
-    provider: "opencode_zen" | "openrouter";
+    provider: string;
     free_status: string;
     active: boolean;
     tps_now: number | null;
@@ -22,6 +22,8 @@ export interface LeaderboardResp {
     status: string;
     last_test: string | null;
     overall_score: number | null;
+    sparkline?: Array<number | null>;
+    sampleCount24h?: number;
     rank_?: number;
   }>;
   meta: { last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; is_stale: boolean; live: string | null; stale_message: string | null };
@@ -36,33 +38,51 @@ export function useLeaderboard(opts: { range: string; benchmark: string; sort: s
   const [data, setData] = useState<LeaderboardResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchNow = useCallback(async () => {
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
     const qs = new URLSearchParams({ range: opts.range, benchmark: opts.benchmark, sort: opts.sort, profile: opts.profile });
     if (opts.provider) qs.set("provider", opts.provider);
-    const res = await fetch(`/api/leaderboard?${qs}`);
+    const res = await fetch(`/api/leaderboard?${qs}`, { signal: ctl.signal, headers: { accept: "application/json" } });
     if (!res.ok) throw new Error(`leaderboard ${res.status}`);
     const j = (await res.json()) as LeaderboardResp;
     setData(j);
     setLoading(false);
+    setError(null);
   }, [opts.range, opts.benchmark, opts.sort, opts.provider, opts.profile]);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     fetchNow().catch((e) => {
-      if (!cancelled) { setError(String(e)); setLoading(false); }
+      if ((e as Error).name === "AbortError") return;
+      if (!cancelled) {
+        setError(String(e));
+        setLoading(false);
+      }
     });
-    const id = setInterval(() => fetchNow().catch(() => {}), 15000);
-    // SSE live updates bump refresh
+    // poll as fallback — SSE is primary; lengthen to 30s to reduce load (was 15s)
+    const id = setInterval(() => fetchNow().catch(() => {}), 30000);
+    // SSE live updates bump refresh (debounced)
     let es: EventSource | null = null;
+    let debounce: number | null = null;
     try {
       es = new EventSource("/api/live");
-      es.addEventListener("benchmark", () => fetchNow().catch(() => {}));
+      es.addEventListener("benchmark", () => {
+        if (debounce) window.clearTimeout(debounce);
+        debounce = window.setTimeout(() => fetchNow().catch(() => {}), 800);
+      });
       es.onerror = () => {};
     } catch {}
     return () => {
       cancelled = true;
       clearInterval(id);
+      if (debounce) window.clearTimeout(debounce);
+      abortRef.current?.abort();
       if (es) es.close();
     };
   }, [fetchNow]);
