@@ -370,6 +370,40 @@ export function createApi(env: Env) {
     return c.json({ ok: true });
   });
 
+  app.post("/api/admin/migrate", async (c) => {
+    if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
+    // Run migrations idempotently via D1 (bypasses wrangler token D1 scope issue)
+    const stmts = [
+      `CREATE TABLE IF NOT EXISTS providers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, type TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS models (id INTEGER PRIMARY KEY AUTOINCREMENT, provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE, provider_model_id TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT NOT NULL, is_free INTEGER NOT NULL DEFAULT 0, free_status TEXT NOT NULL CHECK (free_status IN ('FREE','PAID','UNKNOWN','PREVIOUSLY_FREE')), context_length INTEGER, capabilities TEXT, input_price TEXT, output_price TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, UNIQUE(provider_id, provider_model_id))`,
+      `CREATE TABLE IF NOT EXISTS benchmark_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE, benchmark_type TEXT NOT NULL CHECK (benchmark_type IN ('short','medium','coding')), started_at TEXT NOT NULL, first_token_at TEXT, completed_at TEXT, input_tokens INTEGER, output_tokens INTEGER, ttft_ms REAL, generation_ms REAL, tps REAL, status TEXT NOT NULL CHECK (status IN ('SUCCESS','TIMEOUT','RATE_LIMITED','PROVIDER_ERROR','MODEL_UNAVAILABLE','STREAM_ERROR','UNKNOWN_ERROR')), error_type TEXT, http_status INTEGER, provider TEXT NOT NULL, model TEXT NOT NULL, token_estimation_method TEXT CHECK (token_estimation_method IN ('provider','heuristic')) DEFAULT 'provider')`,
+      `CREATE TABLE IF NOT EXISTS hourly_model_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE, hour_start TEXT NOT NULL, benchmark_type TEXT NOT NULL, avg_tps REAL, median_tps REAL, p90_tps REAL, p95_tps REAL, avg_ttft REAL, median_ttft REAL, p90_ttft REAL, p95_ttft REAL, success_rate REAL, error_rate REAL, uptime REAL, request_count INTEGER NOT NULL DEFAULT 0, UNIQUE(model_id, hour_start, benchmark_type))`,
+      `CREATE TABLE IF NOT EXISTS availability_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE, started_at TEXT NOT NULL, ended_at TEXT, duration_seconds INTEGER, reason TEXT, failure_count INTEGER NOT NULL DEFAULT 1)`,
+      `CREATE TABLE IF NOT EXISTS benchmark_config (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, value TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS daily_model_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE, day_start TEXT NOT NULL, benchmark_type TEXT NOT NULL, avg_tps REAL, median_tps REAL, avg_ttft REAL, median_ttft REAL, success_rate REAL, uptime REAL, request_count INTEGER NOT NULL DEFAULT 0, UNIQUE(model_id, day_start, benchmark_type))`,
+      `CREATE INDEX IF NOT EXISTS idx_models_active_free ON models(active, free_status)`,
+      `CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_models_last_seen ON models(last_seen)`,
+      `CREATE INDEX IF NOT EXISTS idx_benchmark_runs_model_time ON benchmark_runs(model_id, started_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_benchmark_runs_status ON benchmark_runs(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_benchmark_runs_started ON benchmark_runs(started_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_hourly_model_hour ON hourly_model_stats(model_id, hour_start)`,
+      `CREATE INDEX IF NOT EXISTS idx_incidents_model ON availability_incidents(model_id, started_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_daily_model_day ON daily_model_stats(model_id, day_start)`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('benchmark.short.prompt', 'Return exactly: PONG', datetime('now'))`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('benchmark.medium.prompt', 'Write a concise 180-220 word summary of why observability matters for LLM APIs. Plain text only.', datetime('now'))`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('benchmark.coding.prompt', 'Implement a Python function solve(nums, target) that returns indices of two numbers adding to target. Explain complexity and provide working code with a test case. Keep output under 400 tokens.', datetime('now'))`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('retention.raw_days', '7', datetime('now'))`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('retention.hourly_days', '30', datetime('now'))`,
+      `INSERT OR IGNORE INTO benchmark_config (key, value, updated_at) VALUES ('incident.threshold', '3', datetime('now'))`,
+    ];
+    const results: string[] = [];
+    for (const sql of stmts) {
+      try { await env.DB.prepare(sql).run(); results.push("ok"); } catch (e) { results.push(String(e).slice(0,200)); }
+    }
+    return c.json({ ok: true, executed: results.length, results });
+  });
+
   // live SSE via DO (proxied)
   app.get("/api/live", async (c) => {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));

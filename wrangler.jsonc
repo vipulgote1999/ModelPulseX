@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "modelpulsex-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "c588d2cd-1fdc-44fb-879f-f0995c18f7ea",
       "migrations_dir": "migrations"
     }
   ],
