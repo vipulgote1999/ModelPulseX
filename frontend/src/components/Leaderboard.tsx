@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA } from "../lib/intelligence";
+import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 
 type Row = {
   rank: number;
@@ -53,9 +54,13 @@ export default function Leaderboard({
   const toggle = (id: number) => {
     if (!onSelect) return;
     const cur = selected ?? [];
-    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(0, 4);
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(0, 3);
     onSelect(next);
   };
+
+  const { data: cd } = useCooldowns(12000);
+  const modelCdMap = new Map((cd?.models ?? []).map((m) => [m.model_id, m]));
+  const providerCdMap = new Map((cd?.providers ?? []).map((p) => [p.provider, p]));
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
@@ -106,8 +111,13 @@ export default function Leaderboard({
                 <td className="px-2 py-2 hidden lg:table-cell"><Sparkline points={(r as unknown as { sparkline?: Array<number | null> }).sparkline ?? []} /></td>
                 <td className="px-2 py-2 text-right mono hidden sm:table-cell text-zinc-400">{r.error_rate_7d != null ? `${(r.error_rate_7d * 100).toFixed(1)}%` : "—"}</td>
                 <td className="px-2 py-2">
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${r.status === "SUCCESS" ? "bg-emerald-900/40 text-emerald-300 border border-emerald-800" : r.status === "RATE_LIMITED" ? "bg-amber-900/40 text-amber-300 border border-amber-800" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}>{r.status}</span>
-                  <span className="ml-1 text-[10px] text-zinc-600">Measured TPS</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex gap-1 items-center">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full ${r.status === "SUCCESS" ? "bg-emerald-900/40 text-emerald-300 border border-emerald-800" : r.status === "RATE_LIMITED" ? "bg-amber-900/40 text-amber-300 border border-amber-800" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}>{r.status}</span>
+                      {(() => { const mc = modelCdMap.get(r.model_id); if (mc) return <span title={`${mc.reason ?? "MODEL_COOLDOWN"} until ${new Date(mc.cooldown_until).toLocaleString()}`} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-300 border border-sky-800">⏱ model {remainingStr(mc.cooldown_until)}</span>; const pc = providerCdMap.get(r.provider); if (pc) return <span title={`${pc.reason ?? "PROVIDER_COOLDOWN"} until ${new Date(pc.cooldown_until).toLocaleString()}`} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-300 border border-amber-800">⏱ provider {remainingStr(pc.cooldown_until)}</span>; return null; })()}
+                    </div>
+                    {(() => { const mc = modelCdMap.get(r.model_id); const pc = providerCdMap.get(r.provider); const cd2 = mc ?? pc; if (cd2) return <span className="text-[10px] text-zinc-500 max-w-[150px] truncate" title={cd2.reason ?? ""}>{mc ? "model timeout" : "provider timeout"} · {cd2.reason?.slice(0,30) ?? ""}</span>; return <span className="text-[10px] text-zinc-600">Measured TPS</span>; })()}
+                  </div>
                 </td>
                 <td className="px-3 py-2 hidden md:table-cell text-xs text-zinc-500">{timeAgo(r.last_test)} {r.last_test ? `· ${new Date(r.last_test).toLocaleString()}` : ""}</td>
               </tr>
@@ -115,7 +125,7 @@ export default function Leaderboard({
           </tbody>
         </table>
       </div>
-      {rows.length > 0 && <div className="px-3 py-2 text-[11px] text-zinc-500">Click rows to pin for graph comparison (max 4). Sorted by <b className="text-zinc-300">{String(sortKey)}</b> {dir}. Filters apply via top bar.</div>}
+      {rows.length > 0 && <div className="px-3 py-2 text-[11px] text-zinc-500">Click rows to pin for graph comparison (max 3). Sorted by <b className="text-zinc-300">{String(sortKey)}</b> {dir}. Selected up to 3 drive the charts below.</div>}
     </div>
   );
 }

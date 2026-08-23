@@ -10,9 +10,8 @@ export class NexaApiProvider implements LLMProvider {
   constructor(private env: Env) {}
   getProviderName(){ return "nexaapi" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
-    if (!this.env.NEXAAPI_API_KEY) return [];
     try {
-      const r = await fetch(MODELS_URL, { headers: { authorization: `Bearer ${this.env.NEXAAPI_API_KEY}` } });
+      const r = await fetch(MODELS_URL, { headers: (this.env.NEXAAPI_API_KEY ? { authorization: `Bearer ${this.env.NEXAAPI_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };
       const ids = (j.data ?? []).map(m=>m.id).filter(Boolean);

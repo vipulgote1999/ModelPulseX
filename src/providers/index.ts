@@ -17,6 +17,7 @@ import { NexaApiProvider } from "./nexaapi";
 import { OrcaRouterProvider } from "./orcarouter";
 import { NineRouterProvider } from "./ninerouter";
 import { TokenRouterProvider } from "./tokenrouter";
+import { OllamaProvider } from "./ollama";
 
 export function getProviders(env: Env): LLMProvider[] {
   return [
@@ -38,6 +39,7 @@ export function getProviders(env: Env): LLMProvider[] {
     new OrcaRouterProvider(env),
     new NineRouterProvider(env),
     new TokenRouterProvider(env),
+    new OllamaProvider(env),
   ];
 }
 

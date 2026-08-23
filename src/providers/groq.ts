@@ -22,9 +22,8 @@ export class GroqProvider implements LLMProvider {
   getProviderName() { return "groq" as const; }
 
   async discoverModels(): Promise<ModelMetadata[]> {
-    if (!this.env.GROQ_API_KEY) return [];
     try {
-      const res = await fetch(GROQ_MODELS_URL, { headers: { authorization: `Bearer ${this.env.GROQ_API_KEY}` } });
+      const res = await fetch(GROQ_MODELS_URL, { headers: (this.env.GROQ_API_KEY ? { authorization: `Bearer ${this.env.GROQ_API_KEY}` } : {} as Record<string,string>) });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: GroqModel[] };
       const ids = (data.data ?? []).map(m => m.id).filter(Boolean);

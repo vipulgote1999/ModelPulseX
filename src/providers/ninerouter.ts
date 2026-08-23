@@ -11,9 +11,8 @@ export class NineRouterProvider implements LLMProvider {
   constructor(private env: Env) {}
   getProviderName(){ return "ninerouter" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
-    if (!this.env.NINEROUTER_API_KEY) return [];
     try {
-      const r = await fetch(MODELS_URL, { headers: { authorization: `Bearer ${this.env.NINEROUTER_API_KEY}` } });
+      const r = await fetch(MODELS_URL, { headers: (this.env.NINEROUTER_API_KEY ? { authorization: `Bearer ${this.env.NINEROUTER_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };
       const ids = (j.data ?? []).map(m=>m.id).filter(Boolean);

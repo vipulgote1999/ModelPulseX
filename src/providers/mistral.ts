@@ -16,9 +16,8 @@ export class MistralProvider implements LLMProvider {
   constructor(private env: Env) {}
   getProviderName() { return "mistral" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
-    if (!this.env.MISTRAL_API_KEY) return [];
     try {
-      const res = await fetch(MODELS_URL, { headers: { authorization: `Bearer ${this.env.MISTRAL_API_KEY}` } });
+      const res = await fetch(MODELS_URL, { headers: (this.env.MISTRAL_API_KEY ? { authorization: `Bearer ${this.env.MISTRAL_API_KEY}` } : {} as Record<string,string>) });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };
       const ids = (data.data ?? []).map(m => m.id).filter(Boolean);

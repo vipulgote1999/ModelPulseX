@@ -11,9 +11,8 @@ export class OrcaRouterProvider implements LLMProvider {
   constructor(private env: Env) {}
   getProviderName(){ return "orcarouter" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
-    if (!this.env.ORCAROUTER_API_KEY) return [];
     try {
-      const r = await fetch(MODELS_URL, { headers: { authorization: `Bearer ${this.env.ORCAROUTER_API_KEY}` } });
+      const r = await fetch(MODELS_URL, { headers: (this.env.ORCAROUTER_API_KEY ? { authorization: `Bearer ${this.env.ORCAROUTER_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };
       const ids = (j.data ?? []).map(m=>m.id).filter(Boolean);

@@ -1,9 +1,12 @@
-import { useMemo, useState, useEffect, lazy, Suspense } from "react";
+import { useMemo, useState, useEffect, lazy, Suspense, useRef } from "react";
 import { useLeaderboard } from "../hooks/useLeaderboard";
 import { useHistory } from "../hooks/useHistory";
 import SummaryCards from "../components/SummaryCards";
 import Leaderboard from "../components/Leaderboard";
 import RecommendationCards from "../components/RecommendationCards";
+import ChartModelSelector from "../components/ChartModelSelector";
+import CooldownPanel from "../components/CooldownPanel";
+import { getAA } from "../lib/intelligence";
 
 // Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
 const TpsChart = lazy(() => import("../charts/TpsChart"));
@@ -30,40 +33,70 @@ export default function Dashboard() {
 
   const { data, loading, error } = useLeaderboard({ range, benchmark, sort, provider, profile });
   const rows = data?.leaderboard ?? [];
-  // Only fetch history when rows ready — avoid fetching before leaderboard (was causing extra round trip on mount)
+
+  // Default chart selection = top 3 by Intelligence (AA score) then overall_score (user wants best AI first)
+  const defaultIds = useMemo(() => {
+    if (rows.length === 0) return [];
+    const ranked = [...rows].sort((a, b) => {
+      const aa = getAA(a.model)?.score ?? -1;
+      const bb = getAA(b.model)?.score ?? -1;
+      if (aa !== bb) return bb - aa;
+      return (b.overall_score ?? -1) - (a.overall_score ?? -1);
+    });
+    return ranked.slice(0, 3).map((r) => r.model_id);
+  }, [rows]);
+
+  // Auto-apply default once when rows first load and nothing selected yet
+  const hasAutoSelected = useRef(false);
+  useEffect(() => {
+    if (rows.length > 0 && selected.length === 0 && defaultIds.length > 0 && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
+      setSelected(defaultIds);
+    }
+    // reset guard if provider/range changes cause rows to empty then reload
+    if (rows.length === 0) hasAutoSelected.current = false;
+  }, [rows, defaultIds, selected.length]);
+
+  // chartIds = explicit selection (max 3) else default top-intelligence (so graphs never empty when data exists)
+  const chartIds = useMemo(() => {
+    if (selected.length > 0) return selected.slice(0, 3);
+    return defaultIds;
+  }, [selected, defaultIds]);
+
+  // Only fetch history when rows ready
   const historyIds = useMemo(() => {
     if (rows.length === 0) return [];
-    return (selected.length ? selected : rows.slice(0, 3).map((r) => r.model_id));
-  }, [selected, rows]);
+    return chartIds;
+  }, [rows.length, chartIds]);
   const history = useHistory(historyIds, range, benchmark);
 
   const tpsSeries = useMemo(() => {
-    return historyIds
+    return chartIds
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
-        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_tps: (p as unknown as { median_tps: number | null }).median_tps ?? null })) };
+        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_tps: (p as unknown as { median_tps: number | null }).median_tps ?? (p as unknown as { avg_tps: number | null }).avg_tps ?? null })) };
       })
       .filter((s) => s.points.length > 0);
-  }, [history.data, historyIds, rows]);
+  }, [history.data, chartIds, rows]);
 
   const ttftSeries = useMemo(() => {
-    return historyIds
+    return chartIds
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
-        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? null })) };
+        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? (p as unknown as { avg_ttft: number | null }).avg_ttft ?? null })) };
       })
       .filter((s) => s.points.length > 0);
-  }, [history.data, historyIds, rows]);
+  }, [history.data, chartIds, rows]);
 
   const reliabilityModels = useMemo(() => {
-    const ids = selected.length ? selected : rows.slice(0, 4).map((r) => r.model_id);
+    const ids = chartIds;
     return ids.map((id) => {
       const meta = rows.find((r) => r.model_id === id);
-      return { display_name: meta?.display_name ?? String(id), provider: meta?.provider ?? "", points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, success_rate: (p as unknown as { success_rate: number | null }).success_rate ?? null })) };
+      return { display_name: meta?.display_name ?? String(id), provider: meta?.provider ?? "", points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, success_rate: (p as unknown as { success_rate: number | null }).success_rate ?? (p as unknown as { uptime: number | null }).uptime ?? null })) };
     });
-  }, [history.data, selected, rows]);
+  }, [history.data, chartIds, rows]);
 
   if (loading) return (
     <div className="max-w-[1400px] mx-auto px-4 py-10 space-y-4">
@@ -119,6 +152,7 @@ export default function Dashboard() {
             <option value="orcarouter">orcarouter</option>
             <option value="ninerouter">ninerouter</option>
             <option value="tokenrouter">tokenrouter</option>
+            <option value="ollama">ollama</option>
           </>}
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
@@ -132,10 +166,14 @@ export default function Dashboard() {
 
       <RecommendationCards rows={rows as unknown as Array<{ display_name: string; model: string; provider: string; tps_now: number | null; ttft_now: number | null; uptime_7d: number | null; overall_score: number | null }>} />
 
+      <CooldownPanel />
+
       <div>
-        <div className="text-sm font-semibold mb-2">Live leaderboard — sortable · filters above · 7d retention (Previously Free kept 7d with last result)</div>
+        <div className="text-sm font-semibold mb-2">Live leaderboard — click rows to pin for graph comparison (max 3) · sorted by {String(sort)} · {rows.length} models</div>
         <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
       </div>
+
+      <ChartModelSelector rows={rows as unknown as Array<{ model_id: number; model: string; display_name: string; provider: string; tps_now: number | null; overall_score: number | null }>} selected={selected} onChange={setSelected} />
 
       <Suspense fallback={<ChartFallback />}>
         <TpsChart series={tpsSeries} range={range} />
@@ -149,12 +187,8 @@ export default function Dashboard() {
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>
-        <ComparePanel selected={selected.length ? selected : rows.slice(0, 2).map((r) => r.model_id)} />
+        <ComparePanel selected={chartIds.length ? chartIds : defaultIds.slice(0, 2)} />
       </Suspense>
-
-      {selected.length > 0 && (
-        <button onClick={() => setSelected([])} className="text-xs text-zinc-500 hover:text-zinc-300 underline">Clear selection ({selected.length})</button>
-      )}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-xs text-zinc-500">
         <b className="text-zinc-300">Only necessary data stored:</b> raw benchmark_runs 7–14d TTL, hourly aggregates 30–90d, incidents/model metadata indefinite. No response bodies. If a model leaves FREE (goes paid), it shows <span className="text-amber-300">Previously Free</span> with its last 7d results frozen until TTL, per spec.

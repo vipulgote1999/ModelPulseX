@@ -19,7 +19,8 @@ export type ProviderName =
   | "nexaapi"
   | "orcarouter"
   | "ninerouter"
-  | "tokenrouter";
+  | "tokenrouter"
+  | "ollama";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
 export type BenchmarkType = "short" | "medium" | "coding";
 export type BenchmarkStatus =
@@ -216,6 +217,7 @@ export interface Env {
   ORCAROUTER_API_KEY?: string;
   NINEROUTER_API_KEY?: string;
   TOKENROUTER_API_KEY?: string;
+  OLLAMA_API_KEY?: string;
   ADMIN_TOKEN?: string;
   CORS_ORIGIN?: string;
   MAX_GLOBAL_CONCURRENCY?: string;
@@ -237,6 +239,7 @@ export interface Env {
   MAX_ORCAROUTER_CONCURRENCY?: string;
   MAX_NINEROUTER_CONCURRENCY?: string;
   MAX_TOKENROUTER_CONCURRENCY?: string;
+  MAX_OLLAMA_CONCURRENCY?: string;
   MAX_SAME_MODEL_CONCURRENCY?: string;
   BENCHMARK_TIMEOUT_MS?: string;
   INCIDENT_THRESHOLD?: string;

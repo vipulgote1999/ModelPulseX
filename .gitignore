@@ -7,3 +7,7 @@ dist/
 coverage/
 allure-results/
 .playwright/
+
+# local artifacts (not for commit)
+.codegraph/
+performance_report/

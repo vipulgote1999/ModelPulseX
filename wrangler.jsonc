@@ -48,6 +48,7 @@
     "MAX_ORCAROUTER_CONCURRENCY": "2",
     "MAX_NINEROUTER_CONCURRENCY": "2",
     "MAX_TOKENROUTER_CONCURRENCY": "3",
+    "MAX_OLLAMA_CONCURRENCY": "2",
     "MAX_SAME_MODEL_CONCURRENCY": "1",
     "BENCHMARK_TIMEOUT_MS": "30000",
     "INCIDENT_THRESHOLD": "3"
@@ -71,5 +72,6 @@
   // wrangler secret put ORCAROUTER_API_KEY
   // wrangler secret put NINEROUTER_API_KEY
   // wrangler secret put TOKENROUTER_API_KEY
+  // wrangler secret put OLLAMA_API_KEY
   // wrangler secret put ADMIN_TOKEN
 }
