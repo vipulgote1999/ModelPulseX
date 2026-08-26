@@ -75,3 +75,7 @@
 **Pending:** apply migration 0006_scheduler_health.sql remotely (`wrangler d1 migrations apply DB --remote`) once API token has D1 perms (current token = workers-only; heartbeat fields read null via graceful degradation until then). Optional: set `wrangler secret put ALERT_WEBHOOK_URL`.
 
 **Files:** src/* (engine, scheduler, index, routes, registry, health, data-fixes, concurrency, metrics, types, cooldown, queries, providers/index, opencode-zen), frontend/src (Methodology, Dashboard, SummaryCards, Leaderboard, RecommendationCards, ChartModelSelector, CooldownPanel, useLeaderboard), migrations/0006_scheduler_health.sql, test/scheduler-select.test.ts, test/stats-cooldown-health.test.ts, wrangler.jsonc, package.json+lock, eslint.config.js, .github/workflows/ci.yml, README.md, specs/state.yaml.
+
+## 2026-08-26 (later) — migration 0006 applied remotely after token perms granted
+
+`wrangler d1 migrations apply DB --remote` → all 6 migrations ✅. Heartbeat verified live on next */5 tick: last_enqueue_count=10 (queue delivery fine — it was only ever starved by the RPM-window bug), inline=6, skipped_cooldown=34, skipped_rpm=0, pipeline fresh. Observability loop complete.

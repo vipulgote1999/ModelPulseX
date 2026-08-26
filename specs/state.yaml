@@ -29,9 +29,9 @@ session:
       leaderboard medians + min-sample gates + raw-window percentiles;
       provider registry single-descriptor refactor w/ cached providerFor and
       one-shot guarded data fixes; CI workflow + eslint flat-config gate.
-      PENDING: apply migration 0006_scheduler_health.sql remotely via
-      `wrangler d1 migrations apply DB --remote` once the API token has D1
-      perms — code degrades gracefully until then.
+      Migration 0006 applied remotely 2026-08-26 after token perms granted;
+      scheduler heartbeat verified live in prod (enqueue=10, inline=6,
+      skipped_rpm=0 on first tick).
   metrics:
     story_start: null
 git:
