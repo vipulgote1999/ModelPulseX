@@ -21,6 +21,7 @@ Every 5 minutes per model (global 10 / Zen 3 / OpenRouter 5 concurrency, per-mod
 - Outage after **3 consecutive failures** → incident (started_at, ended_at, duration, reason), same as spec
 
 Benchmark prompts (deterministic per `benchmark_type`, never cross-compare):
+
 - `short`: `Return exactly: PONG` (16 tokens) — latency
 - `medium`: 180-220 word summary — sustained
 - `coding`: Python `solve(nums,target)` + complexity — coding
@@ -56,9 +57,11 @@ React Vite Tailwind shadcn Recharts (SSE live) ← GET /api/leaderboard?range=&p
 - **Cron** two expressions (UTC): `*/5` scheduler, `0 *` aggregator
 
 Concurrency & cost protection (configurable via `wrangler.jsonc` vars):
+
 ```
 MAX_GLOBAL=10 MAX_OPENCODE=3 MAX_OPENROUTER=5 MAX_SAME_MODEL=1
 ```
+
 429 → `Retry-After` + exponential backoff + jitter + provider circuit breaker; `verifyFree()` gate before any queue.
 
 Indexes: `models(active,free_status)`, `benchmark_runs(model_id,started_at)`, `hourly_model_stats(model_id,hour_start)`.
@@ -73,6 +76,7 @@ Header `LLM PERFORMANCE OBSERVATORY — OpenCode Zen + OpenRouter FREE MODELS �
 - Click rows to pin (max 4) for comparison
 
 Charts (hourly aggregates, not raw):
+
 - **TPS 7-day** (multi-model, provider compare, 1h/24h/3d/7d, tooltip Time/Provider/Model/TPS/TTFT/Status) — measured TPS only
 - **TTFT 7-day** (separate axis, never same as TPS)
 - **Reliability**: `██████░░████████` per model (`█` online ≥50% success, `░` degraded), 7d uptime/downtime/incidents/longest outage
@@ -111,7 +115,7 @@ Query freshness meta included in leaderboard: `last_benchmark`, `last_aggregate`
 ## TokenDyno inspiration — what we kept / added
 
 | TokenDyno | ModelPulseX |
-|-----------|-------------|
+| ----------- | ------------- |
 | TPS now / 24h avg, TTFT now, Reliability 24h with `n=` when sparse, Intelligence Index clickable, sparkline trend, provider badge, sorted headers, last success | Same + **TPS 7d**, **TTFT 7d**, **7d Uptime** (not just 24h), **Overall Score** with profiles, **provider comparison with winner**, **Previously Free retention**, **coding benchmark**, **error/incident timelines**, **SSE live**, **methodology** |
 | Samples every 10m (Ollama Pro) vs 60m (Free/Zen) | Scheduler every 5m with caps (10 global) — frequent checks even for free tier; hourly aggregates keep cost low |
 | Ollama + Zen + Go coverage | **Zen + OpenRouter FREE only** (all 29 variants), dynamic discovery covers churn (no hard-code) |
@@ -158,7 +162,7 @@ wrangler secret put OPENROUTER_API_KEY
 wrangler secret put ADMIN_TOKEN
 npm run deploy  # or deploy.bat on Windows
 # verify
-curl https://modelpulsex.workers.dev/api/health
+curl https://modelpulsex.vipulgote5.workers.dev/api/health
 ```
 
 Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_QUEUE`/`bench-queue` + `bench-dlq`, Durable Object `LIVE_DO` (`PerformanceDO`), Crons `*/5 * * * *` + `0 * * * *`, assets `dist/frontend`.
@@ -166,7 +170,7 @@ Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_Q
 ## Scripts
 
 | Script | What |
-|--------|------|
+| -------- | ------ |
 | `npm run dev` | `wrangler dev --local :8789` |
 | `npm test` | `vitest run` (metrics, discovery, benchmark, scoring, queue, api contracts) |
 | `npm run typecheck` | `tsc --noEmit` |
@@ -216,7 +220,16 @@ Local dev via `.dev.vars` (copy `.dev.vars.example`).
 
 ## Methodology highlights
 
-See `/methodology` in the app. Key honesty points: measurements vary by provider load, network/routing, time of day, model version, streaming chunking, prompt size; generation window; freeness verified at discovery + pre-queue; unknown pricing never benchmarked.
+See `/methodology` in the app. Key honesty points: measurements vary by provider load, network/routing, time of day, model version, streaming chunking, prompt size; generation window; freeness verified at discovery + pre-queue; unknown pricing never benchmarked. Windowed TPS/TTFT are **medians** and require minimum sample sizes (2 for 1h, 3 for 24h, 5 for 7d) before a figure is shown.
+
+## Operations
+
+- **Freshness probe**: `GET /api/health?freshness=15` returns 503 when the newest measurement is older than 15 minutes — point UptimeRobot/BetterStack (or any monitor) at it to catch a stalled pipeline that plain health checks would miss.
+- **Staleness watchdog**: the hourly cron alerts `ALERT_WEBHOOK_URL` (Discord/Slack-compatible `{content,text}` body; set via `wrangler secret put ALERT_WEBHOOK_URL`) when data goes stale, rate-limited to one alert/hour. Threshold: `STALE_ALERT_MINUTES` var (default 30).
+- **Scheduler heartbeat**: every */5 tick persists enqueue/skip counts (migration `0006_scheduler_health.sql`) surfaced via `/api/health` and leaderboard `meta.scheduler`. Apply migrations with `npm run migrate` (remote) after deploying if your API token has D1 permissions; until applied, heartbeat fields read null and everything else works.
+- **Inline fallback**: `BENCH_INLINE_FALLBACK` (default 6) runs the first N selected jobs inside each cron invocation so baseline coverage survives even if queue delivery stalls; the queue carries the remainder with consumer concurrency 8.
+- **Cooldown escalation**: providers failing on quota/429 back off exponentially (base → 2× per repeat, capped at `COOLDOWN_MAX_MS`, default 2h) honoring provider `Retry-After`, so dead keys stop consuming benchmark capacity.
+- **CI**: GitHub Actions runs lint + vitest + typecheck on every push/PR (`.github/workflows/ci.yml`).
 
 ## verification — 16 gates (s40)
 
@@ -225,4 +238,3 @@ Checked locally with `npm test && npm run typecheck && npm run build`, `wrangler
 ## License
 
 MIT — data via your own benchmarks; Intelligence Index via Artificial Analysis (see links).
-

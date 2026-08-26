@@ -6,14 +6,34 @@ session:
   branch: main
   workflow_mode: solo-git
   deployment:
-    url: https://modelpulsex.workers.dev
-    account_id: null
-    deployed_at: 2026-08-23
+    # OFFICIAL PROD ENDPOINT. Bare modelpulsex.workers.dev cannot exist —
+    # workers.dev URLs are always <worker>.<account-subdomain>.workers.dev.
+    # Custom domains need a registered zone (this account has none yet).
+    url: https://modelpulsex.vipulgote5.workers.dev
+    account_id: ed6fb32a7350321cd036ee4f2f54462a
+    deployed_at: 2026-08-26
   handoff:
     next_skill: null
-    summary: "e01 completed — 29 FREE models live, LIVE leaderboard, 7d retention, sparkline+intelligence, queue+cron+DO verified locally; ready for wrangler deploy"
+    summary: >-
+      Pipeline revived 2026-08-26. Root cause: SQLite datetime('now',…) emits
+      space-separated timestamps that string-compare below ISO-'T' columns,
+      widening the scheduler RPM window from 60s to since-UTC-midnight —
+      cumulative counts crossed provider RPM limits by early morning, so
+      selectJobs returned zero jobs daily (recurring stall since Aug 25).
+      Fixed all window cutoffs to JS-computed ISO binds. Also added: queue
+      consumer concurrency 8 + parallel-across-provider batch consumption;
+      inline fallback (BENCH_INLINE_FALLBACK=6) inside the */5 cron tick;
+      scheduler heartbeat persisted per tick + staleness watchdog with
+      optional ALERT_WEBHOOK_URL; /api/health?freshness=Nm probe returns 503
+      when stale; escalating provider cooldowns honoring Retry-After;
+      leaderboard medians + min-sample gates + raw-window percentiles;
+      provider registry single-descriptor refactor w/ cached providerFor and
+      one-shot guarded data fixes; CI workflow + eslint flat-config gate.
+      PENDING: apply migration 0006_scheduler_health.sql remotely via
+      `wrangler d1 migrations apply DB --remote` once the API token has D1
+      perms — code degrades gracefully until then.
   metrics:
     story_start: null
 git:
-  remote: null
-  branch: main
+  remote: https://github.com/vipulgote1999/ModelPulseX.git
+  branch: master

@@ -22,4 +22,4 @@ if errorlevel 1 goto :eof
 echo [ModelPulseX] deploy...
 call npx wrangler deploy
 if errorlevel 1 goto :eof
-echo [deploy done] Check https://modelpulsex.workers.dev/api/health
+echo [deploy done] Check https://modelpulsex.vipulgote5.workers.dev/api/health
