@@ -8,7 +8,8 @@ function getAdminToken(): string | null {
 }
 
 function setAdminToken(v: string) {
-  try { localStorage.setItem("mpx_admin_token", v); } catch {}
+  // localStorage may be unavailable (private mode) — token just won't persist
+  try { localStorage.setItem("mpx_admin_token", v); } catch { /* ignore */ }
 }
 
 export default function CooldownPanel() {

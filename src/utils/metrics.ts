@@ -30,6 +30,19 @@ export function percentile(values: number[], p: number): number | null {
   return s[Math.max(0, Math.min(idx, s.length - 1))] ?? null;
 }
 
+/** Minimum samples before a windowed metric is displayed. Below threshold we show "insufficient
+ *  data" instead of a number — prevents 1-2-sample spikes from ranking #1 (industry practice:
+ *  Artificial Analysis uses sustained medians over trailing windows). */
+export const MIN_SAMPLES = { w1h: 2, w24h: 3, w7d: 5 } as const;
+
+/** Parse SQLite GROUP_CONCAT numeric output ("12.5,,30,0") into clean positive numbers. */
+export function parseConcatNumbers(gc: string | null | undefined): number[] {
+  return (gc ?? "")
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
 // quick uptime from success/total
 export function uptimeRate(success: number, total: number): number | null {
   if (total === 0) return null;

@@ -96,6 +96,8 @@ export interface BenchmarkResult {
   model: string; // provider_model_id echoed
   benchmark_type: BenchmarkType;
   token_estimation_method: "provider" | "heuristic";
+  /** Provider-supplied Retry-After (ms) when status is RATE_LIMITED; null otherwise. */
+  retry_after_ms?: number | null;
 }
 
 export interface LLMProvider {
@@ -115,6 +117,18 @@ export interface ModelMetadata {
   output_price: string | null;
   is_free: boolean;
   free_status: FreeStatus;
+}
+
+/** Scheduler heartbeat persisted every 5-minute cron tick — makes enqueue health observable. */
+export interface SchedulerHealth {
+  last_schedule_at: string | null;
+  last_enqueue_count: number;
+  last_inline_count: number;
+  last_skipped_cooldown: number;
+  last_skipped_rpm: number;
+  last_discovery_at: string | null;
+  last_aggregate_at: string | null;
+  last_stale_alert_at: string | null;
 }
 
 export interface LeaderboardRow {
@@ -140,6 +154,14 @@ export interface LeaderboardRow {
   last_test: string | null;
   request_count_7d: number;
   overall_score: number | null;
+  /** Recent hourly TPS trend (≤24 points, oldest→newest). */
+  sparkline?: Array<number | null>;
+  /** Raw benchmark count in the last 24h — context for metric trustworthiness. */
+  sampleCount24h?: number;
+  /** Display label for the primary TPS figure (median-based). */
+  measured_tps_label?: string;
+  /** True when the model was free recently but its provider stopped offering it free. */
+  previously_free?: boolean;
 }
 
 export interface HistoryPoint {
@@ -220,6 +242,16 @@ export interface Env {
   OLLAMA_API_KEY?: string;
   ADMIN_TOKEN?: string;
   CORS_ORIGIN?: string;
+  /** Optional webhook (Discord/Slack-compatible {content,text} body) notified when the
+   *  pipeline goes stale or recovers. Set via `wrangler secret put ALERT_WEBHOOK_URL`. */
+  ALERT_WEBHOOK_URL?: string;
+  /** Minutes after which a missing fresh measurement counts as STALE for watchdog/probe (default 30). */
+  STALE_ALERT_MINUTES?: string;
+  /** Number of selected jobs executed inline inside the 5-minute cron invocation as a queue-delivery
+   *  fallback (default 6; 0 disables). Guarantees baseline coverage even if queue delivery stalls. */
+  BENCH_INLINE_FALLBACK?: string;
+  /** Upper bound (ms) for escalating provider cooldowns (default 2h). */
+  COOLDOWN_MAX_MS?: string;
   MAX_GLOBAL_CONCURRENCY?: string;
   MAX_OPENCODE_CONCURRENCY?: string;
   MAX_OPENROUTER_CONCURRENCY?: string;

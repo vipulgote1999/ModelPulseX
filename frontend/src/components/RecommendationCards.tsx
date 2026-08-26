@@ -5,7 +5,6 @@ export default function RecommendationCards({ rows }: { rows: Array<{ display_na
   const fastest = [...rows].filter((r) => r.tps_now != null).sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0];
   const lowest = [...rows].filter((r) => r.ttft_now != null).sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0];
   const reliable = [...rows].filter((r) => r.uptime_7d != null).sort((a, b) => (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1))[0];
-  const consistency = [...rows].sort((a,b)=> 0)[0]; // placeholder keep reliable
   const cards = [
     { icon: "🏆", label: "BEST OVERALL", row: best, sub: best ? `score ${best.overall_score}` : "—" },
     { icon: "⚡", label: "FASTEST NOW", row: fastest, sub: fastest?.tps_now ? `${fastest.tps_now.toFixed(1)} TPS` : "—" },

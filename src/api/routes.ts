@@ -1,18 +1,50 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { BenchmarkType, Env } from "../types";
+import type { BenchmarkType, Env, LeaderboardRow } from "../types";
 import { parseRange, computeHourlyAggregates, cleanupRetention } from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
 import { runDiscovery } from "../benchmark/scheduler";
 import { getActiveCooldowns, clearProviderCooldown, clearModelCooldown, clearAllCooldownsForProvider } from "../db/cooldown";
+import { getSchedulerHealth, getLastBenchmarkAt } from "../db/health";
+import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
+import { freeHardFilterWhere } from "../providers/registry";
+
+/** ISO cutoff for time-window SQL — SQLite datetime('now',…) emits space-separated
+ *  timestamps that string-compare BELOW ISO-'T' columns, silently widening every window
+ *  to "since UTC midnight". Always compute cutoffs in JS and bind them instead. */
+const isoHoursAgo = (h: number): string => new Date(Date.now() - h * 3600_000).toISOString();
 
 export function createApi(env: Env) {
   const app = new Hono<{ Bindings: Env }>();
 
-  app.use("*", cors({ origin: env.CORS_ORIGIN ?? "*", allowHeaders: ["*"], allowMethods: ["*"] }));
+  // Origin allowlist (comma-separated env override) instead of "*": the dashboard is
+  // same-origin so it needs no CORS at all, and a public read-only API must never send
+  // Access-Control-Allow-Origin:* alongside credential-bearing admin endpoints.
+  const allowedOrigins = (env.CORS_ORIGIN ?? "https://modelpulsex.vipulgote5.workers.dev")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  app.use(cors({
+    origin: allowedOrigins,
+    allowHeaders: ["content-type", "authorization"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
+  }));
 
-  app.get("/api/health", (c) => {
-    return c.json({ ok: true, time: new Date().toISOString(), version: "0.1.0" });
+  app.get("/api/health", async (c) => {
+    const base = { ok: true, time: new Date().toISOString(), version: "0.1.0" };
+    // Freshness probe for external uptime monitors: /api/health?freshness=<minutes>
+    // returns 503 when the newest measurement is older than N minutes (default 15).
+    // Lets UptimeRobot/BetterStack catch a stalled pipeline that plain 200s would hide.
+    const freshnessParam = c.req.query("freshness");
+    if (freshnessParam === undefined) return c.json(base);
+    const minutes = Math.max(1, Number(freshnessParam) || 15);
+    const [lastBench, sched] = await Promise.all([getLastBenchmarkAt(env.DB), getSchedulerHealth(env.DB)]);
+    const ageMinutes = lastBench ? Math.round((Date.now() - new Date(lastBench).getTime()) / 60000) : null;
+    const fresh = ageMinutes != null && ageMinutes <= minutes;
+    return c.json(
+      { ...base, ok: fresh, fresh, freshness_threshold_minutes: minutes, last_benchmark: lastBench, age_minutes: ageMinutes, scheduler: sched },
+      fresh ? 200 : 503,
+    );
   });
 
   app.get("/api/providers", async (c) => {
@@ -33,8 +65,10 @@ export function createApi(env: Env) {
     if (!includeInactive) {
       conds.push("(m.active=1 OR m.free_status='PREVIOUSLY_FREE')");
     }
-    // Hard filter: hide tokenrouter paid pollution (only free suffix ever free)
-    conds.push("(p.name != 'tokenrouter' OR lower(m.provider_model_id) LIKE '%free')");
+    // Hard filters from the provider registry (single source): hide polluted rows
+    // immediately, even before discovery cleanup lands.
+    const modelHardFilter = freeHardFilterWhere("p", "m");
+    if (modelHardFilter) conds.push(modelHardFilter.replace(/^ AND /, ""));
     if (conds.length) sql += " WHERE " + conds.join(" AND ");
     sql += " ORDER BY m.free_status DESC, m.last_seen DESC";
     const rows = await env.DB.prepare(sql).bind(...binds).all();
@@ -59,15 +93,12 @@ export function createApi(env: Env) {
       modelFilter = "AND p.name=?";
       modelBinds.push(provider);
     }
-    // Hard filters: hide polluted rows immediately even before DB cleanup
-    // - tokenrouter: only free-suffix ever free
-    // - ollama: only 7 verified free (others require subscription)
-    const ollamaFreeList = "'gemma4:31b','minimax-m3','gpt-oss:20b','gpt-oss:120b','nemotron-3-super','nemotron-3-ultra','nemotron-3-nano:30b'";
-    const tokenRouterFreeFilter = `AND (p.name != 'tokenrouter' OR lower(m.provider_model_id) LIKE '%free') AND (p.name != 'ollama' OR m.provider_model_id IN (${ollamaFreeList}))`;
+    // Hard filters straight from the provider registry (single source of truth).
+    const modelHardFilter = freeHardFilterWhere("p", "m");
     const modelsRes = await env.DB.prepare(
       `SELECT m.id, m.provider_model_id, m.display_name, m.free_status, m.active, p.name as provider
        FROM models m JOIN providers p ON p.id=m.provider_id
-       WHERE (m.free_status='FREE' OR m.free_status='PREVIOUSLY_FREE') ${tokenRouterFreeFilter} ${modelFilter}
+       WHERE (m.free_status='FREE' OR m.free_status='PREVIOUSLY_FREE')${modelHardFilter} ${modelFilter}
        ORDER BY m.display_name`,
     )
       .bind(...modelBinds)
@@ -81,8 +112,8 @@ export function createApi(env: Env) {
         `SELECT (SELECT max(started_at) FROM benchmark_runs) as last_benchmark,
                 (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,
                 (SELECT max(last_seen) FROM models) as last_discovery,
-                (SELECT count(*) FROM benchmark_runs WHERE started_at >= datetime('now','-1 day')) as benchmarks_24h`,
-      ).first<{ last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number }>();
+                (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`,
+      ).bind(isoHoursAgo(24)).first<{ last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number }>();
       const isStale = metaRow?.last_benchmark ? Date.now() - new Date(metaRow.last_benchmark).getTime() > 18 * 60 * 1000 : true;
       const resp = c.json({
         leaderboard: [],
@@ -113,12 +144,11 @@ export function createApi(env: Env) {
     const since1h = new Date(nowMs - 1 * 3600 * 1000).toISOString();
     const since24h = new Date(nowMs - 24 * 3600 * 1000).toISOString();
     const since7dIso = new Date(nowMs - 7 * 86400 * 1000).toISOString();
-    // Hard filters: tokenrouter free-suffix only + ollama verified 7 free only (immediate hide of polluted rows)
-    const ollamaList = "'gemma4:31b','minimax-m3','gpt-oss:20b','gpt-oss:120b','nemotron-3-super','nemotron-3-ultra','nemotron-3-nano:30b'";
-    const pollutedFilter = `AND (p2.name != 'tokenrouter' OR lower(m2.provider_model_id) LIKE '%free') AND (p2.name != 'ollama' OR m2.provider_model_id IN (${ollamaList}))`;
+    // Hard filters straight from the provider registry (single source) for run/hour subqueries.
+    const subHardFilter = freeHardFilterWhere("p2", "m2");
     const providerSubquery = provider
-      ? `model_id IN (SELECT m2.id FROM models m2 JOIN providers p2 ON p2.id=m2.provider_id WHERE (m2.free_status='FREE' OR m2.free_status='PREVIOUSLY_FREE') ${pollutedFilter} AND p2.name=?)`
-      : `model_id IN (SELECT m2.id FROM models m2 JOIN providers p2 ON p2.id=m2.provider_id WHERE (m2.free_status='FREE' OR m2.free_status='PREVIOUSLY_FREE') AND (p2.name != 'tokenrouter' OR lower(m2.provider_model_id) LIKE '%free') AND (p2.name != 'ollama' OR m2.provider_model_id IN (${ollamaList})))`;
+      ? `model_id IN (SELECT m2.id FROM models m2 JOIN providers p2 ON p2.id=m2.provider_id WHERE (m2.free_status='FREE' OR m2.free_status='PREVIOUSLY_FREE')${subHardFilter} AND p2.name=?)`
+      : `model_id IN (SELECT m2.id FROM models m2 JOIN providers p2 ON p2.id=m2.provider_id WHERE (m2.free_status='FREE' OR m2.free_status='PREVIOUSLY_FREE')${subHardFilter})`;
     const providerBind: unknown[] = provider ? [provider] : [];
 
     // Optimized: 6 parallel queries instead of 9 — meta combined into 1, rawWindow covers 1h/24h/7d in single scan
@@ -131,31 +161,33 @@ export function createApi(env: Env) {
       ) WHERE rn=1`;
 
     const hourlySql = `SELECT model_id,
+        SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt_1h,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_1h,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_1h,
+        SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt_24,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_24h,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_24h,
         AVG(CASE WHEN hour_start >= ? THEN uptime END) as up_24,
+        SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt7h,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_7d,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_7d,
         AVG(CASE WHEN hour_start >= ? THEN uptime END) as up_7,
-        AVG(CASE WHEN hour_start >= ? THEN error_rate END) as er_7,
-        SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt7
+        AVG(CASE WHEN hour_start >= ? THEN error_rate END) as er_7
       FROM hourly_model_stats
       WHERE ${providerSubquery} ${benchmarkFilterHourly} AND hour_start >= ?
       GROUP BY model_id`;
 
-    // Raw window fallback: single scan covers 1h/24h/7d for correctness when hourly empty (previously only 7d)
-    // Ensures all displayed TPS/TTFT/uptime are correct even for brand-new models before first hourly aggregate
+    // Raw window fallback: single scan covers 1h/24h/7d when hourly aggregates are missing.
+    // GROUP_CONCAT feeds JS-side MEDIANS (industry practice) instead of spike-prone averages.
     const rawWindowSql = `SELECT model_id,
-        AVG(CASE WHEN started_at >= ? THEN tps END) as t_1h,
-        AVG(CASE WHEN started_at >= ? THEN ttft_ms END) as tt_1h,
-        AVG(CASE WHEN started_at >= ? THEN tps END) as t_24h,
-        AVG(CASE WHEN started_at >= ? THEN ttft_ms END) as tt_24h,
-        AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_1h,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_1h,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_1h,
+        SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_24h,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_24h,
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_24h,
-        AVG(CASE WHEN started_at >= ? THEN tps END) as t_7d,
-        AVG(CASE WHEN started_at >= ? THEN ttft_ms END) as tt_7d,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_7d,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_7d,
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_7d,
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END END) as er_7d,
         SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
@@ -173,42 +205,59 @@ export function createApi(env: Env) {
     const metaSql = `SELECT (SELECT max(started_at) FROM benchmark_runs) as last_benchmark,
                             (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,
                             (SELECT max(last_seen) FROM models) as last_discovery,
-                            (SELECT count(*) FROM benchmark_runs WHERE started_at >= datetime('now','-1 day')) as benchmarks_24h`;
+                            (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`;
 
     const lastRunBinds: unknown[] = [...providerBind, ...(benchmarkVal ? [benchmarkVal] : [])];
     const hourlyBinds: unknown[] = [
-      since1h, since1h, since24h, since24h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso,
+      // cnt_1h, t_1h, tt_1h | cnt_24, t_24h, tt_24h, up_24 | cnt7h, t_7d, tt_7d, up_7, er_7
+      since1h, since1h, since1h, since24h, since24h, since24h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso,
       ...providerBind,
       ...(benchmarkVal ? [benchmarkVal] as unknown[] : []),
       since7dIso,
     ];
-    // rawWindow binds: 1h, 1h, 24h,24h, 1h,24h, 7d,7d,7d,7d,7d,24h
+    // rawWindow binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
+    //                  | gc_tps_7d, gc_ttft_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
     const rawWindowBinds: unknown[] = [
-      since1h, since1h, since24h, since24h, since1h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso, since24h,
+      since1h, since1h, since1h, since24h, since24h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso, since24h,
       ...providerBind,
       ...(benchmarkVal ? [benchmarkVal] : []),
     ];
     const sparkBinds: unknown[] = [...providerBind, since24h, ...(benchmarkVal ? [benchmarkVal] : [])];
 
-    const [lastRunsRes, hourlyRes, rawWindowRes, sparkRes, metaRes] = await Promise.all([
+    interface HourlyRow {
+      model_id: number; cnt_1h: number | null; t_1h: number | null; tt_1h: number | null;
+      cnt_24: number | null; t_24h: number | null; tt_24h: number | null; up_24: number | null;
+      cnt7h: number | null; t_7d: number | null; tt_7d: number | null; up_7: number | null; er_7: number | null;
+    }
+    interface RawRow {
+      model_id: number;
+      gc_tps_1h: string | null; gc_ttft_1h: string | null; cnt_1h: number | null;
+      gc_tps_24h: string | null; gc_ttft_24h: string | null; up_24h: number | null;
+      gc_tps_7d: string | null; gc_ttft_7d: string | null; up_7d: number | null; er_7d: number | null;
+      cnt7: number | null; cnt24: number | null; cnt_all: number | null;
+    }
+    type MetaRow = { last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number };
+
+    const [lastRunsRes, hourlyRes, rawWindowRes, sparkRes, metaRes, schedHealth] = await Promise.all([
       env.DB.prepare(lastRunSql).bind(...lastRunBinds).all<{ model_id: number; tps: number | null; ttft_ms: number | null; started_at: string; status: string }>(),
-      env.DB.prepare(hourlySql).bind(...hourlyBinds).all<{ model_id: number; t_1h: number | null; tt_1h: number | null; t_24h: number | null; tt_24h: number | null; up_24: number | null; t_7d: number | null; tt_7d: number | null; up_7: number | null; er_7: number | null; cnt7: number | null }>(),
-      env.DB.prepare(rawWindowSql).bind(...rawWindowBinds).all<{ model_id: number; t_1h: number | null; tt_1h: number | null; t_24h: number | null; tt_24h: number | null; up_1h: number | null; up_24h: number | null; t_7d: number | null; tt_7d: number | null; up_7d: number | null; er_7d: number | null; cnt7: number | null; cnt24: number | null; cnt_all: number | null }>(),
+      env.DB.prepare(hourlySql).bind(...hourlyBinds).all<HourlyRow>(),
+      env.DB.prepare(rawWindowSql).bind(...rawWindowBinds).all<RawRow>(),
       env.DB.prepare(sparkSql).bind(...sparkBinds).all<{ model_id: number; v: number | null; hour_start: string }>(),
-      env.DB.prepare(metaSql).first<{ last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number }>(),
+      env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
+      getSchedulerHealth(env.DB),
     ]);
 
     const lastMap = new Map<number, { tps: number | null; ttft_ms: number | null; started_at: string; status: string }>();
-    for (const r of (lastRunsRes.results ?? []) as typeof lastRunsRes.results) lastMap.set(r.model_id, r as any);
+    for (const r of lastRunsRes.results ?? []) lastMap.set(r.model_id, r);
 
-    const hourlyMap = new Map<number, { t_1h: number | null; tt_1h: number | null; t_24h: number | null; tt_24h: number | null; up_24: number | null; t_7d: number | null; tt_7d: number | null; up_7: number | null; er_7: number | null; cnt7: number | null }>();
-    for (const r of (hourlyRes.results ?? []) as typeof hourlyRes.results) hourlyMap.set(r.model_id, r as any);
+    const hourlyMap = new Map<number, HourlyRow>();
+    for (const r of hourlyRes.results ?? []) hourlyMap.set(r.model_id, r);
 
-    const rawMap = new Map<number, { t_1h: number | null; tt_1h: number | null; t_24h: number | null; tt_24h: number | null; up_1h: number | null; up_24h: number | null; t_7d: number | null; tt_7d: number | null; up_7d: number | null; er_7d: number | null; cnt7: number | null; cnt24: number | null; cnt_all: number | null }>();
-    for (const r of (rawWindowRes.results ?? []) as typeof rawWindowRes.results) rawMap.set(r.model_id, r as any);
+    const rawMap = new Map<number, RawRow>();
+    for (const r of rawWindowRes.results ?? []) rawMap.set(r.model_id, r);
 
     const sparkMap = new Map<number, Array<number | null>>();
-    for (const r of (sparkRes.results ?? []) as typeof sparkRes.results) {
+    for (const r of sparkRes.results ?? []) {
       const arr = sparkMap.get(r.model_id) ?? [];
       arr.push(r.v);
       sparkMap.set(r.model_id, arr);
@@ -217,36 +266,45 @@ export function createApi(env: Env) {
       if (arr.length > 24) sparkMap.set(k, arr.slice(-24));
     }
 
-    const rows: unknown[] = [];
+    // Median + minimum-sample gating: a window shows a number only when it has enough
+    // samples to be trustworthy (prevents 1–2-sample spikes ranking #1).
+    const H0: HourlyRow = { model_id: 0, cnt_1h: null, t_1h: null, tt_1h: null, cnt_24: null, t_24h: null, tt_24h: null, up_24: null, cnt7h: null, t_7d: null, tt_7d: null, up_7: null, er_7: null };
+    const gatedMedian = (hourlyVal: number | null, hourlyCnt: number | null, rawGc: string | null, rawCnt: number | null, min: number): number | null => {
+      if (hourlyVal != null && (hourlyCnt ?? 0) >= min) return hourlyVal;
+      if ((rawCnt ?? 0) >= min) return percentile(parseConcatNumbers(rawGc), 50);
+      return null;
+    };
+
+    const rows: LeaderboardRow[] = [];
     for (const mm of models) {
       const nowRow = lastMap.get(mm.id) ?? null;
-      const h = hourlyMap.get(mm.id) ?? { t_1h: null, tt_1h: null, t_24h: null, tt_24h: null, up_24: null, t_7d: null, tt_7d: null, up_7: null, er_7: null, cnt7: null };
+      const h = hourlyMap.get(mm.id) ?? H0;
       const raw = rawMap.get(mm.id) ?? null;
 
-      // Prefer hourly aggregates (contain median_tps correctly derived from generation_ms), fallback to raw avg for correctness when hourly empty
-      // For 1h/24h windows also fallback to raw so brand-new models show correct values before first hourly cron
-      const tps_1h = h.t_1h ?? raw?.t_1h ?? null;
-      const tps_24h = h.t_24h ?? raw?.t_24h ?? null;
-      const tps_7d = h.t_7d ?? raw?.t_7d ?? null;
-      const ttft_1h = h.tt_1h ?? raw?.tt_1h ?? null;
-      const ttft_24h = h.tt_24h ?? raw?.tt_24h ?? null;
-      const ttft_7d = h.tt_7d ?? raw?.tt_7d ?? null;
-      let uptime_7d: number | null = h.up_7 ?? raw?.up_7d ?? null;
-      let error_rate: number | null = h.er_7 ?? raw?.er_7d ?? null;
-      let cnt7 = h.cnt7 ?? raw?.cnt7 ?? 0;
+      const tps_1h = gatedMedian(h.t_1h, h.cnt_1h, raw?.gc_tps_1h ?? null, raw?.cnt_1h ?? null, MIN_SAMPLES.w1h);
+      const tps_24h = gatedMedian(h.t_24h, h.cnt_24, raw?.gc_tps_24h ?? null, raw?.cnt24 ?? null, MIN_SAMPLES.w24h);
+      const tps_7d = gatedMedian(h.t_7d, h.cnt7h, raw?.gc_tps_7d ?? null, raw?.cnt7 ?? null, MIN_SAMPLES.w7d);
+      const ttft_1h = gatedMedian(h.tt_1h, h.cnt_1h, raw?.gc_ttft_1h ?? null, raw?.cnt_1h ?? null, MIN_SAMPLES.w1h);
+      const ttft_24h = gatedMedian(h.tt_24h, h.cnt_24, raw?.gc_ttft_24h ?? null, raw?.cnt24 ?? null, MIN_SAMPLES.w24h);
+      const ttft_7d = gatedMedian(h.tt_7d, h.cnt7h, raw?.gc_ttft_7d ?? null, raw?.cnt7 ?? null, MIN_SAMPLES.w7d);
+      const samples7 = Math.max(h.cnt7h ?? 0, raw?.cnt7 ?? 0);
+      const uptime_7d: number | null = samples7 >= MIN_SAMPLES.w7d ? (h.up_7 ?? raw?.up_7d ?? null) : null;
+      const error_rate: number | null = samples7 >= MIN_SAMPLES.w7d ? (h.er_7 ?? raw?.er_7d ?? null) : null;
+      const cnt7 = h.cnt7h ?? raw?.cnt7 ?? 0;
 
       const sparkline = sparkMap.get(mm.id) ?? [];
-      const sampleCount24h = (raw?.cnt24 as number | null) ?? 0;
+      const sampleCount24h = raw?.cnt24 ?? 0;
 
-      const status = (nowRow?.status as string) ?? "UNKNOWN";
+      const status = nowRow?.status ?? "UNKNOWN";
       const last_test = nowRow?.started_at ?? null;
 
       rows.push({
+        rank: 0,
         model_id: mm.id,
         model: mm.provider_model_id,
         display_name: mm.display_name,
-        provider: mm.provider,
-        free_status: mm.free_status,
+        provider: mm.provider as LeaderboardRow["provider"],
+        free_status: mm.free_status as LeaderboardRow["free_status"],
         active: mm.active === 1,
         tps_now: nowRow?.tps ?? null,
         tps_1h,
@@ -259,24 +317,25 @@ export function createApi(env: Env) {
         uptime_7d,
         error_rate_7d: error_rate,
         success_rate: uptime_7d,
-        status,
+        status: status as LeaderboardRow["status"],
         last_test,
-        request_count_7d: cnt7 ?? 0,
+        request_count_7d: cnt7,
         previously_free: mm.free_status === "PREVIOUSLY_FREE",
         measured_tps_label: "Measured TPS",
         sparkline,
         sampleCount24h,
+        overall_score: null,
       });
     }
 
-    const scored = scoreLeaderboard(rows as any, profile);
-    scored.sort((a: any, b: any) => {
+    const scored = scoreLeaderboard(rows, profile);
+    scored.sort((a, b) => {
       if (sort === "tps") return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
       if (sort === "ttft") return (a.ttft_7d ?? a.ttft_now ?? Infinity) - (b.ttft_7d ?? b.ttft_now ?? Infinity);
       if (sort === "uptime") return (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1);
       return (b.overall_score ?? -1) - (a.overall_score ?? -1);
     });
-    scored.forEach((r: any, i: number) => (r.rank = i + 1));
+    scored.forEach((r, i) => (r.rank = i + 1));
 
     const isStale = metaRes?.last_benchmark ? Date.now() - new Date(metaRes.last_benchmark).getTime() > 18 * 60 * 1000 : true;
 
@@ -292,14 +351,15 @@ export function createApi(env: Env) {
         last_discovery: metaRes?.last_discovery ?? null,
         is_stale: isStale,
         stale_message: isStale ? `STALE DATA Last measurement: ${metaRes?.last_benchmark ?? "never"}` : null,
-        live: !isStale ? `● LIVE Data updated ${metaRes?.last_benchmark ? Math.round((Date.now() - new Date(metaRes.last_benchmark).getTime()) / 1000) + "s ago" : ""}` : null,
+      live: !isStale ? `● LIVE Data updated ${metaRes?.last_benchmark ? Math.round((Date.now() - new Date(metaRes.last_benchmark).getTime()) / 1000) + "s ago" : ""}` : null,
         observed_window: since,
+        scheduler: schedHealth,
       },
       summary: {
-        free_models: scored.filter((r: any) => r.free_status === "FREE").length,
-        online_now: scored.filter((r: any) => r.status === "SUCCESS" && r.last_test && Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000).length,
-        best_tps: scored.filter((r: any) => r.tps_now != null).sort((a: any, b: any) => b.tps_now - a.tps_now)[0] ?? null,
-        best_ttft: scored.filter((r: any) => r.ttft_now != null).sort((a: any, b: any) => a.ttft_now - b.ttft_now)[0] ?? null,
+        free_models: scored.filter((r) => r.free_status === "FREE").length,
+        online_now: scored.filter((r) => r.status === "SUCCESS" && r.last_test && Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000).length,
+        best_tps: scored.filter((r) => r.tps_now != null).sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
+        best_ttft: scored.filter((r) => r.ttft_now != null).sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0] ?? null,
         benchmarks_24h: metaRes?.benchmarks_24h ?? 0,
       },
     });
@@ -381,6 +441,8 @@ export function createApi(env: Env) {
       if (benchmark !== "all") { rawSql += " AND benchmark_type=?"; rawBinds.push(benchmark); }
       rawSql += " ORDER BY started_at ASC LIMIT 300";
       const raw = await env.DB.prepare(rawSql).bind(...rawBinds).all();
+      // SAFETY: rawSql aliases its columns to exactly the HistoryPoint field names above,
+      // so the untyped D1 result is structurally identical to the hourly rows view.
       points = (raw.results ?? []) as unknown as typeof points;
     }
     const cnt = await env.DB.prepare("SELECT count(*) as c, min(started_at) as first FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, since).first<{ c: number; first: string | null }>();
@@ -394,8 +456,8 @@ export function createApi(env: Env) {
     // Parallelize 4 independent queries — reduces I/O from 4 sequential roundtrips to 1
     const [incidentsRes, total7, total24, longest] = await Promise.all([
       env.DB.prepare("SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100").bind(id).all(),
-      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= datetime('now','-7 day')").bind(id).first<{ tot: number; ok: number | null }>(),
-      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= datetime('now','-1 day')").bind(id).first<{ tot: number; ok: number | null }>(),
+      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, isoHoursAgo(168)).first<{ tot: number; ok: number | null }>(),
+      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, isoHoursAgo(24)).first<{ tot: number; ok: number | null }>(),
       env.DB.prepare("SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?").bind(id).first<{ m: number | null }>(),
     ]);
     return c.json({
@@ -422,15 +484,15 @@ export function createApi(env: Env) {
     const placeholders = ids.map(() => "?").join(",");
     const [metas, stats7, raw24, raw7] = await Promise.all([
       env.DB.prepare(`SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders})`).bind(...ids).all<{ id: number; provider_model_id: string; display_name: string; provider: string }>(),
-      env.DB.prepare(`SELECT model_id, avg(median_tps) as tps_7d FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= datetime('now','-7 day') GROUP BY model_id`).bind(...ids).all<{ model_id: number; tps_7d: number | null }>(),
-      env.DB.prepare(`SELECT model_id, avg(tps) as tps_24h, avg(ttft_ms) as ttft_24h FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= datetime('now','-1 day') AND status='SUCCESS' GROUP BY model_id`).bind(...ids).all<{ model_id: number; tps_24h: number | null; ttft_24h: number | null }>(),
-      env.DB.prepare(`SELECT model_id, avg(tps) as tps_7d_raw, avg(ttft_ms) as ttft_7d, avg(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as up7, avg(CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END) as er FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= datetime('now','-7 day') GROUP BY model_id`).bind(...ids).all<{ model_id: number; tps_7d_raw: number | null; ttft_7d: number | null; up7: number | null; er: number | null }>(),
+      env.DB.prepare(`SELECT model_id, avg(median_tps) as tps_7d FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= ? GROUP BY model_id`).bind(...ids, isoHoursAgo(168)).all<{ model_id: number; tps_7d: number | null }>(),
+      env.DB.prepare(`SELECT model_id, avg(tps) as tps_24h, avg(ttft_ms) as ttft_24h FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? AND status='SUCCESS' GROUP BY model_id`).bind(...ids, isoHoursAgo(24)).all<{ model_id: number; tps_24h: number | null; ttft_24h: number | null }>(),
+      env.DB.prepare(`SELECT model_id, avg(tps) as tps_7d_raw, avg(ttft_ms) as ttft_7d, avg(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as up7, avg(CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END) as er FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? GROUP BY model_id`).bind(...ids, isoHoursAgo(168)).all<{ model_id: number; tps_7d_raw: number | null; ttft_7d: number | null; up7: number | null; er: number | null }>(),
     ]);
 
     const metaMap = new Map<number, { provider_model_id: string; display_name: string; provider: string }>();
-    for (const r of (metas.results ?? []) as typeof metas.results) metaMap.set(r.id, r as any);
-    const s7Map = new Map<number, number | null>(); for (const r of (stats7.results ?? []) as typeof stats7.results) s7Map.set(r.model_id, r.tps_7d);
-    const r24Map = new Map<number, { tps_24h: number | null; ttft_24h: number | null }>(); for (const r of (raw24.results ?? []) as typeof raw24.results) r24Map.set(r.model_id, { tps_24h: r.tps_24h, ttft_24h: r.ttft_24h });
+    for (const r of metas.results ?? []) metaMap.set(r.id, r);
+    const s7Map = new Map<number, number | null>(); for (const r of stats7.results ?? []) s7Map.set(r.model_id, r.tps_7d);
+    const r24Map = new Map<number, { tps_24h: number | null; ttft_24h: number | null }>(); for (const r of raw24.results ?? []) r24Map.set(r.model_id, { tps_24h: r.tps_24h, ttft_24h: r.ttft_24h });
     const r7Map = new Map<number, { tps_7d_raw: number | null; ttft_7d: number | null; up7: number | null; er: number | null}>(); for (const r of (raw7.results ?? []) as typeof raw7.results) r7Map.set(r.model_id, { tps_7d_raw: r.tps_7d_raw, ttft_7d: r.ttft_7d, up7: r.up7, er: r.er });
 
     const out: unknown[] = [];
@@ -509,14 +571,14 @@ export function createApi(env: Env) {
   app.post("/api/admin/cooldown/reset", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
     const body = (await c.req.json().catch(() => ({}))) as { provider?: string; model_id?: number; clearAll?: boolean };
-    let cleared = 0;
+    let cleared: number;
     if (body.model_id) {
       await clearModelCooldown(env.DB, Number(body.model_id));
       cleared = 1;
     } else if (body.provider) {
       if (body.clearAll) {
-        cleared = await clearAllCooldownsForProvider(env.DB, body.provider);
-        // provider count already, plus models cleared inside helper counted as provider delete only; fetch extra for response
+        await clearAllCooldownsForProvider(env.DB, body.provider);
+        // provider row deleted above; also count models still listed as cooling pre-clear
         const after = await getActiveCooldowns(env.DB);
         cleared = 1 + after.models.length; // approximate
       } else {
@@ -587,7 +649,7 @@ export function createApi(env: Env) {
     return c.json({ ok: true, updated_benchmark_runs: upd.meta.changes ?? 0, updated_reasoning: upd2.meta.changes ?? 0, deleted_hourly: delHourly.meta.changes ?? 0 });
   });
 
-  app.get("/api/live", async (c) => {
+  app.get("/api/live", async () => {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));
     const req = new Request("https://live/live", { headers: { accept: "text/event-stream" } });
     return stub.fetch(req);

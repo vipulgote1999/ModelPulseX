@@ -38,6 +38,32 @@ export async function setProviderCooldown(db: D1Database, provider: string, dura
   } catch (e) { console.warn("setProviderCooldown", e); }
 }
 
+/** Pure escalation math: doubling backoff while a cooldown is already active, capped.
+ *  currentRemainingMs <= 0 or null means no active cooldown → plain base duration. */
+export function escalatedDurationMs(currentRemainingMs: number | null, baseMs: number, maxMs: number): number {
+  if (currentRemainingMs == null || currentRemainingMs <= 0) return baseMs;
+  return Math.min(Math.max(currentRemainingMs * 2, baseMs), maxMs);
+}
+
+/** Provider-wide cooldown with exponential escalation for repeat offenders (quota exhaustion,
+ *  sustained rate limiting). A provider that keeps failing backs off up to maxMs instead of
+ *  re-burning benchmark capacity every few minutes. */
+export async function escalateProviderCooldown(
+  db: D1Database,
+  provider: string,
+  baseMs: number,
+  reason: string,
+  maxMs = 2 * 60 * 60 * 1000,
+): Promise<void> {
+  try {
+    const row = await db.prepare(`SELECT cooldown_until FROM provider_cooldowns WHERE provider=?`).bind(provider).first<{ cooldown_until: string }>();
+    const remaining = row ? new Date(row.cooldown_until).getTime() - Date.now() : null;
+    await setProviderCooldown(db, provider, escalatedDurationMs(remaining, baseMs, maxMs), reason);
+  } catch {
+    await setProviderCooldown(db, provider, baseMs, reason);
+  }
+}
+
 export async function setModelCooldown(db: D1Database, modelId: number, durationMs: number, reason: string): Promise<void> {
   try {
     const until = new Date(Date.now() + durationMs).toISOString();
@@ -49,11 +75,11 @@ export async function setModelCooldown(db: D1Database, modelId: number, duration
 }
 
 export async function clearProviderCooldown(db: D1Database, provider: string): Promise<void> {
-  try { await db.prepare(`DELETE FROM provider_cooldowns WHERE provider=?`).bind(provider).run(); } catch {}
+  try { await db.prepare(`DELETE FROM provider_cooldowns WHERE provider=?`).bind(provider).run(); } catch (e) { console.warn("clearProviderCooldown", e); }
 }
 
 export async function clearModelCooldown(db: D1Database, modelId: number): Promise<void> {
-  try { await db.prepare(`DELETE FROM model_cooldowns WHERE model_id=?`).bind(modelId).run(); } catch {}
+  try { await db.prepare(`DELETE FROM model_cooldowns WHERE model_id=?`).bind(modelId).run(); } catch (e) { console.warn("clearModelCooldown", e); }
 }
 
 export async function clearAllCooldownsForProvider(db: D1Database, provider: string): Promise<number> {

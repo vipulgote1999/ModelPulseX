@@ -42,9 +42,9 @@ export default function Leaderboard({
     if (sortKey === k) setDir((d) => (d === "desc" ? "asc" : "desc"));
     else { setSortKey(k); setDir(k === "ttft_now" || k === "ttft_7d" ? "asc" : "desc"); }
   };
-  const sorted = [...rows].sort((a: any, b: any) => {
-    const av = (a as any)[sortKey] as number | null;
-    const bv = (b as any)[sortKey] as number | null;
+  const sorted = [...rows].sort((a, b) => {
+    const av = (a as unknown as Record<string, number | null>)[sortKey] ?? null;
+    const bv = (b as unknown as Record<string, number | null>)[sortKey] ?? null;
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;

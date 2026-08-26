@@ -1,12 +1,10 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { WORKLOADS } from "../benchmark/workloads";
 import { measureBenchmark } from "../benchmark/engine";
 
 const ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models";
 const ZEN_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
 
 const KNOWN_FREE_EXACT = new Set<string>(["big-pickle"]);
-const CONTEXT_HEURISTIC: Record<string, number> = {};
 
 function isFreeZenModel(id: string): boolean {
   if (KNOWN_FREE_EXACT.has(id)) return true;

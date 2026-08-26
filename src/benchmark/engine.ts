@@ -1,6 +1,16 @@
 /** Real streaming benchmark engine — measures TTFT/TPS from SSE chunks. Pure core + small Cloudflare fetch wrapper. */
-import type { BenchmarkDefinition, BenchmarkResult, BenchmarkStatus } from "../types";
-import { computeGenerationMs, computeTPS, computeTTFT, estimateTokensHeuristic } from "../utils/metrics";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  BenchmarkStatus,
+} from "../types";
+import {
+  computeGenerationMs,
+  computeTPS,
+  computeTTFT,
+  estimateTokensHeuristic,
+} from "../utils/metrics";
+import { retryAfterSeconds } from "../utils/concurrency";
 
 export interface BenchmarkOpts {
   provider: string; // ProviderName (widened for new providers)
@@ -11,8 +21,48 @@ export interface BenchmarkOpts {
   extraHeaders?: Record<string, string>;
 }
 
+/**
+ * SSRF guard for the outbound provider call. Provider hosts are data owned by
+ * the src/providers/* adapters; duplicating the host registry here would
+ * create an import cycle (adapters import this module), so we enforce shape:
+ * https only, except http on loopback hosts (local dev / self-hosted runtimes),
+ * and no credentials or fragments smuggled into the URL.
+ */
+/** Thrown when the outbound provider URL fails the SSRF shape guard. */
+export class BlockedApiUrlError extends Error {}
+
+const LOOPBACK_HOST_RE =
+  /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\]|::1)$/;
+
+export function assertSafeApiUrl(rawUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    // unparseable input — normalize into our blocked-url error shape
+    throw new BlockedApiUrlError(
+      `blocked outbound api url (unparseable): ${rawUrl.slice(0, 200)}`,
+    );
+  }
+  const isLoopback = LOOPBACK_HOST_RE.test(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback)) {
+    throw new BlockedApiUrlError(
+      `blocked outbound api url (protocol/host): ${rawUrl.slice(0, 200)}`,
+    );
+  }
+  if (url.username || url.password || url.hash) {
+    throw new BlockedApiUrlError(
+      "blocked outbound api url (credentials/fragment)",
+    );
+  }
+}
+
 // classify http status into BenchmarkStatus
-export function classifyStatus(status: number | null, timedOut: boolean, streamError: boolean): BenchmarkStatus {
+export function classifyStatus(
+  status: number | null,
+  timedOut: boolean,
+  streamError: boolean,
+): BenchmarkStatus {
   if (timedOut) return "TIMEOUT";
   if (streamError) return "STREAM_ERROR";
   if (status == null) return "UNKNOWN_ERROR";
@@ -24,14 +74,19 @@ export function classifyStatus(status: number | null, timedOut: boolean, streamE
 }
 
 // The low-level measure function — uses global fetch so it is testable via mock.
-export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkResult> {
+export async function measureBenchmark(
+  opts: BenchmarkOpts,
+): Promise<BenchmarkResult> {
   const startedAtMs = Date.now();
   const startedAtIso = new Date(startedAtMs).toISOString();
-  const startedPerf = typeof performance !== "undefined" && performance.now ? performance.now() : startedAtMs;
+  const startedPerf =
+    typeof performance !== "undefined" && performance.now
+      ? performance.now()
+      : startedAtMs;
   let firstTokenAtMs: number | null = null;
   let firstPerf: number | null = null;
-  let completedAtMs: number | null = null;
-  let completedPerf: number | null = null;
+  let completedAtMs: number | null;
+  let completedPerf: number | null;
   let outputText = "";
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -59,7 +114,7 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
     headers.authorization = `Bearer ${opts.apiKey}`;
     // OpenRouter also likes these but optional
     if (opts.provider === "openrouter") {
-      headers["HTTP-Referer"] = "https://modelpulsex.workers.dev";
+      headers["HTTP-Referer"] = "https://modelpulsex.vipulgote5.workers.dev";
       headers["X-Title"] = "ModelPulseX";
     }
   }
@@ -71,6 +126,7 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
   }, opts.benchmark.timeout_ms);
 
   try {
+    assertSafeApiUrl(opts.apiUrl);
     const res = await fetch(opts.apiUrl, {
       method: "POST",
       headers,
@@ -79,20 +135,52 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
     });
     httpStatus = res.status;
     if (!res.ok) {
+      let retryAfterMs: number | null = null;
+      if (httpStatus === 429) {
+        // Respect provider Retry-After so cooldowns match reality instead of a fixed guess.
+        retryAfterMs = retryAfterSeconds(res) * 1000;
+      }
       // read body for error_type when not ok (may not be streaming)
       try {
         const txt = await res.text();
         errorType = txt.slice(0, 500);
-      } catch {}
+      } catch {
+        // body unreadable (transport reset before text()) — record why instead of swallowing
+        errorType = "body_read_failed";
+      }
       const status = classifyStatus(httpStatus, false, false);
       clearTimeout(timeout);
-      return finalize(startedAtIso, null, null, null, null, status, errorType, httpStatus, opts, tokenEstimationMethod);
+      const out = finalize(
+        startedAtIso,
+        null,
+        null,
+        null,
+        null,
+        status,
+        errorType,
+        httpStatus,
+        opts,
+        tokenEstimationMethod,
+      );
+      if (retryAfterMs != null) out.retry_after_ms = retryAfterMs;
+      return out;
     }
 
     if (!res.body) {
       streamError = true;
       clearTimeout(timeout);
-      return finalize(startedAtIso, null, null, null, null, classifyStatus(httpStatus, false, true), "no_body", httpStatus, opts, tokenEstimationMethod);
+      return finalize(
+        startedAtIso,
+        null,
+        null,
+        null,
+        null,
+        classifyStatus(httpStatus, false, true),
+        "no_body",
+        httpStatus,
+        opts,
+        tokenEstimationMethod,
+      );
     }
 
     const reader = res.body.getReader();
@@ -120,21 +208,39 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
             const j = JSON.parse(data);
             // usage present in final chunk
             if (j.usage) {
-              if (typeof j.usage.prompt_tokens === "number") inputTokens = j.usage.prompt_tokens;
-              if (typeof j.usage.completion_tokens === "number") outputTokens = j.usage.completion_tokens;
-              if (typeof j.usage.total_tokens === "number" && inputTokens == null) {
+              if (typeof j.usage.prompt_tokens === "number")
+                inputTokens = j.usage.prompt_tokens;
+              if (typeof j.usage.completion_tokens === "number")
+                outputTokens = j.usage.completion_tokens;
+              if (
+                typeof j.usage.total_tokens === "number" &&
+                inputTokens == null
+              ) {
                 // estimate input if not separately given
               }
               // detect reasoning models (OpenRouter reports reasoning_tokens)
-              const rt = (j.usage as Record<string, unknown>).completion_tokens_details as Record<string, unknown> | undefined;
-              const rt2 = (j.usage as Record<string, unknown>).reasoning_tokens as unknown;
-              if (typeof rt?.reasoning_tokens === "number" && (rt.reasoning_tokens as number) > 0) isReasoning = true;
-              if (typeof rt2 === "number" && (rt2 as number) > 0) isReasoning = true;
+              const rt = (j.usage as Record<string, unknown>)
+                .completion_tokens_details as
+                | Record<string, unknown>
+                | undefined;
+              const rt2 = (j.usage as Record<string, unknown>)
+                .reasoning_tokens as unknown;
+              if (
+                typeof rt?.reasoning_tokens === "number" &&
+                (rt.reasoning_tokens as number) > 0
+              )
+                isReasoning = true;
+              if (typeof rt2 === "number" && (rt2 as number) > 0)
+                isReasoning = true;
             }
-            const delta = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.text ?? "";
+            const delta =
+              j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.text ?? "";
             if (delta && firstTokenAtMs == null) {
               firstTokenAtMs = Date.now();
-              firstPerf = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+              firstPerf =
+                typeof performance !== "undefined" && performance.now
+                  ? performance.now()
+                  : Date.now();
             }
             if (typeof delta === "string") outputText += delta;
           } catch {
@@ -144,7 +250,10 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
       }
     }
     completedAtMs = Date.now();
-    completedPerf = typeof performance !== "undefined" && performance.now ? performance.now() : completedAtMs;
+    completedPerf =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : completedAtMs;
     // fallback token count if provider didn't return usage
     if (outputTokens == null) {
       const est = estimateTokensHeuristic(outputText);
@@ -184,7 +293,11 @@ export async function measureBenchmark(opts: BenchmarkOpts): Promise<BenchmarkRe
     clearTimeout(timeout);
     const msg = e instanceof Error ? e.message : String(e);
     // AbortError due to timeout already flagged
-    if (timedOut || (msg && msg.toLowerCase().includes("abort"))) {
+    if (e instanceof BlockedApiUrlError) {
+      // SSRF guard rejected the URL before any fetch — not a stream failure;
+      // leave timedOut/streamError false so status resolves via null httpStatus.
+      errorType = msg.slice(0, 500);
+    } else if (timedOut || (msg && msg.toLowerCase().includes("abort"))) {
       timedOut = true;
     } else {
       streamError = true;
@@ -226,10 +339,12 @@ function finalize(
 ): BenchmarkResult {
   const startedMs = new Date(startedAtIso).getTime();
   const firstMs = firstTokenAtIso ? new Date(firstTokenAtIso).getTime() : null;
-  const completedMs = completedAtIso ? new Date(completedAtIso).getTime() : null;
+  const completedMs = completedAtIso
+    ? new Date(completedAtIso).getTime()
+    : null;
   // Use high-res perf if available, else fallback to Date
-  let ttft: number | null = null;
-  let gen: number | null = null;
+  let ttft: number | null;
+  let gen: number | null;
   if (startPerf != null && firstPerf != null) {
     ttft = Math.round(firstPerf - startPerf);
   } else {
@@ -253,7 +368,8 @@ function finalize(
   // Edge: streaming chunk handled in same tick -> TTFT/generation 0 but status SUCCESS -> clamp to minimal measurable
   if (status === "SUCCESS" && firstMs != null && completedMs != null) {
     if (ttft === 0 || ttft === null) ttft = 1;
-    if ((gen === 0 || gen === null) && outputTokens != null && tps == null) tps = computeTPS(outputTokens, 20);
+    if ((gen === 0 || gen === null) && outputTokens != null && tps == null)
+      tps = computeTPS(outputTokens, 20);
   }
   // if not SUCCESS, null out ttft/tps
   const ttft_ms = status === "SUCCESS" ? ttft : null;

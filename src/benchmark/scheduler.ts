@@ -1,21 +1,24 @@
 import { discoverAll } from "../providers";
 import { ensureProvidersBatch, upsertModelsBatch, markMissingInactive, insertBenchmarkRun } from "../db/queries";
-import { getConcurrency } from "../utils/concurrency";
+import { applyDataFixes } from "../db/data-fixes";
+import { recordScheduleTick } from "../db/health";
+import { getConcurrency, capFor, getRPMConfig, rpmForProvider } from "../utils/concurrency";
+import { selectJobs, type QueueJob, type SelectableModel } from "../utils/scheduler-select";
 import type { BenchmarkType, Env, ProviderName } from "../types";
 import { WORKLOADS } from "./workloads";
 import { providerFor } from "../providers/index";
-import { setProviderCooldown, setModelCooldown, clearModelCooldown, clearProviderCooldown } from "../db/cooldown";
+import { freeHardFilterWhere } from "../providers/registry";
+import {
+  setProviderCooldown,
+  setModelCooldown,
+  clearModelCooldown,
+  escalateProviderCooldown,
+} from "../db/cooldown";
 
-// Queue message shape
-export interface BenchJob {
-  model_id: number;
-  provider: string; // ProviderName widened for new providers
-  provider_model_id: string;
-  benchmark_type: BenchmarkType;
-  display_name: string;
-}
+// Queue message shape — identical to the pure selector's QueueJob.
+export type BenchJob = QueueJob;
 
-export async function runDiscovery(env: Env): Promise<{ discovered: number; added: string[] }> {
+export async function runDiscovery(env: Env): Promise<{ discovered: number; added: string[]; fixesApplied?: string[] }> {
   const now = new Date().toISOString();
   const all = await discoverAll(env);
   const byProvider = new Map<string, typeof all>();
@@ -46,172 +49,85 @@ export async function runDiscovery(env: Env): Promise<{ discovered: number; adde
     }
     await markMissingInactive(env.DB, pid, seen, now);
   }
-  // One-time hard cleanup: tokenrouter previously polluted with 147 paid models (not ending with free) — delete them so they never appear (they were never free)
+  // One-shot guarded data fixes (tokenrouter paid purge, ollama allowlist) — replaces the
+  // hardcoded cleanups that previously ran on EVERY discovery cycle.
+  let fixesApplied: string[] = [];
   try {
-    const trPid = providerMap.get("tokenrouter");
-    if (trPid) {
-      await env.DB.prepare(`DELETE FROM benchmark_runs WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(trPid).run();
-      await env.DB.prepare(`DELETE FROM hourly_model_stats WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(trPid).run();
-      await env.DB.prepare(`DELETE FROM availability_incidents WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(trPid).run();
-      await env.DB.prepare(`DELETE FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free'`).bind(trPid).run();
-    } else {
-      const existing = await env.DB.prepare(`SELECT id FROM providers WHERE name='tokenrouter'`).first<{ id: number }>();
-      if (existing) {
-        const pid = existing.id;
-        await env.DB.prepare(`DELETE FROM benchmark_runs WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(pid).run();
-        await env.DB.prepare(`DELETE FROM hourly_model_stats WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(pid).run();
-        await env.DB.prepare(`DELETE FROM availability_incidents WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free')`).bind(pid).run();
-        await env.DB.prepare(`DELETE FROM models WHERE provider_id=? AND lower(provider_model_id) NOT LIKE '%free'`).bind(pid).run();
-      }
-    }
-  } catch (e) { console.warn("tokenrouter cleanup", e); }
-  // Ollama cleanup: keep only verified 7 free models — delete any previously inserted paid/subscription models (glm-5.2, etc)
-  try {
-    const freeOllama = ["gemma4:31b","minimax-m3","gpt-oss:20b","gpt-oss:120b","nemotron-3-super","nemotron-3-ultra","nemotron-3-nano:30b"];
-    const placeholders = freeOllama.map(() => "?").join(",");
-    const ollamaPid = providerMap.get("ollama") ?? (await env.DB.prepare(`SELECT id FROM providers WHERE name='ollama'`).first<{ id: number }>() )?.id;
-    if (ollamaPid) {
-      await env.DB.prepare(`DELETE FROM benchmark_runs WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND provider_model_id NOT IN (${placeholders}))`).bind(ollamaPid, ...freeOllama).run();
-      await env.DB.prepare(`DELETE FROM hourly_model_stats WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND provider_model_id NOT IN (${placeholders}))`).bind(ollamaPid, ...freeOllama).run();
-      await env.DB.prepare(`DELETE FROM availability_incidents WHERE model_id IN (SELECT id FROM models WHERE provider_id=? AND provider_model_id NOT IN (${placeholders}))`).bind(ollamaPid, ...freeOllama).run();
-      await env.DB.prepare(`DELETE FROM models WHERE provider_id=? AND provider_model_id NOT IN (${placeholders})`).bind(ollamaPid, ...freeOllama).run();
-    }
-  } catch (e) { console.warn("ollama cleanup", e); }
-  return { discovered: total, added };
+    fixesApplied = await applyDataFixes(env.DB);
+  } catch (e) {
+    console.warn("data fixes", e);
+  }
+  return { discovered: total, added, fixesApplied };
 }
 
-export async function scheduleBenchmarks(env: Env): Promise<{ enqueued: number; skippedCooldown?: number; skippedRPM?: number }> {
+export async function scheduleBenchmarks(
+  env: Env,
+  opts: { inlineTake?: number } = {},
+): Promise<{ enqueued: number; inlineRan: number; skippedCooldown: number; skippedRPM: number; selected: number }> {
+  // SAFETY: Env carries provider config as string-typed vars plus an index signature;
+  // getConcurrency/getRPMConfig only read string keys and ignore the D1/Queue/DO bindings.
   const concurrency = getConcurrency(env as unknown as Record<string, unknown>);
-  const { getRPMConfig, rpmForProvider } = await import("../utils/concurrency");
+  // SAFETY: rpmConfig reads only string env vars (RPM_*/MAX_*_RPM); bindings are ignored.
   const rpmConfig = getRPMConfig(env as unknown as Record<string, unknown>);
   const nowIso = new Date().toISOString();
   const hour = new Date().getUTCHours();
   const benchTypes: BenchmarkType[] = ["short", "medium", "coding"];
   const chosenType: BenchmarkType = benchTypes[hour % 3]!;
 
-  // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle, not same model repeatedly
-  // Uses LEFT JOIN to benchmark_runs to get last_benchmark per model, NULLS FIRST (never-benchmarked first)
+  // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
+  // LEFT JOIN gives last_benchmark; ORDER BY ASC NULLS FIRST (never-benchmarked first).
   const active = await env.DB.prepare(
     `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
      FROM models m JOIN providers p ON p.id=m.provider_id
      LEFT JOIN benchmark_runs br ON br.model_id=m.id
-     WHERE m.active=1 AND m.free_status='FREE'
-       AND (p.name != 'tokenrouter' OR lower(m.provider_model_id) LIKE '%free')
-       AND (p.name != 'ollama' OR m.provider_model_id IN ('gemma4:31b','minimax-m3','gpt-oss:20b','gpt-oss:120b','nemotron-3-super','nemotron-3-ultra','nemotron-3-nano:30b'))
+     WHERE m.active=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
      GROUP BY m.id
      ORDER BY last_benchmark ASC, p.name, m.display_name`
-  ).all<{ id: number; display_name: string; provider_model_id: string; provider: string; last_benchmark: string | null }>();
+  ).all<SelectableModel>();
 
-  // Prefetch cooldowns and RPM usage in parallel (reduces I/O) — tolerant to missing tables before migration
+  // Prefetch cooldowns and RPM usage in parallel — tolerant to missing tables pre-migration.
+  // NOTE: cutoff MUST be a JS-computed ISO string. SQLite datetime('now','-60 seconds')
+  // yields 'YYYY-MM-DD HH:MM:SS' which string-compares BELOW ISO-'T' timestamps, silently
+  // widening the 60s window to "since UTC midnight" and tripping RPM limits by early morning
+  // (root cause of the recurring daily benchmark stalls).
+  const rpmSinceIso = new Date(Date.now() - 60_000).toISOString();
   const [providerCooldowns, modelCooldowns, rpmUsage] = await Promise.all([
-    env.DB.prepare(`SELECT provider, cooldown_until FROM provider_cooldowns WHERE cooldown_until > ?`).bind(nowIso).all<{ provider: string; cooldown_until: string }>().catch(()=>({ results: [] } as any)),
-    env.DB.prepare(`SELECT model_id FROM model_cooldowns WHERE cooldown_until > ?`).bind(nowIso).all<{ model_id: number }>().catch(()=>({ results: [] } as any)),
-    env.DB.prepare(`SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= datetime('now','-60 seconds') GROUP BY provider`).bind().all<{ provider: string; cnt: number }>(),
-  ] as const);
-  const providerCooldownSet = new Set<string>((providerCooldowns.results ?? []).map((r: { provider: string })=>r.provider));
-  const modelCooldownSet = new Set<number>((modelCooldowns.results ?? []).map((r: { model_id: number })=>r.model_id));
-  const rpmMap = new Map<string, number>();
-  for (const r of (rpmUsage.results ?? [] as Array<{ provider: string; cnt: number }>)) rpmMap.set((r as { provider: string }).provider, (r as { cnt: number }).cnt);
+    env.DB.prepare(`SELECT provider, cooldown_until FROM provider_cooldowns WHERE cooldown_until > ?`).bind(nowIso).all<{ provider: string }>().catch(() => ({ results: [] as Array<{ provider: string }> })),
+    env.DB.prepare(`SELECT model_id FROM model_cooldowns WHERE cooldown_until > ?`).bind(nowIso).all<{ model_id: number }>().catch(() => ({ results: [] as Array<{ model_id: number }> })),
+    env.DB.prepare(`SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY provider`).bind(rpmSinceIso).all<{ provider: string; cnt: number }>().catch(() => ({ results: [] as Array<{ provider: string; cnt: number }> })),
+  ]);
+  const providerCooldownSet = new Set((providerCooldowns.results ?? []).map((r) => r.provider));
+  const modelCooldownSet = new Set((modelCooldowns.results ?? []).map((r) => r.model_id));
+  const rpmUsageMap = new Map((rpmUsage.results ?? []).map((r) => [r.provider, r.cnt] as const));
 
-  // Group by provider after LRU sort, then filter cooldown/RPM
-  const grouped = new Map<string, typeof active.results>();
-  let skippedCooldown = 0;
-  let skippedRPM = 0;
-  // Track per-provider earliest last_benchmark for LRU ordering — first occurrence is earliest because active is sorted by last_benchmark ASC
-  const providerEarliest = new Map<string, string | null>();
-  for (const r of (active.results ?? []) as typeof active.results) {
-    if (providerCooldownSet.has(r.provider)) { skippedCooldown++; continue; }
-    if (modelCooldownSet.has(r.id)) { skippedCooldown++; continue; }
-    const rpmLimit = rpmForProvider(r.provider, rpmConfig);
-    const used = rpmMap.get(r.provider) ?? 0;
-    if (used >= rpmLimit) { skippedRPM++; continue; }
-    const arr = grouped.get(r.provider) ?? [];
-    (arr as unknown[]).push(r);
-    grouped.set(r.provider, arr as typeof active.results);
-    if (!providerEarliest.has(r.provider)) providerEarliest.set(r.provider, r.last_benchmark);
-  }
-  // Sort providers by earliest last_benchmark (LRU) — never-hit (NULL) first, ensures tokenrouter with UNKNOWN gets hit next cycle instead of being starved alphabetically
-  const providers = Array.from(grouped.keys()).sort((a,b)=>{
-    const ea = providerEarliest.get(a);
-    const eb = providerEarliest.get(b);
-    if (ea === null && eb !== null) return -1;
-    if (ea !== null && eb === null) return 1;
-    if (ea === null && eb === null) return a.localeCompare(b);
-    if (ea! < eb!) return -1;
-    if (ea! > eb!) return 1;
-    return a.localeCompare(b);
+  const { jobs, skippedCooldown, skippedRPM } = selectJobs(active.results ?? [], {
+    maxGlobal: concurrency.maxGlobal,
+    capFor: (p) => capFor(p, concurrency),
+    rpmLimitFor: (p) => rpmForProvider(p, rpmConfig),
+    providerCooldowns: providerCooldownSet,
+    modelCooldowns: modelCooldownSet,
+    rpmUsage: rpmUsageMap,
+    benchmarkType: chosenType,
   });
-  const jobs: BenchJob[] = [];
-  const capMap = concurrency as unknown as Record<string, number>;
-  const defaultCap = Math.max(2, Math.floor(concurrency.maxGlobal / 4));
-  const getCap = (provider: string): number => {
-    const base = (()=>{
-      if (provider === "opencode_zen") return concurrency.maxOpencode;
-      if (provider === "openrouter") return concurrency.maxOpenrouter;
-      if (provider === "groq") return concurrency.maxGroq;
-      if (provider === "cerebras") return concurrency.maxCerebras;
-      if (provider === "gemini") return concurrency.maxGemini;
-      if (provider === "nvidia") return concurrency.maxNvidia;
-      if (provider === "sambanova") return concurrency.maxSambanova;
-      if (provider === "mistral") return concurrency.maxMistral;
-      if (provider === "agnes_ai") return concurrency.maxAgnesAi;
-      if (provider === "aionlabs") return concurrency.maxAionlabs;
-      if (provider === "kilocode") return concurrency.maxKilocode;
-      if (provider === "glhf") return concurrency.maxGlhf;
-      if (provider === "nscale") return concurrency.maxNscale;
-      if (provider === "speka") return concurrency.maxSpeka;
-      if (provider === "nexaapi") return concurrency.maxNexaapi;
-      if (provider === "orcarouter") return concurrency.maxOrcarouter;
-      if (provider === "ninerouter") return concurrency.maxNinerouter;
-      if (provider === "tokenrouter") return concurrency.maxTokenrouter;
-      if (provider === "ollama") return concurrency.maxOllama;
-      const key = `max${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
-      return capMap[key] ?? defaultCap;
-    })();
-    // RPM-aware cap: don't exceed remaining RPM budget this minute
-    const rpmLimit = rpmForProvider(provider, rpmConfig);
-    const used = rpmMap.get(provider) ?? 0;
-    const rpmAvailable = Math.max(0, rpmLimit - used);
-    return Math.min(base, rpmAvailable || base);
-  };
-  // Edge: if RPM available is 0, provider already skipped above, but double-check
-  let global = 0;
-  // Round-robin with smart rotation: since grouped lists are LRU sorted, picking idx 0 each time hits least-recently-benchmarked model
-  let round = 0;
-  const maxRounds = Math.max(...Array.from(grouped.values()).map((v) => (v as unknown[]).length), 0);
-  const takenPerProvider = new Map<string, number>();
-  const indexPerProvider = new Map<string, number>();
-  for (round = 0; round < maxRounds; round++) {
-    for (const prov of providers) {
-      if (global >= concurrency.maxGlobal) break;
-      // Re-check RPM before each pick (rpmAvailable may have decreased as we schedule)
-      const rpmLimit = rpmForProvider(prov, rpmConfig);
-      const used = (rpmMap.get(prov) ?? 0) + (takenPerProvider.get(prov) ?? 0);
-      if (used >= rpmLimit) continue;
-      const list = grouped.get(prov)! as unknown as Array<{ id: number; display_name: string; provider_model_id: string; provider: string }>;
-      const idx = indexPerProvider.get(prov) ?? 0;
-      if (idx >= list.length) continue;
-      const cur = takenPerProvider.get(prov) ?? 0;
-      if (cur >= getCap(prov)) continue;
-      const row = list[idx]!;
-      indexPerProvider.set(prov, idx + 1);
-      jobs.push({
-        model_id: row.id,
-        provider: row.provider,
-        provider_model_id: row.provider_model_id,
-        benchmark_type: chosenType,
-        display_name: row.display_name,
-      });
-      takenPerProvider.set(prov, cur + 1);
-      global++;
+
+  // Inline fallback: execute the first N selected jobs inside this cron invocation so
+  // baseline coverage survives even if queue delivery stalls (observed in prod Aug 2025).
+  const inlineTake = Math.max(0, Math.min(opts.inlineTake ?? 0, jobs.length));
+  let inlineRan = 0;
+  for (const job of jobs.slice(0, inlineTake)) {
+    try {
+      await handleBenchJob(env, job);
+      inlineRan++;
+    } catch (e) {
+      console.error("inline bench job failed", job.model_id, e);
     }
-    if (global >= concurrency.maxGlobal) break;
   }
 
-  // enqueue in batches of 10
+  // Enqueue the remainder in batches of 10
   let enqueued = 0;
-  for (let i = 0; i < jobs.length; i += 10) {
-    const batch = jobs.slice(i, i + 10);
+  const rest = jobs.slice(inlineTake);
+  for (let i = 0; i < rest.length; i += 10) {
+    const batch = rest.slice(i, i + 10);
     try {
       await env.BENCH_QUEUE.sendBatch(batch.map((j) => ({ body: j })));
       enqueued += batch.length;
@@ -219,11 +135,20 @@ export async function scheduleBenchmarks(env: Env): Promise<{ enqueued: number; 
       console.error("queue sendBatch", e);
     }
   }
-  return { enqueued };
+
+  // Heartbeat: make enqueue health observable via /api/leaderboard meta + /api/health.
+  await recordScheduleTick(env.DB, {
+    enqueueCount: enqueued,
+    inlineCount: inlineRan,
+    skippedCooldown,
+    skippedRpm: skippedRPM,
+  });
+
+  return { enqueued, inlineRan, skippedCooldown, skippedRPM, selected: jobs.length };
 }
 
-export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
-  const workload = WORKLOADS[job.benchmark_type];
+export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
+  const workload = WORKLOADS[job.benchmark_type as BenchmarkType];
   const prov = providerFor(job.provider, env);
   if (!prov) return;
   // fetch model row for benchmark
@@ -244,8 +169,12 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
     first_seen: "",
     last_seen: "",
   };
+  // SAFETY: the object satisfies Model structurally — jobs carry provider by name, so
+  // provider_id is an unused placeholder (0) here.
   let result: import("../types").BenchmarkResult;
   try {
+    // SAFETY: object satisfies Model structurally — provider_id is an unused placeholder (0)
+    // because jobs identify providers by name.
     result = await prov.benchmarkModel(model as unknown as import("../types").Model, workload);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -263,25 +192,24 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
       http_status: null,
       provider: job.provider as import("../types").ProviderName,
       model: job.provider_model_id,
-      benchmark_type: job.benchmark_type,
+      benchmark_type: job.benchmark_type as BenchmarkType,
       token_estimation_method: "heuristic" as const,
     };
   }
   await insertBenchmarkRun(env.DB, job.model_id, result as import("../types").BenchmarkResult);
-  // --- Cooldown handling: distinguish model-specific vs provider-wide timeout ---
+  // --- Cooldown handling: distinguish model-specific vs provider-wide failure ---
   try {
     const status = result.status;
-    const http = (result as unknown as { http_status?: number | null }).http_status ?? result.http_status ?? null;
+    const http = result.http_status ?? null;
     const err = (result.error_type ?? "").toLowerCase();
+    const cooldownMaxMs = Number(env.COOLDOWN_MAX_MS) || 2 * 60 * 60 * 1000;
     if (status === "SUCCESS") {
       // Success clears model cooldown (model recovered); provider cooldown persists until expiry or manual reset
       await clearModelCooldown(env.DB, job.model_id);
-      // If provider had only this model's failures, we could clear provider cooldown on sustained success, but keep conservative
     } else if (status === "RATE_LIMITED" || http === 429 || err.includes("rate limit") || err.includes("too many requests")) {
-      // Provider refusing — provider-wide cooldown (not just model)
-      // Use Retry-After if available, else 60s + jitter via helper
-      const retryMs = 60_000; // default 60s, could parse Retry-After from error_type if present
-      await setProviderCooldown(env.DB, job.provider, retryMs, `RATE_LIMITED ${result.error_type ?? "429"}`);
+      // Provider refusing — escalating provider-wide cooldown honoring Retry-After when present
+      const retryMs = result.retry_after_ms ?? 60_000;
+      await escalateProviderCooldown(env.DB, job.provider, retryMs, `RATE_LIMITED ${result.error_type ?? "429"}`.slice(0, 500), cooldownMaxMs);
       // Also brief model cooldown to avoid immediate retry of same model
       await setModelCooldown(env.DB, job.model_id, 30_000, `RATE_LIMITED`);
     } else if (status === "MODEL_UNAVAILABLE" || http === 404) {
@@ -291,8 +219,9 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
       // Timeout is model-specific (model slow), not provider — short model cooldown (2m)
       await setModelCooldown(env.DB, job.model_id, 2 * 60 * 1000, `TIMEOUT`);
     } else if (err.includes("insufficient") || err.includes("quota") || err.includes("credit") || err.includes("balance") || err.includes("recharge")) {
-      // Quota/balance errors are provider-wide (account level) — longer cooldown and proper display
-      await setProviderCooldown(env.DB, job.provider, 15 * 60 * 1000, `QUOTA_EXCEEDED ${result.error_type ?? ""}`.slice(0,500));
+      // Quota/balance errors are provider-wide (account level) — escalating cooldown so dead
+      // keys stop re-burning benchmark capacity every few minutes
+      await escalateProviderCooldown(env.DB, job.provider, 15 * 60 * 1000, `QUOTA_EXCEEDED ${result.error_type ?? ""}`.slice(0, 500), cooldownMaxMs);
       await setModelCooldown(env.DB, job.model_id, 5 * 60 * 1000, `QUOTA_EXCEEDED`);
     } else if (status === "PROVIDER_ERROR" && http != null && http >= 500) {
       if (err.includes("model") || err.includes("not found")) {
@@ -302,10 +231,12 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
         await setModelCooldown(env.DB, job.model_id, 30_000, `PROVIDER_ERROR 5xx`);
       }
     } else if (status === "STREAM_ERROR" || status === "PROVIDER_ERROR") {
-      await setModelCooldown(env.DB, job.model_id, 3 * 60 * 1000, `${status} ${result.error_type ?? ""}`);
+      await setModelCooldown(env.DB, job.model_id, 3 * 60 * 1000, `${status} ${result.error_type ?? ""}`.slice(0, 500));
     }
   } catch (e) { console.warn("cooldown handling", e); }
   // handle incident detection
+  // SAFETY: BenchmarkResult is a superset of this narrow view — updateIncidents only reads
+  // status/request_started_at/error_type.
   await updateIncidents(env, job.model_id, result as unknown as { status: string; request_started_at: string; error_type?: string | null });
   // broadcast via DO
   try {
@@ -323,7 +254,10 @@ export async function handleBenchJob(env: Env, job: BenchJob): Promise<void> {
         timestamp: result.request_started_at,
       }),
     });
-  } catch {}
+  } catch (e) {
+    // Best-effort live broadcast — a DO outage must never fail the benchmark result itself.
+    console.warn("live publish", e);
+  }
 }
 
 async function updateIncidents(env: Env, modelId: number, result: { status: string; request_started_at: string; error_type?: string | null }) {

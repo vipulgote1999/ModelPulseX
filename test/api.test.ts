@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 
 // small integration sanity: ensure D1 schema strings contain required tables and indexes
-// @ts-ignore node types missing in workers context
 import { readFileSync } from "node:fs";
 
 describe("api/contracts — D1 schema", () => {

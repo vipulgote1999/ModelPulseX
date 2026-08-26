@@ -1,7 +1,13 @@
 import { fmtMs, fmtTps } from "../lib/utils";
 
 type Props = {
-  summary?: { free_models: number; online_now: number; best_tps: any; best_ttft: any; benchmarks_24h: number };
+  summary?: {
+    free_models: number;
+    online_now: number;
+    best_tps: { display_name?: string; model?: string; tps_now?: number | null; tps_7d?: number | null } | null;
+    best_ttft: { display_name?: string; ttft_now?: number | null; ttft_7d?: number | null } | null;
+    benchmarks_24h: number;
+  };
   meta?: { is_stale: boolean; live: string | null; stale_message: string | null };
   leaderboard?: Array<{ uptime_7d: number | null; overall_score: number | null }>;
 };

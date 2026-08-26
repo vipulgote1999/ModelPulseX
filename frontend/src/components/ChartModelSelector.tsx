@@ -28,7 +28,7 @@ export default function ChartModelSelector({
 
   const updateSlot = (slot: number, value: string) => {
     const v = Number(value);
-    let next = [...selected];
+    const next = [...selected];
     // ensure length 3 with pads
     while (next.length < 3) next.push(0 as unknown as number);
     if (!value || Number.isNaN(v) || v === 0) {

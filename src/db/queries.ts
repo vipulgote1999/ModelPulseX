@@ -1,4 +1,4 @@
-import type { BenchmarkResult, BenchmarkType, FreeStatus, ModelMetadata, ProviderName } from "../types";
+import type { BenchmarkResult, BenchmarkType, ModelMetadata, ProviderName } from "../types";
 
 export async function ensureProvider(db: D1Database, name: ProviderName): Promise<number> {
   // Fast path: try insert ignore then select (2 round trips max, no race)

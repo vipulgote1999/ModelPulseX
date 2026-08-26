@@ -76,8 +76,11 @@ export function useLeaderboard(opts: { range: string; benchmark: string; sort: s
         if (debounce) window.clearTimeout(debounce);
         debounce = window.setTimeout(() => fetchNow().catch(() => {}), 800);
       });
-      es.onerror = () => {};
-    } catch {}
+      // SSE hiccups are tolerated — periodic polling refetch keeps data fresh regardless
+      es.onerror = () => { /* no-op */ };
+    } catch {
+      // EventSource unavailable/blocked — polling fallback above still refreshes data.
+    }
     return () => {
       cancelled = true;
       clearInterval(id);

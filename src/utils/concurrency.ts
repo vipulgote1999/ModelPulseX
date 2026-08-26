@@ -103,6 +103,36 @@ export function rpmForProvider(provider: string, rpmConfig: RPMConfig): number {
   return (rpmConfig[key] as number) ?? rpmConfig.default;
 }
 
+/** Provider-name → ConcurrencyConfig key. Single source replacing a 20-branch if-chain. */
+const CONCURRENCY_KEYS: Record<string, keyof ConcurrencyConfig> = {
+  opencode_zen: "maxOpencode",
+  openrouter: "maxOpenrouter",
+  groq: "maxGroq",
+  cerebras: "maxCerebras",
+  gemini: "maxGemini",
+  nvidia: "maxNvidia",
+  sambanova: "maxSambanova",
+  mistral: "maxMistral",
+  agnes_ai: "maxAgnesAi",
+  aionlabs: "maxAionlabs",
+  kilocode: "maxKilocode",
+  glhf: "maxGlhf",
+  nscale: "maxNscale",
+  speka: "maxSpeka",
+  nexaapi: "maxNexaapi",
+  orcarouter: "maxOrcarouter",
+  ninerouter: "maxNinerouter",
+  tokenrouter: "maxTokenrouter",
+  ollama: "maxOllama",
+};
+
+/** Per-provider concurrency cap from config; unknown providers fall back to global/4 (min 2). */
+export function capFor(provider: string, c: ConcurrencyConfig): number {
+  const key = CONCURRENCY_KEYS[provider];
+  const v = key ? (c[key] as number | undefined) : undefined;
+  return v ?? Math.max(2, Math.floor(c.maxGlobal / 4));
+}
+
 export function jittered(base: number): number {
   const jitter = 0.8 + Math.random() * 0.4;
   return Math.max(1, Math.min(86400, Math.round(base * jitter)));

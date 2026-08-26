@@ -2,13 +2,14 @@ export default function Methodology() {
   return (
     <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-8 space-y-8 text-zinc-300 leading-relaxed">
       <h1 className="text-2xl font-bold text-white">Methodology — ModelPulseX Transparency</h1>
-      <p className="text-sm text-zinc-400">Every number shown traces back to a real streaming benchmark. No fake historical values. When only 2 hours of data exists, we show “2h of observed data” rather than pretending 7 days exists.</p>
+      <p className="text-sm text-zinc-400">Every number shown traces back to a real streaming benchmark. No fake historical values. When only 2 hours of data exists, we show “2h of observed data” rather than pretending 7 days exists. Windowed figures are <b>medians</b>, and any window with fewer samples than our minimum-sample threshold shows nothing rather than a misleading number.</p>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">How TPS is measured — Measured TPS</h2>
         <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 mono text-xs">generation_time = completed_at - first_token_at
 TPS = output_tokens / generation_time (seconds)</pre>
         <p className="text-sm">We do NOT use total request duration. We record <b>request_started_at</b>, <b>first_token_at</b> (first SSE <code>data:</code> with content), <b>completed_at</b>. If provider supplies <code>usage.completion_tokens</code> we use it and mark <code>Measured TPS</code> with <code>token_estimation_method=provider</code>; otherwise we estimate via char/4 heuristic flagged <code>heuristic</code> and clearly indicate estimation.</p>
+        <p className="text-sm">Windowed values (1h/24h/7d) are <b>medians (P50)</b> over the window — matching how sustained provider performance is reported in the industry — not averages, which a single 2-sample spike can distort. “TPS Now” is the single latest measurement and is labeled accordingly. Windows need at least <b>2 samples (1h)</b>, <b>3 samples (24h)</b> or <b>5 samples (7d)</b> before a figure is displayed; below that you get “insufficient data” instead of noise. Hourly aggregates also retain p50/p90/p95 for both TPS and TTFT.</p>
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
@@ -39,8 +40,9 @@ TPS = output_tokens / generation_time (seconds)</pre>
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">Frequency, aggregation, retention</h2>
         <ul className="list-disc pl-6 text-sm">
-          <li>Cron <code>*/5 * * * *</code> discovers eligible models then enqueues benchmark jobs via Queue (batch 10, 3 retries).</li>
-          <li>Cron <code>0 * * * *</code> re-discovers (churn), computes hourly aggregates (avg/median/p90/p95 TPS/TTFT, success_rate, uptime), and cleans up.</li>
+          <li>Cron <code>*/5 * * * *</code> selects jobs by least-recently-benchmarked rotation (respecting per-provider RPM/concurrency budgets), enqueues them via Queue (batch 10, 3 retries, consumer concurrency 8), and runs the first few inline as a delivery fallback. A scheduler heartbeat (enqueue counts, skips) is persisted every tick and exposed via <code>/api/health</code> and leaderboard meta.</li>
+          <li>Cron <code>0 * * * *</code> re-discovers (churn), computes hourly aggregates (avg/median/p90/p95 TPS/TTFT, success_rate, uptime), cleans up, and runs a staleness watchdog that alerts an optional webhook if no measurement lands within the stale threshold.</li>
+          <li>Providers failing repeatedly on quota/rate-limits back off exponentially (up to 2h cooldowns honoring <code>Retry-After</code>) so dead keys don’t burn benchmark capacity.</li>
           <li>Retention: raw benchmark_runs 7–14 days, hourly aggregates 30–90 days, daily/model metadata/incidents indefinite. No response bodies stored. This keeps D1 &lt;500MB while serving 7-day graphs without scanning thousands of raw rows.</li>
           <li>Frontend uses hourly aggregates for 7-day charts; LIVE values from recent raw.</li>
         </ul>
@@ -71,7 +73,9 @@ GET /api/models/:id/history?range=
 GET /api/models/:id/incidents
 GET /api/compare?models=1,2
 GET /api/live  (SSE via Durable Object)
-POST /api/admin/{`discover|benchmark|reaggregate|cleanup`}  (ADMIN_TOKEN)
+GET /api/cooldowns
+GET /api/health?freshness=15   → 503 when data older than N min (uptime-monitor probe)
+POST /api/admin/{`discover|benchmark|reaggregate|cleanup|migrate|cooldown/reset`}  (ADMIN_TOKEN)
 wrangler d1 migrations apply DB --local / --remote
 wrangler secret put OPENCODE_API_KEY OPENROUTER_API_KEY ADMIN_TOKEN</pre>
         <p className="text-sm">See README + wrangler.jsonc for D1/Queue/DO/Cron binding docs.</p>

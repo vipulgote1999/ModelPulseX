@@ -18,7 +18,7 @@
   ],
   "queues": {
     "producers": [{ "binding": "BENCH_QUEUE", "queue": "bench-queue" }],
-    "consumers": [{ "queue": "bench-queue", "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "dead_letter_queue": "bench-dlq" }]
+    "consumers": [{ "queue": "bench-queue", "max_concurrency": 8, "max_batch_size": 10, "max_batch_timeout": 30, "max_retries": 3, "dead_letter_queue": "bench-dlq" }]
   },
   "durable_objects": {
     "bindings": [{ "name": "LIVE_DO", "class_name": "PerformanceDO" }]
@@ -51,9 +51,13 @@
     "MAX_OLLAMA_CONCURRENCY": "2",
     "MAX_SAME_MODEL_CONCURRENCY": "1",
     "BENCHMARK_TIMEOUT_MS": "30000",
-    "INCIDENT_THRESHOLD": "3"
+    "INCIDENT_THRESHOLD": "3",
+    "STALE_ALERT_MINUTES": "30"
   }
   // secrets (never in file):
+  // wrangler secret put ADMIN_TOKEN
+  // wrangler secret put ALERT_WEBHOOK_URL   (optional — Discord/Slack-compatible stale alerts)
+  // BENCH_INLINE_FALLBACK (default 6) and COOLDOWN_MAX_MS (default 2h) have code defaults; see src/types.ts Env.
   // wrangler secret put OPENCODE_API_KEY
   // wrangler secret put OPENROUTER_API_KEY
   // wrangler secret put GROQ_API_KEY

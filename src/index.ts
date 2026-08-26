@@ -2,6 +2,7 @@ import { PerformanceDO } from "./live/performance-do";
 import { createApi } from "./api/routes";
 import { runDiscovery, scheduleBenchmarks, handleBenchJob, type BenchJob } from "./benchmark/scheduler";
 import { computeHourlyAggregates, cleanupRetention } from "./db/queries";
+import { recordHourlyJob, watchdogCheck } from "./db/health";
 import type { Env } from "./types";
 
 export { PerformanceDO };
@@ -19,8 +20,13 @@ function withSecurityHeaders(res: Response): Response {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    let path: string;
+    try {
+      path = new URL(request.url).pathname;
+    } catch {
+      // Malformed request URL — reject cleanly rather than throwing.
+      return new Response("bad request", { status: 400 });
+    }
 
     // Never leak secrets: strip them from logs; ensure no api key in response
     if (path.startsWith("/api/")) {
@@ -38,38 +44,79 @@ export default {
   },
 
   async queue(batch: MessageBatch<BenchJob>, env: Env): Promise<void> {
+    // Parallelize ACROSS providers while serializing within a provider: a batch of ≤10
+    // jobs typically spans many providers, so this cuts wall time ~Nx without violating
+    // per-provider concurrency caps. Previously a serial for-loop capped throughput at
+    // ~120 jobs/hour worst-case and starved freshness.
+    const groups = new Map<string, Message<BenchJob>[]>();
     for (const msg of batch.messages) {
-      const job = msg.body as BenchJob;
-      try {
-        await handleBenchJob(env, job);
-        msg.ack();
-      } catch (e) {
-        console.error("bench job failed", job, e);
-        msg.retry();
-      }
+      const prov = msg.body?.provider ?? "_unknown";
+      const arr = groups.get(prov);
+      if (arr) arr.push(msg);
+      else groups.set(prov, [msg]);
     }
+    const drainProvider = async (msgs: Message<BenchJob>[]): Promise<void> => {
+      for (const msg of msgs) {
+        try {
+          await handleBenchJob(env, msg.body);
+          msg.ack();
+        } catch (e) {
+          console.error("bench job failed", msg.body?.model_id, e);
+          msg.retry();
+        }
+      }
+      return;
+    };
+    // Concise-body arrows keep an implicit meaningful return (the drain promise).
+    await Promise.all(Array.from(groups.values()).map((msgs) => drainProvider(msgs)));
   },
 
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const cron = (controller as unknown as { cron: string }).cron;
-    // */5 * * * *  → benchmark scheduler
-    // 0 * * * *    → discovery + aggregation + cleanup
+    // ScheduledController exposes `cron` natively at this compatibility_date.
+    const cron = controller.cron;
+    // */5 * * * *  → benchmark scheduler (+ inline fallback)
+    // 0 * * * *    → discovery + aggregation + cleanup + staleness watchdog
     if (cron === "*/5 * * * *") {
-      await scheduleBenchmarks(env);
+      // Inline fallback: run the first N selected jobs inside this invocation. Guarantees
+      // baseline coverage even when queue delivery stalls; queue carries the rest.
+      const inlineTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
+      await scheduleBenchmarks(env, { inlineTake: Number.isFinite(inlineTake) ? inlineTake : 6 });
     } else if (cron === "0 * * * *") {
       // hourly
-      await runDiscovery(env);
+      try {
+        await runDiscovery(env);
+        await recordHourlyJob(env.DB, "discovery");
+      } catch (e) {
+        console.error("hourly discovery failed", e);
+      }
       const hour = new Date();
       hour.setUTCMinutes(0, 0, 0);
       // compute aggregates for current hour and previous hour to avoid missing edge
-      await computeHourlyAggregates(env.DB, hour.toISOString());
-      const prev = new Date(hour.getTime() - 3600 * 1000).toISOString();
-      await computeHourlyAggregates(env.DB, prev);
+      try {
+        await computeHourlyAggregates(env.DB, hour.toISOString());
+        const prev = new Date(hour.getTime() - 3600 * 1000).toISOString();
+        await computeHourlyAggregates(env.DB, prev);
+        await recordHourlyJob(env.DB, "aggregate");
+      } catch (e) {
+        console.error("hourly aggregation failed", e);
+      }
       // cleanup raw 7d, hourly 30d
-      await cleanupRetention(env.DB, 7, 30);
+      try {
+        await cleanupRetention(env.DB, 7, 30);
+      } catch (e) {
+        console.error("retention cleanup failed", e);
+      }
+      // Staleness watchdog — alerts via webhook (rate-limited to hourly) when the
+      // pipeline stops producing measurements. Never throws.
+      try {
+        const wd = await watchdogCheck(env.DB, env);
+        if (wd.stale) console.warn("watchdog:", JSON.stringify(wd));
+      } catch (e) {
+        console.error("watchdog failed", e);
+      }
     } else {
       // fallback: run both if unknown
-      await scheduleBenchmarks(env);
+      await scheduleBenchmarks(env, { inlineTake: Number(env.BENCH_INLINE_FALLBACK ?? "6") });
     }
   },
 } satisfies ExportedHandler<Env, BenchJob>;

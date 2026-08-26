@@ -119,7 +119,7 @@ export default function Dashboard() {
         <span className="ml-auto text-[11px] text-zinc-500">{rows.length ? `${rows.length} models · ${data?.range} ${data?.benchmark} sort:${data?.sort} profile:${data?.profile}` : ""}</span>
       </div>
 
-      <SummaryCards summary={data?.summary as unknown as { free_models: number; online_now: number; best_tps: unknown; best_ttft: unknown; benchmarks_24h: number }} meta={data?.meta as unknown as { is_stale: boolean; live: string | null; stale_message: string | null }} leaderboard={rows as unknown as Array<{ uptime_7d: number | null; overall_score: number | null }>} />
+      <SummaryCards summary={data?.summary as unknown as { free_models: number; online_now: number; best_tps: { display_name?: string; model?: string; tps_now?: number | null; tps_7d?: number | null } | null; best_ttft: { display_name?: string; ttft_now?: number | null; ttft_7d?: number | null } | null; benchmarks_24h: number }} meta={data?.meta as unknown as { is_stale: boolean; live: string | null; stale_message: string | null }} leaderboard={rows as unknown as Array<{ uptime_7d: number | null; overall_score: number | null }>} />
 
       {/* controls */}
       <div className="flex flex-wrap gap-2 items-center">
