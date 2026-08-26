@@ -1,33 +1,86 @@
-import type { BenchmarkResult, BenchmarkType, ModelMetadata, ProviderName } from "../types";
+import type {
+  BenchmarkResult,
+  BenchmarkType,
+  ModelMetadata,
+  ProviderName,
+} from "../types";
 
-export async function ensureProvider(db: D1Database, name: ProviderName): Promise<number> {
+export async function ensureProvider(
+  db: D1Database,
+  name: ProviderName,
+): Promise<number> {
   // Fast path: try insert ignore then select (2 round trips max, no race)
   const now = new Date().toISOString();
-  await db.prepare("INSERT OR IGNORE INTO providers (name,type,enabled,created_at) VALUES (?,?,1,?)").bind(name, name, now).run();
-  const row = await db.prepare("SELECT id FROM providers WHERE name=?").bind(name).first<{ id: number }>();
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO providers (name,type,enabled,created_at) VALUES (?,?,1,?)",
+    )
+    .bind(name, name, now)
+    .run();
+  const row = await db
+    .prepare("SELECT id FROM providers WHERE name=?")
+    .bind(name)
+    .first<{ id: number }>();
   return row!.id;
 }
 
-export async function ensureProvidersBatch(db: D1Database, names: ProviderName[]): Promise<Map<string, number>> {
+export async function ensureProvidersBatch(
+  db: D1Database,
+  names: ProviderName[],
+): Promise<Map<string, number>> {
   if (names.length === 0) return new Map();
   const now = new Date().toISOString();
-  const stmts = names.map((n) => db.prepare("INSERT OR IGNORE INTO providers (name,type,enabled,created_at) VALUES (?,?,1,?)").bind(n, n, now));
+  const stmts = names.map((n) =>
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO providers (name,type,enabled,created_at) VALUES (?,?,1,?)",
+      )
+      .bind(n, n, now),
+  );
   // D1 batch is atomic and single roundtrip for writes
   await db.batch(stmts);
   const placeholders = names.map(() => "?").join(",");
-  const rows = await db.prepare(`SELECT id, name FROM providers WHERE name IN (${placeholders})`).bind(...names).all<{ id: number; name: string }>();
+  const rows = await db
+    .prepare(`SELECT id, name FROM providers WHERE name IN (${placeholders})`)
+    .bind(...names)
+    .all<{ id: number; name: string }>();
   const m = new Map<string, number>();
-  for (const r of (rows.results ?? [])) m.set(r.name, r.id);
+  for (const r of rows.results ?? []) m.set(r.name, r.id);
   return m;
 }
 
-export async function upsertModel(db: D1Database, providerId: number, meta: ModelMetadata, nowIso: string): Promise<number> {
+const DISABLED_PROVIDER_DEFAULT = new Set<string>([
+  "speka",
+  "nexaapi",
+  "ninerouter",
+]);
+
+export async function upsertModel(
+  db: D1Database,
+  providerId: number,
+  meta: ModelMetadata,
+  nowIso: string,
+): Promise<number> {
   // Single-statement UPSERT — no pre-select, no N+1, correct under concurrency
+  // benchmark_enabled: preserve admin toggle on update; set sensible default on insert (is_free ? 1 : 0) but force 0 for $1-credit providers
   const capsJson = JSON.stringify(meta.capabilities);
+  // Resolve provider name for default-disabled check (best-effort, ignore if lookup fails)
+  let defaultEnabled = meta.is_free ? 1 : 0;
+  try {
+    const prov = await db
+      .prepare("SELECT name FROM providers WHERE id=?")
+      .bind(providerId)
+      .first<{ name: string }>();
+    if (prov && DISABLED_PROVIDER_DEFAULT.has(prov.name)) defaultEnabled = 0;
+    if (prov?.name === "groq" && meta.provider_model_id.startsWith("whisper"))
+      defaultEnabled = 0;
+  } catch (e) {
+    console.warn("provider lookup failed for defaultEnabled", e);
+  }
   const r = await db
     .prepare(
-      `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
+      `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active, benchmark_enabled)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
        ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
          name=excluded.name,
          display_name=excluded.display_name,
@@ -54,54 +107,212 @@ export async function upsertModel(db: D1Database, providerId: number, meta: Mode
       meta.output_price,
       nowIso,
       nowIso,
+      defaultEnabled,
     )
-    .first<{ id: number }>();
+    .first<{ id: number }>()
+    .catch(async () => {
+      // Fallback when benchmark_enabled column not yet migrated (pre-0007)
+      const rr = await db
+        .prepare(
+          `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
+         ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
+           name=excluded.name,
+           display_name=excluded.display_name,
+           is_free=excluded.is_free,
+           free_status=excluded.free_status,
+           context_length=excluded.context_length,
+           capabilities=excluded.capabilities,
+           input_price=excluded.input_price,
+           output_price=excluded.output_price,
+           last_seen=excluded.last_seen,
+           active=1
+         RETURNING id`,
+        )
+        .bind(
+          providerId,
+          meta.provider_model_id,
+          meta.display_name,
+          meta.display_name,
+          meta.is_free ? 1 : 0,
+          meta.free_status,
+          meta.context_length,
+          capsJson,
+          meta.input_price,
+          meta.output_price,
+          nowIso,
+          nowIso,
+        )
+        .first<{ id: number }>();
+      return rr;
+    });
   if (r?.id) return r.id;
   // Fallback for D1 without RETURNING support (older) — select
-  const fetched = await db.prepare("SELECT id FROM models WHERE provider_id=? AND provider_model_id=?").bind(providerId, meta.provider_model_id).first<{ id: number }>();
+  const fetched = await db
+    .prepare(
+      "SELECT id FROM models WHERE provider_id=? AND provider_model_id=?",
+    )
+    .bind(providerId, meta.provider_model_id)
+    .first<{ id: number }>();
   return fetched!.id;
 }
 
-export async function upsertModelsBatch(db: D1Database, providerId: number, metas: ModelMetadata[], nowIso: string): Promise<number[]> {
+export async function upsertModelsBatch(
+  db: D1Database,
+  providerId: number,
+  metas: ModelMetadata[],
+  nowIso: string,
+): Promise<number[]> {
   if (metas.length === 0) return [];
   // Batch UPSERT via single roundtrip per chunk (max 50 to stay under D1 limits)
+  // Preserve benchmark_enabled on conflict so admin toggle is not overwritten by discovery
+  let providerName: string | null = null;
+  try {
+    const prov = await db
+      .prepare("SELECT name FROM providers WHERE id=?")
+      .bind(providerId)
+      .first<{ name: string }>();
+    providerName = prov?.name ?? null;
+  } catch (e) {
+    console.warn("provider lookup failed for batch", e);
+  }
   const CHUNK = 50;
   const ids: number[] = [];
   for (let i = 0; i < metas.length; i += CHUNK) {
     const chunk = metas.slice(i, i + CHUNK);
     const stmts = chunk.map((meta) => {
       const capsJson = JSON.stringify(meta.capabilities);
-      return db
-        .prepare(
-          `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
-           ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
-             name=excluded.name, display_name=excluded.display_name, is_free=excluded.is_free, free_status=excluded.free_status,
-             context_length=excluded.context_length, capabilities=excluded.capabilities, input_price=excluded.input_price, output_price=excluded.output_price,
-             last_seen=excluded.last_seen, active=1`,
-        )
-        .bind(providerId, meta.provider_model_id, meta.display_name, meta.display_name, meta.is_free ? 1 : 0, meta.free_status, meta.context_length, capsJson, meta.input_price, meta.output_price, nowIso, nowIso);
+      let defaultEnabled = meta.is_free ? 1 : 0;
+      if (providerName && DISABLED_PROVIDER_DEFAULT.has(providerName))
+        defaultEnabled = 0;
+      if (
+        providerName === "groq" &&
+        meta.provider_model_id.startsWith("whisper")
+      )
+        defaultEnabled = 0;
+      // Try with benchmark_enabled; fallback without if column missing
+      try {
+        return db
+          .prepare(
+            `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active, benchmark_enabled)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+             ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
+               name=excluded.name, display_name=excluded.display_name, is_free=excluded.is_free, free_status=excluded.free_status,
+               context_length=excluded.context_length, capabilities=excluded.capabilities, input_price=excluded.input_price, output_price=excluded.output_price,
+               last_seen=excluded.last_seen, active=1`,
+          )
+          .bind(
+            providerId,
+            meta.provider_model_id,
+            meta.display_name,
+            meta.display_name,
+            meta.is_free ? 1 : 0,
+            meta.free_status,
+            meta.context_length,
+            capsJson,
+            meta.input_price,
+            meta.output_price,
+            nowIso,
+            nowIso,
+            defaultEnabled,
+          );
+      } catch {
+        return db
+          .prepare(
+            `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
+             ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
+               name=excluded.name, display_name=excluded.display_name, is_free=excluded.is_free, free_status=excluded.free_status,
+               context_length=excluded.context_length, capabilities=excluded.capabilities, input_price=excluded.input_price, output_price=excluded.output_price,
+               last_seen=excluded.last_seen, active=1`,
+          )
+          .bind(
+            providerId,
+            meta.provider_model_id,
+            meta.display_name,
+            meta.display_name,
+            meta.is_free ? 1 : 0,
+            meta.free_status,
+            meta.context_length,
+            capsJson,
+            meta.input_price,
+            meta.output_price,
+            nowIso,
+            nowIso,
+          );
+      }
     });
-    await db.batch(stmts);
+    // Execute with fallback for missing column: try batch with column, on error retry without
+    try {
+      await db.batch(stmts);
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("benchmark_enabled") || msg.includes("no such column")) {
+        const fallbackStmts = chunk.map((meta) => {
+          const capsJson = JSON.stringify(meta.capabilities);
+          return db
+            .prepare(
+              `INSERT INTO models (provider_id, provider_model_id, name, display_name, is_free, free_status, context_length, capabilities, input_price, output_price, first_seen, last_seen, active)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
+             ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
+               name=excluded.name, display_name=excluded.display_name, is_free=excluded.is_free, free_status=excluded.free_status,
+               context_length=excluded.context_length, capabilities=excluded.capabilities, input_price=excluded.input_price, output_price=excluded.output_price,
+               last_seen=excluded.last_seen, active=1`,
+            )
+            .bind(
+              providerId,
+              meta.provider_model_id,
+              meta.display_name,
+              meta.display_name,
+              meta.is_free ? 1 : 0,
+              meta.free_status,
+              meta.context_length,
+              capsJson,
+              meta.input_price,
+              meta.output_price,
+              nowIso,
+              nowIso,
+            );
+        });
+        await db.batch(fallbackStmts);
+      } else throw e;
+    }
     // fetch ids for this chunk
     const placeholders = chunk.map(() => "?").join(",");
     const idsChunk = chunk.map((m) => m.provider_model_id);
-    const rows = await db.prepare(`SELECT id, provider_model_id FROM models WHERE provider_id=? AND provider_model_id IN (${placeholders})`).bind(providerId, ...idsChunk).all<{ id: number; provider_model_id: string }>();
+    const rows = await db
+      .prepare(
+        `SELECT id, provider_model_id FROM models WHERE provider_id=? AND provider_model_id IN (${placeholders})`,
+      )
+      .bind(providerId, ...idsChunk)
+      .all<{ id: number; provider_model_id: string }>();
     const map = new Map<string, number>();
-    for (const r of (rows.results ?? [])) map.set(r.provider_model_id, r.id);
+    for (const r of rows.results ?? []) map.set(r.provider_model_id, r.id);
     for (const m of chunk) ids.push(map.get(m.provider_model_id)!);
   }
   return ids;
 }
 
-export async function markMissingInactive(db: D1Database, providerId: number, seenIds: Set<string>, nowIso: string) {
+export async function markMissingInactive(
+  db: D1Database,
+  providerId: number,
+  seenIds: Set<string>,
+  nowIso: string,
+) {
   if (seenIds.size === 0) {
     // No models discovered for this provider — deactivate all active as PREVIOUSLY_FREE where applicable
-    await db.prepare(`UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1`).bind(nowIso, providerId).run();
+    await db
+      .prepare(
+        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1`,
+      )
+      .bind(nowIso, providerId)
+      .run();
     return;
   }
   // Single-statement bulk deactivate — no N+1 loop, no per-row fetch
-  const placeholders = Array.from(seenIds).map(() => "?").join(",");
+  const placeholders = Array.from(seenIds)
+    .map(() => "?")
+    .join(",");
   const ids = Array.from(seenIds);
   await db
     .prepare(
@@ -111,7 +322,11 @@ export async function markMissingInactive(db: D1Database, providerId: number, se
     .run();
 }
 
-export async function insertBenchmarkRun(db: D1Database, modelId: number, r: BenchmarkResult): Promise<number> {
+export async function insertBenchmarkRun(
+  db: D1Database,
+  modelId: number,
+  r: BenchmarkResult,
+): Promise<number> {
   const ins = await db
     .prepare(
       `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -138,15 +353,29 @@ export async function insertBenchmarkRun(db: D1Database, modelId: number, r: Ben
   return ins.meta.last_row_id as number;
 }
 
-export function parseRange(range: string): { hours: number; sinceIso: string } | null {
-  const map: Record<string, number> = { "1h": 1, "24h": 24, "3d": 72, "7d": 168 };
+export function parseRange(
+  range: string,
+): { hours: number; sinceIso: string } | null {
+  const map: Record<string, number> = {
+    "1h": 1,
+    "24h": 24,
+    "3d": 72,
+    "7d": 168,
+  };
   const h = map[range];
   if (!h) return null;
   const since = new Date(Date.now() - h * 3600 * 1000).toISOString();
   return { hours: h, sinceIso: since };
 }
 
-export async function getModels(db: D1Database, opts: { provider?: string; freeOnly?: boolean; includeInactive?: boolean } = {}) {
+export async function getModels(
+  db: D1Database,
+  opts: {
+    provider?: string;
+    freeOnly?: boolean;
+    includeInactive?: boolean;
+  } = {},
+) {
   let sql = `SELECT m.*, p.name as provider_name FROM models m JOIN providers p ON p.id=m.provider_id`;
   const conds: string[] = [];
   const binds: unknown[] = [];
@@ -168,9 +397,14 @@ export async function getModels(db: D1Database, opts: { provider?: string; freeO
     .all();
 }
 
-export async function computeHourlyAggregates(db: D1Database, forHourStart: string) {
+export async function computeHourlyAggregates(
+  db: D1Database,
+  forHourStart: string,
+) {
   const hourStart = forHourStart;
-  const hourEnd = new Date(new Date(hourStart).getTime() + 3600 * 1000).toISOString();
+  const hourEnd = new Date(
+    new Date(hourStart).getTime() + 3600 * 1000,
+  ).toISOString();
   const rows = await db
     .prepare(
       `SELECT model_id, benchmark_type,
@@ -183,18 +417,35 @@ export async function computeHourlyAggregates(db: D1Database, forHourStart: stri
      GROUP BY model_id, benchmark_type`,
     )
     .bind(hourStart, hourEnd)
-    .all<{ model_id: number; benchmark_type: BenchmarkType; tpss: string | null; ttfts: string | null; cnt: number; success: number }>();
+    .all<{
+      model_id: number;
+      benchmark_type: BenchmarkType;
+      tpss: string | null;
+      ttfts: string | null;
+      cnt: number;
+      success: number;
+    }>();
 
   if (!rows.results || rows.results.length === 0) return;
   const stmts: ReturnType<D1Database["prepare"]>[] = [];
   for (const r of rows.results ?? []) {
-    const tpss = (r.tpss ?? "").split(",").map(Number).filter((n) => !isNaN(n) && n > 0);
-    const ttfts = (r.ttfts ?? "").split(",").map(Number).filter((n) => !isNaN(n) && n > 0);
-    const avg_tps = tpss.length ? tpss.reduce((a, b) => a + b, 0) / tpss.length : null;
+    const tpss = (r.tpss ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
+    const ttfts = (r.ttfts ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
+    const avg_tps = tpss.length
+      ? tpss.reduce((a, b) => a + b, 0) / tpss.length
+      : null;
     const median_tps = percentile(tpss, 50);
     const p90_tps = percentile(tpss, 90);
     const p95_tps = percentile(tpss, 95);
-    const avg_ttft = ttfts.length ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length : null;
+    const avg_ttft = ttfts.length
+      ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length
+      : null;
     const median_ttft = percentile(ttfts, 50);
     const p90_ttft = percentile(ttfts, 90);
     const p95_ttft = percentile(ttfts, 95);
@@ -205,7 +456,23 @@ export async function computeHourlyAggregates(db: D1Database, forHourStart: stri
         .prepare(
           `INSERT OR REPLACE INTO hourly_model_stats (model_id, hour_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
-        .bind(r.model_id, hourStart, r.benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, success_rate, 1 - success_rate, uptime, r.cnt),
+        .bind(
+          r.model_id,
+          hourStart,
+          r.benchmark_type,
+          avg_tps,
+          median_tps,
+          p90_tps,
+          p95_tps,
+          avg_ttft,
+          median_ttft,
+          p90_ttft,
+          p95_ttft,
+          success_rate,
+          1 - success_rate,
+          uptime,
+          r.cnt,
+        ),
     );
   }
   // Single batch write — one roundtrip, atomic per hour
@@ -222,9 +489,20 @@ function percentile(vals: number[], p: number): number | null {
   return s[Math.max(0, Math.min(idx, s.length - 1))] ?? null;
 }
 
-export async function cleanupRetention(db: D1Database, rawDays = 7, hourlyDays = 30) {
+export async function cleanupRetention(
+  db: D1Database,
+  rawDays = 7,
+  hourlyDays = 30,
+) {
   const rawCut = new Date(Date.now() - rawDays * 86400 * 1000).toISOString();
-  const hourlyCut = new Date(Date.now() - hourlyDays * 86400 * 1000).toISOString();
+  const hourlyCut = new Date(
+    Date.now() - hourlyDays * 86400 * 1000,
+  ).toISOString();
   // Batch deletes in one roundtrip — reduces I/O from 2 to 1
-  await db.batch([db.prepare("DELETE FROM benchmark_runs WHERE started_at < ?").bind(rawCut), db.prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?").bind(hourlyCut)]);
+  await db.batch([
+    db.prepare("DELETE FROM benchmark_runs WHERE started_at < ?").bind(rawCut),
+    db
+      .prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?")
+      .bind(hourlyCut),
+  ]);
 }

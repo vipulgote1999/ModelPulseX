@@ -102,14 +102,30 @@ export async function scheduleBenchmarks(
 
   // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
   // LEFT JOIN gives last_benchmark; ORDER BY ASC NULLS FIRST (never-benchmarked first).
-  const active = await env.DB.prepare(
-    `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
-     FROM models m JOIN providers p ON p.id=m.provider_id
-     LEFT JOIN benchmark_runs br ON br.model_id=m.id
-     WHERE m.active=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
-     GROUP BY m.id
-     ORDER BY last_benchmark ASC, p.name, m.display_name`,
-  ).all<SelectableModel>();
+  // Respects admin per-model toggle: benchmark_enabled=1 (keep all models stored, disabled ones skip queue)
+  let active: { results?: SelectableModel[] };
+  try {
+    active = await env.DB.prepare(
+      `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
+       FROM models m JOIN providers p ON p.id=m.provider_id
+       LEFT JOIN benchmark_runs br ON br.model_id=m.id
+       WHERE m.active=1 AND COALESCE(m.benchmark_enabled,1)=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
+       GROUP BY m.id
+       ORDER BY last_benchmark ASC, p.name, m.display_name`,
+    ).all<SelectableModel>();
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("benchmark_enabled") || msg.includes("no such column")) {
+      active = await env.DB.prepare(
+        `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
+         FROM models m JOIN providers p ON p.id=m.provider_id
+         LEFT JOIN benchmark_runs br ON br.model_id=m.id
+         WHERE m.active=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
+         GROUP BY m.id
+         ORDER BY last_benchmark ASC, p.name, m.display_name`,
+      ).all<SelectableModel>();
+    } else throw e;
+  }
 
   // Prefetch cooldowns and RPM usage in parallel — tolerant to missing tables pre-migration.
   // NOTE: cutoff MUST be a JS-computed ISO string. SQLite datetime('now','-60 seconds')
