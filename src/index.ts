@@ -74,13 +74,22 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     // ScheduledController exposes `cron` natively at this compatibility_date.
     const cron = controller.cron;
-    // */5 * * * *  → benchmark scheduler (+ inline fallback)
-    // 0 * * * *    → discovery + aggregation + cleanup + staleness watchdog
+    // */5 * * * *   → benchmark scheduler (+ inline fallback)
+    // */30 * * * *  → frequent discovery (free-model refresh, discontinued → inactive)
+    // 0 * * * *     → hourly discovery + aggregation + cleanup + staleness watchdog
     if (cron === "*/5 * * * *") {
       // Inline fallback: run the first N selected jobs inside this invocation. Guarantees
       // baseline coverage even when queue delivery stalls; queue carries the rest.
       const inlineTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
       await scheduleBenchmarks(env, { inlineTake: Number.isFinite(inlineTake) ? inlineTake : 6 });
+    } else if (cron === "*/30 * * * *") {
+      // frequent refresh — keeps model list fresh (discontinued → PREVIOUSLY_FREE/inactive) without waiting an hour
+      try {
+        await runDiscovery(env);
+        await recordHourlyJob(env.DB, "discovery");
+      } catch (e) {
+        console.error("frequent discovery failed", e);
+      }
     } else if (cron === "0 * * * *") {
       // hourly
       try {

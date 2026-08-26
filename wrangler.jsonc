@@ -25,7 +25,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PerformanceDO"] }],
   "triggers": {
-    "crons": ["*/5 * * * *", "0 * * * *"]
+    "crons": ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
   },
   "observability": { "enabled": true },
   "vars": {

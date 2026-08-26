@@ -91,7 +91,8 @@ export async function upsertModel(
          input_price=excluded.input_price,
          output_price=excluded.output_price,
          last_seen=excluded.last_seen,
-         active=1
+         active=1,
+         benchmark_enabled=CASE WHEN excluded.is_free=0 THEN 0 ELSE models.benchmark_enabled END
        RETURNING id`,
     )
     .bind(
@@ -199,7 +200,8 @@ export async function upsertModelsBatch(
              ON CONFLICT(provider_id, provider_model_id) DO UPDATE SET
                name=excluded.name, display_name=excluded.display_name, is_free=excluded.is_free, free_status=excluded.free_status,
                context_length=excluded.context_length, capabilities=excluded.capabilities, input_price=excluded.input_price, output_price=excluded.output_price,
-               last_seen=excluded.last_seen, active=1`,
+               last_seen=excluded.last_seen, active=1,
+               benchmark_enabled=CASE WHEN excluded.is_free=0 THEN 0 ELSE models.benchmark_enabled END`,
           )
           .bind(
             providerId,
