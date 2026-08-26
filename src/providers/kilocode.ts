@@ -6,8 +6,8 @@ import type {
     ModelMetadata,
 } from "../types";
 import { measureBenchmark } from "../benchmark/engine";
-const MODELS_URL = "https://api.aimlapi.com/v1/models";
-const CHAT_URL = "https://api.aimlapi.com/v1/chat/completions";
+const MODELS_URL = "https://api.kilo.ai/api/gateway/models";
+const CHAT_URL = "https://api.kilo.ai/api/gateway/chat/completions";
 const FALLBACK = [
     {
         id: "inclusionai/ling-3.0-flash:free",
@@ -26,7 +26,12 @@ const FALLBACK = [
     },
 ];
 function isFreeKilo(id: string) {
-    return id.endsWith(":free") || id.endsWith("-free");
+    const lower = id.toLowerCase().trim();
+    return (
+        lower.endsWith(":free") ||
+        lower.endsWith("-free") ||
+        lower.endsWith("/free")
+    );
 }
 function toMeta(id: string): ModelMetadata {
     const isFree = isFreeKilo(id);
@@ -58,7 +63,10 @@ export class KiloCodeProvider implements LLMProvider {
             const j = (await r.json()) as { data?: Array<{ id: string }> };
             const ids = (j.data ?? []).map((m) => m.id).filter(Boolean);
             if (!ids.length) return this.fallback();
-            return ids.map(toMeta);
+            // Only free variants: must end with -free / :free / /free (case-insensitive) per gateway spec
+            const freeIds = ids.filter(isFreeKilo);
+            if (freeIds.length === 0) return this.fallback();
+            return freeIds.map(toMeta);
         } catch {
             return this.fallback();
         }

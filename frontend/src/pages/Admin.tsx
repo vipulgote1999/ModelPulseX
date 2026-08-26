@@ -16,6 +16,15 @@ type AdminModel = {
   context_length: number | null;
 };
 
+type ProviderEndpoint = {
+  name: string;
+  baseUrl: string;
+  modelsUrl: string;
+  chatUrl: string;
+  enabled?: number;
+  type?: string;
+};
+
 const STORAGE_KEY = "modelpulsex_admin_token";
 
 function authHeader(): Record<string, string> {
@@ -43,6 +52,10 @@ export default function Admin() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [providerEndpoints, setProviderEndpoints] = useState<
+    Record<string, ProviderEndpoint>
+  >({});
+  const [showEndpoints, setShowEndpoints] = useState(true);
 
   const fetchModels = async (tok = token) => {
     if (!tok) return;
@@ -67,6 +80,30 @@ export default function Admin() {
       setLoading(false);
     }
   };
+
+  const fetchProviderEndpoints = async () => {
+    try {
+      const res = await fetch("/api/providers");
+      if (!res.ok) return;
+      const j = (await res.json()) as {
+        providers: ProviderEndpoint[];
+        registry: ProviderEndpoint[];
+      };
+      const map: Record<string, ProviderEndpoint> = {};
+      for (const p of j.registry ?? []) map[p.name] = p;
+      for (const p of j.providers ?? []) {
+        if (p.baseUrl)
+          map[p.name] = { ...(map[p.name] ?? p), ...p } as ProviderEndpoint;
+      }
+      setProviderEndpoints(map);
+    } catch (e) {
+      console.warn("fetch provider endpoints failed", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchProviderEndpoints();
+  }, []);
 
   useEffect(() => {
     if (token) fetchModels(token);
@@ -196,8 +233,10 @@ export default function Admin() {
 
   const providers = useMemo(() => {
     const s = new Set(models.map((m) => m.provider_name));
+    // ensure registry providers also appear even before discovery
+    for (const k of Object.keys(providerEndpoints)) s.add(k);
     return Array.from(s).sort();
-  }, [models]);
+  }, [models, providerEndpoints]);
 
   const filtered = useMemo(() => {
     let r = models;
@@ -333,6 +372,102 @@ export default function Admin() {
             Logout
           </button>
         </div>
+      </div>
+
+      {/* provider base URLs */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden">
+        <button
+          onClick={() => setShowEndpoints((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-900/50 text-left"
+        >
+          <div>
+            <div className="text-sm font-semibold text-zinc-100">
+              Provider Base URLs
+            </div>
+            <div className="text-xs text-zinc-500">
+              Base, models and chat completions endpoints per provider (from
+              registry). Click to copy.
+            </div>
+          </div>
+          <span className="text-xs border border-zinc-700 rounded-md px-2 py-1 bg-zinc-950 text-zinc-300">
+            {showEndpoints ? "Hide" : "Show"} ·{" "}
+            {Object.keys(providerEndpoints).length} providers
+          </span>
+        </button>
+        {showEndpoints && (
+          <div className="border-t border-zinc-800 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-zinc-950/60 text-[11px] tracking-widest uppercase text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Provider</th>
+                  <th className="px-3 py-2 text-left">Base URL</th>
+                  <th className="px-3 py-2 text-left">Models URL</th>
+                  <th className="px-3 py-2 text-left">Chat URL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60">
+                {Object.values(providerEndpoints)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((p) => (
+                    <tr key={p.name} className="hover:bg-zinc-900/30">
+                      <td className="px-3 py-2 font-mono text-zinc-200">
+                        {p.name}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(p.baseUrl);
+                            setToast(`Copied ${p.name} base URL`);
+                            setTimeout(() => setToast(null), 1500);
+                          }}
+                          title={p.baseUrl}
+                          className="font-mono text-[11px] text-violet-300 hover:text-violet-200 underline decoration-dotted truncate max-w-[28ch] text-left"
+                        >
+                          {p.baseUrl}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(p.modelsUrl);
+                            setToast(`Copied ${p.name} models URL`);
+                            setTimeout(() => setToast(null), 1500);
+                          }}
+                          title={p.modelsUrl}
+                          className="font-mono text-[11px] text-zinc-400 hover:text-zinc-200 truncate max-w-[32ch] text-left"
+                        >
+                          {p.modelsUrl}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(p.chatUrl);
+                            setToast(`Copied ${p.name} chat URL`);
+                            setTimeout(() => setToast(null), 1500);
+                          }}
+                          title={p.chatUrl}
+                          className="font-mono text-[11px] text-zinc-400 hover:text-zinc-200 truncate max-w-[32ch] text-left"
+                        >
+                          {p.chatUrl}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                {Object.keys(providerEndpoints).length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-3 py-6 text-center text-zinc-500"
+                    >
+                      No provider endpoints — is API reachable?
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* stats */}
@@ -493,7 +628,7 @@ export default function Admin() {
                     }
                   />
                 </th>
-                <th className="px-3 py-2.5 text-left">Provider</th>
+                <th className="px-3 py-2.5 text-left">Provider / Base URL</th>
                 <th className="px-3 py-2.5 text-left">Model</th>
                 <th className="px-3 py-2.5 text-left">Display name</th>
                 <th className="px-3 py-2.5 text-left">Free</th>
@@ -526,8 +661,25 @@ export default function Admin() {
                         }
                       />
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-zinc-300">
-                      {m.provider_name}
+                    <td className="px-3 py-2">
+                      <div className="font-mono text-xs text-zinc-300">
+                        {m.provider_name}
+                      </div>
+                      {providerEndpoints[m.provider_name]?.baseUrl && (
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(
+                              providerEndpoints[m.provider_name].baseUrl,
+                            );
+                            setToast(`Copied ${m.provider_name} base URL`);
+                            setTimeout(() => setToast(null), 1200);
+                          }}
+                          title={`${providerEndpoints[m.provider_name].baseUrl} (click to copy)`}
+                          className="font-mono text-[10px] text-zinc-500 hover:text-violet-300 truncate max-w-[26ch] text-left block underline decoration-dotted"
+                        >
+                          {providerEndpoints[m.provider_name].baseUrl}
+                        </button>
+                      )}
                     </td>
                     <td
                       className="px-3 py-2 font-mono text-xs text-zinc-400 max-w-[28ch] truncate"

@@ -8,6 +8,7 @@ import {
 } from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
 import { runDiscovery } from "../benchmark/scheduler";
+import { PROVIDER_ENDPOINTS, PROVIDER_REGISTRY } from "../providers/registry";
 import {
   getActiveCooldowns,
   clearProviderCooldown,
@@ -78,7 +79,27 @@ export function createApi(env: Env) {
     const rows = await env.DB.prepare(
       "SELECT * FROM providers ORDER BY name",
     ).all();
-    return c.json({ providers: rows.results });
+    const enriched = (rows.results ?? []).map((r: unknown) => {
+      const row = r as Record<string, unknown>;
+      const name = String(row["name"] ?? "");
+      const ep = PROVIDER_ENDPOINTS[name];
+      return ep
+        ? {
+            ...row,
+            baseUrl: ep.baseUrl,
+            modelsUrl: ep.modelsUrl,
+            chatUrl: ep.chatUrl,
+          }
+        : row;
+    });
+    // Also expose registry endpoints for admin so missing/undiscovered providers still appear with URLs
+    const registryEndpoints = PROVIDER_REGISTRY.map((d) => ({
+      name: d.name,
+      baseUrl: d.baseUrl,
+      modelsUrl: d.modelsUrl,
+      chatUrl: d.chatUrl,
+    }));
+    return c.json({ providers: enriched, registry: registryEndpoints });
   });
 
   app.get("/api/models", async (c) => {

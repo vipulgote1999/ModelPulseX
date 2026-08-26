@@ -11,3 +11,4 @@ allure-results/
 # local artifacts (not for commit)
 .codegraph/
 performance_report/
+dump/
