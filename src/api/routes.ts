@@ -1,10 +1,19 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { BenchmarkType, Env, LeaderboardRow } from "../types";
-import { parseRange, computeHourlyAggregates, cleanupRetention } from "../db/queries";
+import {
+  parseRange,
+  computeHourlyAggregates,
+  cleanupRetention,
+} from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
 import { runDiscovery } from "../benchmark/scheduler";
-import { getActiveCooldowns, clearProviderCooldown, clearModelCooldown, clearAllCooldownsForProvider } from "../db/cooldown";
+import {
+  getActiveCooldowns,
+  clearProviderCooldown,
+  clearModelCooldown,
+  clearAllCooldownsForProvider,
+} from "../db/cooldown";
 import { getSchedulerHealth, getLastBenchmarkAt } from "../db/health";
 import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
 import { freeHardFilterWhere } from "../providers/registry";
@@ -12,7 +21,8 @@ import { freeHardFilterWhere } from "../providers/registry";
 /** ISO cutoff for time-window SQL — SQLite datetime('now',…) emits space-separated
  *  timestamps that string-compare BELOW ISO-'T' columns, silently widening every window
  *  to "since UTC midnight". Always compute cutoffs in JS and bind them instead. */
-const isoHoursAgo = (h: number): string => new Date(Date.now() - h * 3600_000).toISOString();
+const isoHoursAgo = (h: number): string =>
+  new Date(Date.now() - h * 3600_000).toISOString();
 
 export function createApi(env: Env) {
   const app = new Hono<{ Bindings: Env }>();
@@ -20,15 +30,19 @@ export function createApi(env: Env) {
   // Origin allowlist (comma-separated env override) instead of "*": the dashboard is
   // same-origin so it needs no CORS at all, and a public read-only API must never send
   // Access-Control-Allow-Origin:* alongside credential-bearing admin endpoints.
-  const allowedOrigins = (env.CORS_ORIGIN ?? "https://modelpulsex.vipulgote5.workers.dev")
+  const allowedOrigins = (
+    env.CORS_ORIGIN ?? "https://modelpulsex.vipulgote5.workers.dev"
+  )
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  app.use(cors({
-    origin: allowedOrigins,
-    allowHeaders: ["content-type", "authorization"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
-  }));
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      allowHeaders: ["content-type", "authorization"],
+      allowMethods: ["GET", "POST", "OPTIONS"],
+    }),
+  );
 
   app.get("/api/health", async (c) => {
     const base = { ok: true, time: new Date().toISOString(), version: "0.1.0" };
@@ -38,24 +52,40 @@ export function createApi(env: Env) {
     const freshnessParam = c.req.query("freshness");
     if (freshnessParam === undefined) return c.json(base);
     const minutes = Math.max(1, Number(freshnessParam) || 15);
-    const [lastBench, sched] = await Promise.all([getLastBenchmarkAt(env.DB), getSchedulerHealth(env.DB)]);
-    const ageMinutes = lastBench ? Math.round((Date.now() - new Date(lastBench).getTime()) / 60000) : null;
+    const [lastBench, sched] = await Promise.all([
+      getLastBenchmarkAt(env.DB),
+      getSchedulerHealth(env.DB),
+    ]);
+    const ageMinutes = lastBench
+      ? Math.round((Date.now() - new Date(lastBench).getTime()) / 60000)
+      : null;
     const fresh = ageMinutes != null && ageMinutes <= minutes;
     return c.json(
-      { ...base, ok: fresh, fresh, freshness_threshold_minutes: minutes, last_benchmark: lastBench, age_minutes: ageMinutes, scheduler: sched },
+      {
+        ...base,
+        ok: fresh,
+        fresh,
+        freshness_threshold_minutes: minutes,
+        last_benchmark: lastBench,
+        age_minutes: ageMinutes,
+        scheduler: sched,
+      },
       fresh ? 200 : 503,
     );
   });
 
   app.get("/api/providers", async (c) => {
-    const rows = await env.DB.prepare("SELECT * FROM providers ORDER BY name").all();
+    const rows = await env.DB.prepare(
+      "SELECT * FROM providers ORDER BY name",
+    ).all();
     return c.json({ providers: rows.results });
   });
 
   app.get("/api/models", async (c) => {
     const provider = c.req.query("provider");
     const includeInactive = c.req.query("includeInactive") === "1";
-    let sql = "SELECT m.*, p.name as provider_name FROM models m JOIN providers p ON p.id=m.provider_id";
+    let sql =
+      "SELECT m.*, p.name as provider_name FROM models m JOIN providers p ON p.id=m.provider_id";
     const conds: string[] = [];
     const binds: unknown[] = [];
     if (provider) {
@@ -71,7 +101,9 @@ export function createApi(env: Env) {
     if (modelHardFilter) conds.push(modelHardFilter.replace(/^ AND /, ""));
     if (conds.length) sql += " WHERE " + conds.join(" AND ");
     sql += " ORDER BY m.free_status DESC, m.last_seen DESC";
-    const rows = await env.DB.prepare(sql).bind(...binds).all();
+    const rows = await env.DB.prepare(sql)
+      .bind(...binds)
+      .all();
     return c.json({ models: rows.results, count: rows.results?.length ?? 0 });
   });
 
@@ -102,9 +134,23 @@ export function createApi(env: Env) {
        ORDER BY m.display_name`,
     )
       .bind(...modelBinds)
-      .all<{ id: number; provider_model_id: string; display_name: string; free_status: string; active: number; provider: string }>();
+      .all<{
+        id: number;
+        provider_model_id: string;
+        display_name: string;
+        free_status: string;
+        active: number;
+        provider: string;
+      }>();
 
-    const models = (modelsRes.results ?? []) as Array<{ id: number; provider_model_id: string; display_name: string; free_status: string; active: number; provider: string }>;
+    const models = (modelsRes.results ?? []) as Array<{
+      id: number;
+      provider_model_id: string;
+      display_name: string;
+      free_status: string;
+      active: number;
+      provider: string;
+    }>;
 
     // early empty fast path — single combined meta query (reduces I/O from 4 to 1 roundtrip)
     if (models.length === 0) {
@@ -113,8 +159,18 @@ export function createApi(env: Env) {
                 (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,
                 (SELECT max(last_seen) FROM models) as last_discovery,
                 (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`,
-      ).bind(isoHoursAgo(24)).first<{ last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number }>();
-      const isStale = metaRow?.last_benchmark ? Date.now() - new Date(metaRow.last_benchmark).getTime() > 18 * 60 * 1000 : true;
+      )
+        .bind(isoHoursAgo(24))
+        .first<{
+          last_benchmark: string | null;
+          last_aggregate: string | null;
+          last_discovery: string | null;
+          benchmarks_24h: number;
+        }>();
+      const isStale = metaRow?.last_benchmark
+        ? Date.now() - new Date(metaRow.last_benchmark).getTime() >
+          18 * 60 * 1000
+        : true;
       const resp = c.json({
         leaderboard: [],
         range,
@@ -126,18 +182,32 @@ export function createApi(env: Env) {
           last_aggregate: metaRow?.last_aggregate ?? null,
           last_discovery: metaRow?.last_discovery ?? null,
           is_stale: isStale,
-          stale_message: isStale ? `STALE DATA Last measurement: ${metaRow?.last_benchmark ?? "never"}` : null,
-          live: !isStale ? `● LIVE Data updated ${metaRow?.last_benchmark ? Math.round((Date.now() - new Date(metaRow.last_benchmark).getTime()) / 1000) + "s ago" : ""}` : null,
+          stale_message: isStale
+            ? `STALE DATA Last measurement: ${metaRow?.last_benchmark ?? "never"}`
+            : null,
+          live: !isStale
+            ? `● LIVE Data updated ${metaRow?.last_benchmark ? Math.round((Date.now() - new Date(metaRow.last_benchmark).getTime()) / 1000) + "s ago" : ""}`
+            : null,
           observed_window: since,
         },
-        summary: { free_models: 0, online_now: 0, best_tps: null, best_ttft: null, benchmarks_24h: metaRow?.benchmarks_24h ?? 0 },
+        summary: {
+          free_models: 0,
+          online_now: 0,
+          best_tps: null,
+          best_ttft: null,
+          benchmarks_24h: metaRow?.benchmarks_24h ?? 0,
+        },
       });
-      resp.headers.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");
+      resp.headers.set(
+        "Cache-Control",
+        "public, max-age=10, stale-while-revalidate=30",
+      );
       return resp;
     }
 
     const benchmarkFilter = benchmark !== "all" ? "AND benchmark_type=?" : "";
-    const benchmarkFilterHourly = benchmark !== "all" ? "AND benchmark_type=?" : "";
+    const benchmarkFilterHourly =
+      benchmark !== "all" ? "AND benchmark_type=?" : "";
     const benchmarkVal = benchmark !== "all" ? benchmark : null;
 
     const nowMs = Date.now();
@@ -198,56 +268,139 @@ export function createApi(env: Env) {
       GROUP BY model_id`;
 
     // For sparkline: when benchmark=all we average across types per hour for correctness
-    const sparkSql = benchmark === "all"
-      ? `SELECT model_id, AVG(median_tps) as v, hour_start FROM hourly_model_stats WHERE ${providerSubquery} AND hour_start >= ? GROUP BY model_id, hour_start ORDER BY model_id, hour_start ASC`
-      : `SELECT model_id, median_tps as v, hour_start FROM hourly_model_stats WHERE ${providerSubquery} AND hour_start >= ? ${benchmarkFilterHourly} ORDER BY model_id, hour_start ASC`;
+    const sparkSql =
+      benchmark === "all"
+        ? `SELECT model_id, AVG(median_tps) as v, hour_start FROM hourly_model_stats WHERE ${providerSubquery} AND hour_start >= ? GROUP BY model_id, hour_start ORDER BY model_id, hour_start ASC`
+        : `SELECT model_id, median_tps as v, hour_start FROM hourly_model_stats WHERE ${providerSubquery} AND hour_start >= ? ${benchmarkFilterHourly} ORDER BY model_id, hour_start ASC`;
 
     const metaSql = `SELECT (SELECT max(started_at) FROM benchmark_runs) as last_benchmark,
                             (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,
                             (SELECT max(last_seen) FROM models) as last_discovery,
                             (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`;
 
-    const lastRunBinds: unknown[] = [...providerBind, ...(benchmarkVal ? [benchmarkVal] : [])];
+    const lastRunBinds: unknown[] = [
+      ...providerBind,
+      ...(benchmarkVal ? [benchmarkVal] : []),
+    ];
     const hourlyBinds: unknown[] = [
       // cnt_1h, t_1h, tt_1h | cnt_24, t_24h, tt_24h, up_24 | cnt7h, t_7d, tt_7d, up_7, er_7
-      since1h, since1h, since1h, since24h, since24h, since24h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso,
+      since1h,
+      since1h,
+      since1h,
+      since24h,
+      since24h,
+      since24h,
+      since24h,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
       ...providerBind,
-      ...(benchmarkVal ? [benchmarkVal] as unknown[] : []),
+      ...(benchmarkVal ? ([benchmarkVal] as unknown[]) : []),
       since7dIso,
     ];
     // rawWindow binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
     //                  | gc_tps_7d, gc_ttft_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
     const rawWindowBinds: unknown[] = [
-      since1h, since1h, since1h, since24h, since24h, since24h, since7dIso, since7dIso, since7dIso, since7dIso, since7dIso, since24h,
+      since1h,
+      since1h,
+      since1h,
+      since24h,
+      since24h,
+      since24h,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since24h,
       ...providerBind,
       ...(benchmarkVal ? [benchmarkVal] : []),
     ];
-    const sparkBinds: unknown[] = [...providerBind, since24h, ...(benchmarkVal ? [benchmarkVal] : [])];
+    const sparkBinds: unknown[] = [
+      ...providerBind,
+      since24h,
+      ...(benchmarkVal ? [benchmarkVal] : []),
+    ];
 
     interface HourlyRow {
-      model_id: number; cnt_1h: number | null; t_1h: number | null; tt_1h: number | null;
-      cnt_24: number | null; t_24h: number | null; tt_24h: number | null; up_24: number | null;
-      cnt7h: number | null; t_7d: number | null; tt_7d: number | null; up_7: number | null; er_7: number | null;
+      model_id: number;
+      cnt_1h: number | null;
+      t_1h: number | null;
+      tt_1h: number | null;
+      cnt_24: number | null;
+      t_24h: number | null;
+      tt_24h: number | null;
+      up_24: number | null;
+      cnt7h: number | null;
+      t_7d: number | null;
+      tt_7d: number | null;
+      up_7: number | null;
+      er_7: number | null;
     }
     interface RawRow {
       model_id: number;
-      gc_tps_1h: string | null; gc_ttft_1h: string | null; cnt_1h: number | null;
-      gc_tps_24h: string | null; gc_ttft_24h: string | null; up_24h: number | null;
-      gc_tps_7d: string | null; gc_ttft_7d: string | null; up_7d: number | null; er_7d: number | null;
-      cnt7: number | null; cnt24: number | null; cnt_all: number | null;
+      gc_tps_1h: string | null;
+      gc_ttft_1h: string | null;
+      cnt_1h: number | null;
+      gc_tps_24h: string | null;
+      gc_ttft_24h: string | null;
+      up_24h: number | null;
+      gc_tps_7d: string | null;
+      gc_ttft_7d: string | null;
+      up_7d: number | null;
+      er_7d: number | null;
+      cnt7: number | null;
+      cnt24: number | null;
+      cnt_all: number | null;
     }
-    type MetaRow = { last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; benchmarks_24h: number };
+    type MetaRow = {
+      last_benchmark: string | null;
+      last_aggregate: string | null;
+      last_discovery: string | null;
+      benchmarks_24h: number;
+    };
 
-    const [lastRunsRes, hourlyRes, rawWindowRes, sparkRes, metaRes, schedHealth] = await Promise.all([
-      env.DB.prepare(lastRunSql).bind(...lastRunBinds).all<{ model_id: number; tps: number | null; ttft_ms: number | null; started_at: string; status: string }>(),
-      env.DB.prepare(hourlySql).bind(...hourlyBinds).all<HourlyRow>(),
-      env.DB.prepare(rawWindowSql).bind(...rawWindowBinds).all<RawRow>(),
-      env.DB.prepare(sparkSql).bind(...sparkBinds).all<{ model_id: number; v: number | null; hour_start: string }>(),
+    const [
+      lastRunsRes,
+      hourlyRes,
+      rawWindowRes,
+      sparkRes,
+      metaRes,
+      schedHealth,
+    ] = await Promise.all([
+      env.DB.prepare(lastRunSql)
+        .bind(...lastRunBinds)
+        .all<{
+          model_id: number;
+          tps: number | null;
+          ttft_ms: number | null;
+          started_at: string;
+          status: string;
+        }>(),
+      env.DB.prepare(hourlySql)
+        .bind(...hourlyBinds)
+        .all<HourlyRow>(),
+      env.DB.prepare(rawWindowSql)
+        .bind(...rawWindowBinds)
+        .all<RawRow>(),
+      env.DB.prepare(sparkSql)
+        .bind(...sparkBinds)
+        .all<{ model_id: number; v: number | null; hour_start: string }>(),
       env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
       getSchedulerHealth(env.DB),
     ]);
 
-    const lastMap = new Map<number, { tps: number | null; ttft_ms: number | null; started_at: string; status: string }>();
+    const lastMap = new Map<
+      number,
+      {
+        tps: number | null;
+        ttft_ms: number | null;
+        started_at: string;
+        status: string;
+      }
+    >();
     for (const r of lastRunsRes.results ?? []) lastMap.set(r.model_id, r);
 
     const hourlyMap = new Map<number, HourlyRow>();
@@ -268,10 +421,31 @@ export function createApi(env: Env) {
 
     // Median + minimum-sample gating: a window shows a number only when it has enough
     // samples to be trustworthy (prevents 1–2-sample spikes ranking #1).
-    const H0: HourlyRow = { model_id: 0, cnt_1h: null, t_1h: null, tt_1h: null, cnt_24: null, t_24h: null, tt_24h: null, up_24: null, cnt7h: null, t_7d: null, tt_7d: null, up_7: null, er_7: null };
-    const gatedMedian = (hourlyVal: number | null, hourlyCnt: number | null, rawGc: string | null, rawCnt: number | null, min: number): number | null => {
+    const H0: HourlyRow = {
+      model_id: 0,
+      cnt_1h: null,
+      t_1h: null,
+      tt_1h: null,
+      cnt_24: null,
+      t_24h: null,
+      tt_24h: null,
+      up_24: null,
+      cnt7h: null,
+      t_7d: null,
+      tt_7d: null,
+      up_7: null,
+      er_7: null,
+    };
+    const gatedMedian = (
+      hourlyVal: number | null,
+      hourlyCnt: number | null,
+      rawGc: string | null,
+      rawCnt: number | null,
+      min: number,
+    ): number | null => {
       if (hourlyVal != null && (hourlyCnt ?? 0) >= min) return hourlyVal;
-      if ((rawCnt ?? 0) >= min) return percentile(parseConcatNumbers(rawGc), 50);
+      if ((rawCnt ?? 0) >= min)
+        return percentile(parseConcatNumbers(rawGc), 50);
       return null;
     };
 
@@ -281,15 +455,53 @@ export function createApi(env: Env) {
       const h = hourlyMap.get(mm.id) ?? H0;
       const raw = rawMap.get(mm.id) ?? null;
 
-      const tps_1h = gatedMedian(h.t_1h, h.cnt_1h, raw?.gc_tps_1h ?? null, raw?.cnt_1h ?? null, MIN_SAMPLES.w1h);
-      const tps_24h = gatedMedian(h.t_24h, h.cnt_24, raw?.gc_tps_24h ?? null, raw?.cnt24 ?? null, MIN_SAMPLES.w24h);
-      const tps_7d = gatedMedian(h.t_7d, h.cnt7h, raw?.gc_tps_7d ?? null, raw?.cnt7 ?? null, MIN_SAMPLES.w7d);
-      const ttft_1h = gatedMedian(h.tt_1h, h.cnt_1h, raw?.gc_ttft_1h ?? null, raw?.cnt_1h ?? null, MIN_SAMPLES.w1h);
-      const ttft_24h = gatedMedian(h.tt_24h, h.cnt_24, raw?.gc_ttft_24h ?? null, raw?.cnt24 ?? null, MIN_SAMPLES.w24h);
-      const ttft_7d = gatedMedian(h.tt_7d, h.cnt7h, raw?.gc_ttft_7d ?? null, raw?.cnt7 ?? null, MIN_SAMPLES.w7d);
+      const tps_1h = gatedMedian(
+        h.t_1h,
+        h.cnt_1h,
+        raw?.gc_tps_1h ?? null,
+        raw?.cnt_1h ?? null,
+        MIN_SAMPLES.w1h,
+      );
+      const tps_24h = gatedMedian(
+        h.t_24h,
+        h.cnt_24,
+        raw?.gc_tps_24h ?? null,
+        raw?.cnt24 ?? null,
+        MIN_SAMPLES.w24h,
+      );
+      const tps_7d = gatedMedian(
+        h.t_7d,
+        h.cnt7h,
+        raw?.gc_tps_7d ?? null,
+        raw?.cnt7 ?? null,
+        MIN_SAMPLES.w7d,
+      );
+      const ttft_1h = gatedMedian(
+        h.tt_1h,
+        h.cnt_1h,
+        raw?.gc_ttft_1h ?? null,
+        raw?.cnt_1h ?? null,
+        MIN_SAMPLES.w1h,
+      );
+      const ttft_24h = gatedMedian(
+        h.tt_24h,
+        h.cnt_24,
+        raw?.gc_ttft_24h ?? null,
+        raw?.cnt24 ?? null,
+        MIN_SAMPLES.w24h,
+      );
+      const ttft_7d = gatedMedian(
+        h.tt_7d,
+        h.cnt7h,
+        raw?.gc_ttft_7d ?? null,
+        raw?.cnt7 ?? null,
+        MIN_SAMPLES.w7d,
+      );
       const samples7 = Math.max(h.cnt7h ?? 0, raw?.cnt7 ?? 0);
-      const uptime_7d: number | null = samples7 >= MIN_SAMPLES.w7d ? (h.up_7 ?? raw?.up_7d ?? null) : null;
-      const error_rate: number | null = samples7 >= MIN_SAMPLES.w7d ? (h.er_7 ?? raw?.er_7d ?? null) : null;
+      const uptime_7d: number | null =
+        samples7 >= MIN_SAMPLES.w7d ? (h.up_7 ?? raw?.up_7d ?? null) : null;
+      const error_rate: number | null =
+        samples7 >= MIN_SAMPLES.w7d ? (h.er_7 ?? raw?.er_7d ?? null) : null;
       const cnt7 = h.cnt7h ?? raw?.cnt7 ?? 0;
 
       const sparkline = sparkMap.get(mm.id) ?? [];
@@ -330,14 +542,21 @@ export function createApi(env: Env) {
 
     const scored = scoreLeaderboard(rows, profile);
     scored.sort((a, b) => {
-      if (sort === "tps") return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
-      if (sort === "ttft") return (a.ttft_7d ?? a.ttft_now ?? Infinity) - (b.ttft_7d ?? b.ttft_now ?? Infinity);
+      if (sort === "tps")
+        return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
+      if (sort === "ttft")
+        return (
+          (a.ttft_7d ?? a.ttft_now ?? Infinity) -
+          (b.ttft_7d ?? b.ttft_now ?? Infinity)
+        );
       if (sort === "uptime") return (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1);
       return (b.overall_score ?? -1) - (a.overall_score ?? -1);
     });
     scored.forEach((r, i) => (r.rank = i + 1));
 
-    const isStale = metaRes?.last_benchmark ? Date.now() - new Date(metaRes.last_benchmark).getTime() > 18 * 60 * 1000 : true;
+    const isStale = metaRes?.last_benchmark
+      ? Date.now() - new Date(metaRes.last_benchmark).getTime() > 18 * 60 * 1000
+      : true;
 
     const resp = c.json({
       leaderboard: scored,
@@ -350,20 +569,40 @@ export function createApi(env: Env) {
         last_aggregate: metaRes?.last_aggregate ?? null,
         last_discovery: metaRes?.last_discovery ?? null,
         is_stale: isStale,
-        stale_message: isStale ? `STALE DATA Last measurement: ${metaRes?.last_benchmark ?? "never"}` : null,
-      live: !isStale ? `● LIVE Data updated ${metaRes?.last_benchmark ? Math.round((Date.now() - new Date(metaRes.last_benchmark).getTime()) / 1000) + "s ago" : ""}` : null,
+        stale_message: isStale
+          ? `STALE DATA Last measurement: ${metaRes?.last_benchmark ?? "never"}`
+          : null,
+        live: !isStale
+          ? `● LIVE Data updated ${metaRes?.last_benchmark ? Math.round((Date.now() - new Date(metaRes.last_benchmark).getTime()) / 1000) + "s ago" : ""}`
+          : null,
         observed_window: since,
         scheduler: schedHealth,
       },
       summary: {
         free_models: scored.filter((r) => r.free_status === "FREE").length,
-        online_now: scored.filter((r) => r.status === "SUCCESS" && r.last_test && Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000).length,
-        best_tps: scored.filter((r) => r.tps_now != null).sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
-        best_ttft: scored.filter((r) => r.ttft_now != null).sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0] ?? null,
+        online_now: scored.filter(
+          (r) =>
+            r.status === "SUCCESS" &&
+            r.last_test &&
+            Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000,
+        ).length,
+        best_tps:
+          scored
+            .filter((r) => r.tps_now != null)
+            .sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
+        best_ttft:
+          scored
+            .filter((r) => r.ttft_now != null)
+            .sort(
+              (a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity),
+            )[0] ?? null,
         benchmarks_24h: metaRes?.benchmarks_24h ?? 0,
       },
     });
-    resp.headers.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");
+    resp.headers.set(
+      "Cache-Control",
+      "public, max-age=10, stale-while-revalidate=30",
+    );
     resp.headers.set("Vary", "Accept-Encoding");
     return resp;
   });
@@ -376,8 +615,13 @@ export function createApi(env: Env) {
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
-    const ids = idsParam.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0).slice(0, 12);
-    if (ids.length === 0) return c.json({ error: "ids required, e.g. ?ids=1,2,3" }, 400);
+    const ids = idsParam
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .slice(0, 12);
+    if (ids.length === 0)
+      return c.json({ error: "ids required, e.g. ?ids=1,2,3" }, 400);
     const placeholders = ids.map(() => "?").join(",");
     let sql: string;
     let binds: unknown[];
@@ -389,10 +633,14 @@ export function createApi(env: Env) {
       sql = `SELECT model_id, hour_start, benchmark_type, avg_tps, median_tps, p90_tps, avg_ttft, median_ttft, p90_ttft, success_rate, uptime, request_count FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= ? AND benchmark_type=? ORDER BY model_id, hour_start ASC`;
       binds = [...ids, since, benchmark];
     }
-    const rows = await env.DB.prepare(sql).bind(...binds).all();
+    const rows = await env.DB.prepare(sql)
+      .bind(...binds)
+      .all();
     const byModel: Record<number, unknown[]> = {};
     for (const id of ids) byModel[id] = [];
-    for (const r of (rows.results ?? []) as Array<{ model_id: number } & Record<string, unknown>>) {
+    for (const r of (rows.results ?? []) as Array<
+      { model_id: number } & Record<string, unknown>
+    >) {
       (byModel[r.model_id] ??= []).push(r);
     }
     const emptyIds = ids.filter((id) => (byModel[id] ?? []).length === 0);
@@ -400,20 +648,36 @@ export function createApi(env: Env) {
       const ph2 = emptyIds.map(() => "?").join(",");
       let rawSql = `SELECT model_id, started_at as hour_start, benchmark_type, tps as avg_tps, tps as median_tps, ttft_ms as avg_ttft, ttft_ms as median_ttft, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as uptime, 1 as request_count, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as success_rate FROM benchmark_runs WHERE model_id IN (${ph2}) AND started_at >= ?`;
       const rawBinds: unknown[] = [...emptyIds, since];
-      if (benchmark !== "all") { rawSql += " AND benchmark_type=?"; rawBinds.push(benchmark); }
+      if (benchmark !== "all") {
+        rawSql += " AND benchmark_type=?";
+        rawBinds.push(benchmark);
+      }
       rawSql += " ORDER BY model_id, started_at ASC LIMIT 200";
-      const raw = await env.DB.prepare(rawSql).bind(...rawBinds).all();
-      for (const r of (raw.results ?? []) as Array<{ model_id: number } & Record<string, unknown>>) {
+      const raw = await env.DB.prepare(rawSql)
+        .bind(...rawBinds)
+        .all();
+      for (const r of (raw.results ?? []) as Array<
+        { model_id: number } & Record<string, unknown>
+      >) {
         (byModel[r.model_id] ??= []).push(r);
       }
     }
-    return c.json({ history: byModel, range, benchmark, meta: { observed_window: since } });
+    return c.json({
+      history: byModel,
+      range,
+      benchmark,
+      meta: { observed_window: since },
+    });
   });
 
   app.get("/api/models/:id", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isFinite(id)) return c.json({ error: "invalid id" }, 400);
-    const row = await env.DB.prepare("SELECT m.*, p.name as provider_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?").bind(id).first();
+    const row = await env.DB.prepare(
+      "SELECT m.*, p.name as provider_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?",
+    )
+      .bind(id)
+      .first();
     if (!row) return c.json({ error: "not found" }, 404);
     return c.json({ model: row });
   });
@@ -425,40 +689,75 @@ export function createApi(env: Env) {
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
-    let sql = "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?";
+    let sql =
+      "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?";
     const binds: unknown[] = [id, since];
     if (benchmark !== "all") {
       sql += " AND benchmark_type=?";
       binds.push(benchmark);
     }
     sql += " ORDER BY hour_start ASC";
-    const rows = await env.DB.prepare(sql).bind(...binds).all();
+    const rows = await env.DB.prepare(sql)
+      .bind(...binds)
+      .all();
     let points = rows.results ?? [];
     if (points.length === 0) {
       // Fixed: benchmark_runs has no median_tps/success_rate columns — select only correct columns
       let rawSql = `SELECT started_at as hour_start, benchmark_type, tps as avg_tps, tps as median_tps, ttft_ms as avg_ttft, ttft_ms as median_ttft, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as success_rate, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as uptime, 1 as request_count FROM benchmark_runs WHERE model_id=? AND started_at >= ?`;
       const rawBinds: unknown[] = [id, since];
-      if (benchmark !== "all") { rawSql += " AND benchmark_type=?"; rawBinds.push(benchmark); }
+      if (benchmark !== "all") {
+        rawSql += " AND benchmark_type=?";
+        rawBinds.push(benchmark);
+      }
       rawSql += " ORDER BY started_at ASC LIMIT 300";
-      const raw = await env.DB.prepare(rawSql).bind(...rawBinds).all();
+      const raw = await env.DB.prepare(rawSql)
+        .bind(...rawBinds)
+        .all();
       // SAFETY: rawSql aliases its columns to exactly the HistoryPoint field names above,
       // so the untyped D1 result is structurally identical to the hourly rows view.
       points = (raw.results ?? []) as unknown as typeof points;
     }
-    const cnt = await env.DB.prepare("SELECT count(*) as c, min(started_at) as first FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, since).first<{ c: number; first: string | null }>();
+    const cnt = await env.DB.prepare(
+      "SELECT count(*) as c, min(started_at) as first FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
+    )
+      .bind(id, since)
+      .first<{ c: number; first: string | null }>();
     const hasData = (cnt?.c ?? 0) > 0;
-    const windowNote = hasData ? `${cnt?.c} samples since ${cnt?.first}` : `${range} of observed data (no samples yet)`;
-    return c.json({ history: points, range, benchmark, meta: { observed_window: since, window_note: windowNote } });
+    const windowNote = hasData
+      ? `${cnt?.c} samples since ${cnt?.first}`
+      : `${range} of observed data (no samples yet)`;
+    return c.json({
+      history: points,
+      range,
+      benchmark,
+      meta: { observed_window: since, window_note: windowNote },
+    });
   });
 
   app.get("/api/models/:id/incidents", async (c) => {
     const id = Number(c.req.param("id"));
     // Parallelize 4 independent queries — reduces I/O from 4 sequential roundtrips to 1
     const [incidentsRes, total7, total24, longest] = await Promise.all([
-      env.DB.prepare("SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100").bind(id).all(),
-      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, isoHoursAgo(168)).first<{ tot: number; ok: number | null }>(),
-      env.DB.prepare("SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?").bind(id, isoHoursAgo(24)).first<{ tot: number; ok: number | null }>(),
-      env.DB.prepare("SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?").bind(id).first<{ m: number | null }>(),
+      env.DB.prepare(
+        "SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100",
+      )
+        .bind(id)
+        .all(),
+      env.DB.prepare(
+        "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
+      )
+        .bind(id, isoHoursAgo(168))
+        .first<{ tot: number; ok: number | null }>(),
+      env.DB.prepare(
+        "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
+      )
+        .bind(id, isoHoursAgo(24))
+        .first<{ tot: number; ok: number | null }>(),
+      env.DB.prepare(
+        "SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?",
+      )
+        .bind(id)
+        .first<{ m: number | null }>(),
     ]);
     return c.json({
       incidents: incidentsRes.results,
@@ -476,24 +775,83 @@ export function createApi(env: Env) {
     let ids: number[] = [];
     if (modelsParam) ids = modelsParam.split(",").map(Number).filter(Boolean);
     else if (model) {
-      const rows = await env.DB.prepare("SELECT id FROM models WHERE provider_model_id LIKE ? OR display_name LIKE ?").bind(`%${model}%`, `%${model}%`).all<{ id: number }>();
+      const rows = await env.DB.prepare(
+        "SELECT id FROM models WHERE provider_model_id LIKE ? OR display_name LIKE ?",
+      )
+        .bind(`%${model}%`, `%${model}%`)
+        .all<{ id: number }>();
       ids = (rows.results ?? []).map((r) => r.id);
     }
     if (ids.length === 0) return c.json({ error: "no models matched" }, 404);
     ids = ids.slice(0, 8);
     const placeholders = ids.map(() => "?").join(",");
     const [metas, stats7, raw24, raw7] = await Promise.all([
-      env.DB.prepare(`SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders})`).bind(...ids).all<{ id: number; provider_model_id: string; display_name: string; provider: string }>(),
-      env.DB.prepare(`SELECT model_id, avg(median_tps) as tps_7d FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= ? GROUP BY model_id`).bind(...ids, isoHoursAgo(168)).all<{ model_id: number; tps_7d: number | null }>(),
-      env.DB.prepare(`SELECT model_id, avg(tps) as tps_24h, avg(ttft_ms) as ttft_24h FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? AND status='SUCCESS' GROUP BY model_id`).bind(...ids, isoHoursAgo(24)).all<{ model_id: number; tps_24h: number | null; ttft_24h: number | null }>(),
-      env.DB.prepare(`SELECT model_id, avg(tps) as tps_7d_raw, avg(ttft_ms) as ttft_7d, avg(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as up7, avg(CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END) as er FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? GROUP BY model_id`).bind(...ids, isoHoursAgo(168)).all<{ model_id: number; tps_7d_raw: number | null; ttft_7d: number | null; up7: number | null; er: number | null }>(),
+      env.DB.prepare(
+        `SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders})`,
+      )
+        .bind(...ids)
+        .all<{
+          id: number;
+          provider_model_id: string;
+          display_name: string;
+          provider: string;
+        }>(),
+      env.DB.prepare(
+        `SELECT model_id, avg(median_tps) as tps_7d FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= ? GROUP BY model_id`,
+      )
+        .bind(...ids, isoHoursAgo(168))
+        .all<{ model_id: number; tps_7d: number | null }>(),
+      env.DB.prepare(
+        `SELECT model_id, avg(tps) as tps_24h, avg(ttft_ms) as ttft_24h FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? AND status='SUCCESS' GROUP BY model_id`,
+      )
+        .bind(...ids, isoHoursAgo(24))
+        .all<{
+          model_id: number;
+          tps_24h: number | null;
+          ttft_24h: number | null;
+        }>(),
+      env.DB.prepare(
+        `SELECT model_id, avg(tps) as tps_7d_raw, avg(ttft_ms) as ttft_7d, avg(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as up7, avg(CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END) as er FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? GROUP BY model_id`,
+      )
+        .bind(...ids, isoHoursAgo(168))
+        .all<{
+          model_id: number;
+          tps_7d_raw: number | null;
+          ttft_7d: number | null;
+          up7: number | null;
+          er: number | null;
+        }>(),
     ]);
 
-    const metaMap = new Map<number, { provider_model_id: string; display_name: string; provider: string }>();
+    const metaMap = new Map<
+      number,
+      { provider_model_id: string; display_name: string; provider: string }
+    >();
     for (const r of metas.results ?? []) metaMap.set(r.id, r);
-    const s7Map = new Map<number, number | null>(); for (const r of stats7.results ?? []) s7Map.set(r.model_id, r.tps_7d);
-    const r24Map = new Map<number, { tps_24h: number | null; ttft_24h: number | null }>(); for (const r of raw24.results ?? []) r24Map.set(r.model_id, { tps_24h: r.tps_24h, ttft_24h: r.ttft_24h });
-    const r7Map = new Map<number, { tps_7d_raw: number | null; ttft_7d: number | null; up7: number | null; er: number | null}>(); for (const r of (raw7.results ?? []) as typeof raw7.results) r7Map.set(r.model_id, { tps_7d_raw: r.tps_7d_raw, ttft_7d: r.ttft_7d, up7: r.up7, er: r.er });
+    const s7Map = new Map<number, number | null>();
+    for (const r of stats7.results ?? []) s7Map.set(r.model_id, r.tps_7d);
+    const r24Map = new Map<
+      number,
+      { tps_24h: number | null; ttft_24h: number | null }
+    >();
+    for (const r of raw24.results ?? [])
+      r24Map.set(r.model_id, { tps_24h: r.tps_24h, ttft_24h: r.ttft_24h });
+    const r7Map = new Map<
+      number,
+      {
+        tps_7d_raw: number | null;
+        ttft_7d: number | null;
+        up7: number | null;
+        er: number | null;
+      }
+    >();
+    for (const r of (raw7.results ?? []) as typeof raw7.results)
+      r7Map.set(r.model_id, {
+        tps_7d_raw: r.tps_7d_raw,
+        ttft_7d: r.ttft_7d,
+        up7: r.up7,
+        er: r.er,
+      });
 
     const out: unknown[] = [];
     for (const id of ids) {
@@ -516,7 +874,9 @@ export function createApi(env: Env) {
     }
     let recommended: unknown = null;
     if (out.length >= 2) {
-      const sorted = [...(out as Array<{ tps_7d: number | null; provider: string }>)].sort((a, b) => (b.tps_7d ?? -1) - (a.tps_7d ?? -1));
+      const sorted = [
+        ...(out as Array<{ tps_7d: number | null; provider: string }>),
+      ].sort((a, b) => (b.tps_7d ?? -1) - (a.tps_7d ?? -1));
       recommended = sorted[0]?.provider ?? null;
     }
     return c.json({ compare: out, recommended_provider: recommended });
@@ -527,7 +887,14 @@ export function createApi(env: Env) {
     const data = await getActiveCooldowns(env.DB);
     // Enrich provider cooldowns with RPM usage for display
     const now = new Date().toISOString();
-    return c.json({ ...data, now, meta: { providerCooldowns: data.providers.length, modelCooldowns: data.models.length } });
+    return c.json({
+      ...data,
+      now,
+      meta: {
+        providerCooldowns: data.providers.length,
+        modelCooldowns: data.models.length,
+      },
+    });
   });
 
   // admin
@@ -539,12 +906,21 @@ export function createApi(env: Env) {
   });
   app.post("/api/admin/benchmark", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
-    const body = (await c.req.json().catch(() => ({}))) as { model_id?: number; benchmark_type?: BenchmarkType };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      model_id?: number;
+      benchmark_type?: BenchmarkType;
+    };
     if (!body.model_id) return c.json({ error: "model_id required" }, 400);
     const bt = (body.benchmark_type ?? "short") as BenchmarkType;
-    const job = await env.DB.prepare("SELECT m.provider_model_id, p.name as provider, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?")
+    const job = await env.DB.prepare(
+      "SELECT m.provider_model_id, p.name as provider, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?",
+    )
       .bind(body.model_id)
-      .first<{ provider_model_id: string; provider: string; display_name: string }>();
+      .first<{
+        provider_model_id: string;
+        provider: string;
+        display_name: string;
+      }>();
     if (!job) return c.json({ error: "model not found" }, 404);
     await env.BENCH_QUEUE.send({
       model_id: body.model_id,
@@ -570,7 +946,11 @@ export function createApi(env: Env) {
 
   app.post("/api/admin/cooldown/reset", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
-    const body = (await c.req.json().catch(() => ({}))) as { provider?: string; model_id?: number; clearAll?: boolean };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      provider?: string;
+      model_id?: number;
+      clearAll?: boolean;
+    };
     let cleared: number;
     if (body.model_id) {
       await clearModelCooldown(env.DB, Number(body.model_id));
@@ -587,8 +967,10 @@ export function createApi(env: Env) {
       }
     } else {
       const before = await getActiveCooldowns(env.DB);
-      for (const p of before.providers) await clearProviderCooldown(env.DB, p.provider);
-      for (const m of before.models) await clearModelCooldown(env.DB, m.model_id);
+      for (const p of before.providers)
+        await clearProviderCooldown(env.DB, p.provider);
+      for (const m of before.models)
+        await clearModelCooldown(env.DB, m.model_id);
       cleared = before.providers.length + before.models.length;
     }
     return c.json({ ok: true, cleared });
@@ -636,29 +1018,50 @@ export function createApi(env: Env) {
     ];
     const results: string[] = [];
     for (const sql of stmts) {
-      try { await env.DB.prepare(sql).run(); results.push("ok"); } catch (e) { results.push(String(e).slice(0,200)); }
+      try {
+        await env.DB.prepare(sql).run();
+        results.push("ok");
+      } catch (e) {
+        results.push(String(e).slice(0, 200));
+      }
     }
     return c.json({ ok: true, executed: results.length, results });
   });
 
   app.post("/api/admin/fix-tps", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
-    const upd = await env.DB.prepare(`UPDATE benchmark_runs SET tps = CASE WHEN output_tokens IS NOT NULL AND generation_ms IS NOT NULL THEN output_tokens / (MAX(generation_ms, 20) / 1000.0) ELSE tps END WHERE tps > 2000 OR generation_ms < 5`).run();
-    const upd2 = await env.DB.prepare(`UPDATE benchmark_runs SET tps = output_tokens / ((ttft_ms + generation_ms) / 1000.0) WHERE ttft_ms > 5000 AND generation_ms < 20 AND output_tokens IS NOT NULL AND (ttft_ms + generation_ms) > 0 AND tps > 1000`).run();
-    const delHourly = await env.DB.prepare(`DELETE FROM hourly_model_stats WHERE median_tps > 2000 OR avg_tps > 2000`).run();
-    return c.json({ ok: true, updated_benchmark_runs: upd.meta.changes ?? 0, updated_reasoning: upd2.meta.changes ?? 0, deleted_hourly: delHourly.meta.changes ?? 0 });
+    const upd = await env.DB.prepare(
+      `UPDATE benchmark_runs SET tps = CASE WHEN output_tokens IS NOT NULL AND generation_ms IS NOT NULL THEN output_tokens / (MAX(generation_ms, 20) / 1000.0) ELSE tps END WHERE tps > 2000 OR generation_ms < 5`,
+    ).run();
+    const upd2 = await env.DB.prepare(
+      `UPDATE benchmark_runs SET tps = output_tokens / ((ttft_ms + generation_ms) / 1000.0) WHERE ttft_ms > 5000 AND generation_ms < 20 AND output_tokens IS NOT NULL AND (ttft_ms + generation_ms) > 0 AND tps > 1000`,
+    ).run();
+    const delHourly = await env.DB.prepare(
+      `DELETE FROM hourly_model_stats WHERE median_tps > 2000 OR avg_tps > 2000`,
+    ).run();
+    return c.json({
+      ok: true,
+      updated_benchmark_runs: upd.meta.changes ?? 0,
+      updated_reasoning: upd2.meta.changes ?? 0,
+      deleted_hourly: delHourly.meta.changes ?? 0,
+    });
   });
 
   app.get("/api/live", async () => {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));
-    const req = new Request("https://live/live", { headers: { accept: "text/event-stream" } });
+    const req = new Request("https://live/live", {
+      headers: { accept: "text/event-stream" },
+    });
     return stub.fetch(req);
   });
 
   return app;
 }
 
-function isAdmin(c: { req: { header(n: string): string | undefined } }, env: Env): boolean {
+function isAdmin(
+  c: { req: { header(n: string): string | undefined } },
+  env: Env,
+): boolean {
   const token = env.ADMIN_TOKEN;
   if (!token) return false;
   const auth = c.req.header("authorization") ?? "";
