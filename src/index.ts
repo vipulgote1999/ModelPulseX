@@ -1,7 +1,7 @@
 import { PerformanceDO } from "./live/performance-do";
 import { createApi } from "./api/routes";
 import { runDiscovery, scheduleBenchmarks, handleBenchJob, type BenchJob } from "./benchmark/scheduler";
-import { computeHourlyAggregates, cleanupRetention } from "./db/queries";
+import { computeHourlyAggregates, computeTenminAggregates, cleanupRetention, truncateToTenMin } from "./db/queries";
 import { recordHourlyJob, watchdogCheck } from "./db/health";
 import type { Env } from "./types";
 
@@ -75,6 +75,7 @@ export default {
     // ScheduledController exposes `cron` natively at this compatibility_date.
     const cron = controller.cron;
     // */5 * * * *   → benchmark scheduler (+ inline fallback)
+    // */10 * * * *  → 10-minute aggregation (tenmin_model_stats for 5–10m live lines)
     // */30 * * * *  → frequent discovery (free-model refresh, discontinued → inactive)
     // 0 * * * *     → hourly discovery + aggregation + cleanup + staleness watchdog
     if (cron === "*/5 * * * *") {
@@ -82,6 +83,18 @@ export default {
       // baseline coverage even when queue delivery stalls; queue carries the rest.
       const inlineTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
       await scheduleBenchmarks(env, { inlineTake: Number.isFinite(inlineTake) ? inlineTake : 6 });
+    } else if (cron === "*/10 * * * *") {
+      // ten-minute buckets: current and previous (10m edge) — tolerant to late arrivals
+      try {
+        const nowIso = new Date().toISOString();
+        const cur = truncateToTenMin(nowIso);
+        const prev = new Date(new Date(cur).getTime() - 10 * 60 * 1000).toISOString();
+        await computeTenminAggregates(env.DB, cur);
+        await computeTenminAggregates(env.DB, prev);
+        await recordHourlyJob(env.DB, "aggregate");
+      } catch (e) {
+        console.error("tenmin aggregation failed", e);
+      }
     } else if (cron === "*/30 * * * *") {
       // frequent refresh — keeps model list fresh (discontinued → PREVIOUSLY_FREE/inactive) without waiting an hour
       try {

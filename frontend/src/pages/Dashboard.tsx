@@ -161,7 +161,7 @@ export default function Dashboard() {
         <select value={profile} onChange={(e) => setProfile(e.target.value)} className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm">
           <option value="balanced">Balanced</option><option value="fastest">Fastest</option><option value="latency">Lowest Latency</option><option value="reliable">Most Reliable</option><option value="coding">Coding</option>
         </select>
-        <span className="text-xs text-zinc-500 ml-auto hidden lg:inline">Measured TPS (not provider-reported) · TTFT = first_token - started · range affects charts (hourly aggregates)</span>
+        <span className="text-xs text-zinc-500 ml-auto hidden lg:inline">Measured TPS (not provider-reported) · TTFT = first_token - started · {range === "1h" ? "1h → 10m buckets (6 points)" : "range affects charts (hourly aggregates)"}</span>
       </div>
 
       <RecommendationCards rows={rows as unknown as Array<{ display_name: string; model: string; provider: string; tps_now: number | null; ttft_now: number | null; uptime_7d: number | null; overall_score: number | null }>} />
@@ -179,7 +179,7 @@ export default function Dashboard() {
         <TpsChart series={tpsSeries} range={range} />
       </Suspense>
       <Suspense fallback={<ChartFallback />}>
-        <TtftChart series={ttftSeries} />
+        <TtftChart series={ttftSeries} range={range} />
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>

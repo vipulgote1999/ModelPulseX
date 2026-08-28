@@ -12,8 +12,11 @@ export function useHistory(modelIds: number[], range: string, benchmark: string)
     }
     const controller = new AbortController();
     setLoading(true);
-    // Batch fetch — single round trip vs N (major frontend perf win: was 3-4 fetches, now 1)
-    const qs = new URLSearchParams({ ids: modelIds.join(","), range, benchmark });
+    // 5–10m granularity: 1h range uses tenmin buckets (6 points per hour) so graphs show
+    // live 10m lines. Longer ranges keep hourly to stay readable. Backend honors
+    // granularity=10m (tenmin_model_stats) with hourly fallback if not yet migrated.
+    const granularity = range === "1h" ? "10m" : "hourly";
+    const qs = new URLSearchParams({ ids: modelIds.join(","), range, benchmark, granularity });
     fetch(`/api/history?${qs}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -32,7 +35,8 @@ export function useHistory(modelIds: number[], range: string, benchmark: string)
         Promise.all(
           modelIds.map(async (id) => {
             try {
-              const qs2 = new URLSearchParams({ range, benchmark });
+              const gran2 = range === "1h" ? "10m" : "hourly";
+              const qs2 = new URLSearchParams({ range, benchmark, granularity: gran2 });
               const r = await fetch(`/api/models/${id}/history?${qs2}`, { signal: controller.signal });
               const jj = (await r.json()) as { history?: Point[] };
               return [id, (jj.history ?? []) as Point[]] as const;
@@ -43,7 +47,7 @@ export function useHistory(modelIds: number[], range: string, benchmark: string)
         ).then((entries) => {
           if (controller.signal.aborted) return;
           const m: Record<number, Point[]> = {};
-          for (const [id, hist] of entries) m[id] = hist as unknown as Point[];
+          for (const [id, hist] of entries) m[id] = hist;
           setData(m);
         });
       })

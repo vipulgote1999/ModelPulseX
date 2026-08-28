@@ -65,24 +65,52 @@ export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): Sel
     else grouped.set(r.provider, [r]);
   }
 
-  // LRU across providers: order by each provider's earliest last_benchmark (input is
-  // pre-sorted ASC, so the first occurrence per provider is its earliest). NULLs first —
-  // never-benchmarked providers must not be starved alphabetically.
+  // Per-provider LRU: ensure each provider's list is sorted by last_benchmark ASC
+  // (nulls first = never-benchmarked). Input is globally sorted, but per-provider sort
+  // guarantees round-robin rotation hits the oldest models of EACH provider first,
+  // even if global order interleaves differently. This is what makes
+  // "first 3 models at tick 1, next 3 at tick 2 per provider" deterministic.
+  for (const list of grouped.values()) {
+    list.sort((a, b) => {
+      if (a.last_benchmark === null && b.last_benchmark !== null) return -1;
+      if (a.last_benchmark !== null && b.last_benchmark === null) return 1;
+      if (a.last_benchmark === null && b.last_benchmark === null) return a.display_name.localeCompare(b.display_name);
+      const aTime = a.last_benchmark as string;
+      const bTime = b.last_benchmark as string;
+      if (aTime < bTime) return -1;
+      if (aTime > bTime) return 1;
+      return a.display_name.localeCompare(b.display_name);
+    });
+  }
+
+  // LRU across providers: order by each provider's earliest last_benchmark.
+  // After per-provider sort above, list[0] is the provider's oldest model.
+  // NULLs first — never-benchmarked providers must not be starved alphabetically.
   const providerEarliest = new Map<string, string | null>();
   for (const [prov, list] of grouped) {
-    if (!providerEarliest.has(prov)) providerEarliest.set(prov, list[0]?.last_benchmark ?? null);
+    providerEarliest.set(prov, list[0]?.last_benchmark ?? null);
   }
   const providers = Array.from(grouped.keys()).sort((a, b) => {
-    const ea = providerEarliest.get(a);
-    const eb = providerEarliest.get(b);
+    const ea = providerEarliest.get(a) ?? null;
+    const eb = providerEarliest.get(b) ?? null;
     if (ea === null && eb !== null) return -1;
     if (ea !== null && eb === null) return 1;
     if (ea === null && eb === null) return a.localeCompare(b);
-    if (ea! < eb!) return -1;
-    if (ea! > eb!) return 1;
+    const eaStr = ea as string;
+    const ebStr = eb as string;
+    if (eaStr < ebStr) return -1;
+    if (eaStr > ebStr) return 1;
     return a.localeCompare(b);
   });
 
+  // Per-provider caps are the primary throttle (RPM + capFor). The global cap
+  // is intentionally treated as an ENVELOPE: we pick up to capFor per provider
+  // across all active providers each tick, then trim only if we exceed maxGlobal.
+  // With maxGlobal raised to sum-of-caps (~40), this guarantees every provider
+  // gets sampled every */5 window while respecting its own RPM/cooldown.
+  // When maxGlobal is small (tests), we preserve fair round-robin starvation
+  // by capping the envelope with the same round-robin loop.
+  const effectiveGlobal = cfg.maxGlobal;
   const jobs: QueueJob[] = [];
   let global = 0;
   const maxRounds = Math.max(...Array.from(grouped.values()).map((v) => v.length), 0);
@@ -91,7 +119,7 @@ export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): Sel
 
   for (let round = 0; round < maxRounds; round++) {
     for (const prov of providers) {
-      if (global >= cfg.maxGlobal) break;
+      if (global >= effectiveGlobal) break;
       // Re-check RPM before each pick — budget shrinks as we schedule this tick.
       const used = (cfg.rpmUsage.get(prov) ?? 0) + (takenPerProvider.get(prov) ?? 0);
       if (used >= cfg.rpmLimitFor(prov)) continue;
@@ -112,7 +140,7 @@ export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): Sel
       takenPerProvider.set(prov, cur + 1);
       global++;
     }
-    if (global >= cfg.maxGlobal) break;
+    if (global >= effectiveGlobal) break;
   }
 
   return { jobs, skippedCooldown, skippedRPM };

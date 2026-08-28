@@ -484,6 +484,95 @@ export async function computeHourlyAggregates(
   }
 }
 
+export function truncateToTenMin(iso: string): string {
+  const d = new Date(iso);
+  const mins = Math.floor(d.getUTCMinutes() / 10) * 10;
+  d.setUTCMinutes(mins, 0, 0);
+  return d.toISOString();
+}
+
+export async function computeTenminAggregates(
+  db: D1Database,
+  forBucketStart: string,
+) {
+  const bucketStart = truncateToTenMin(forBucketStart);
+  const bucketEnd = new Date(new Date(bucketStart).getTime() + 10 * 60 * 1000).toISOString();
+  const rows = await db
+    .prepare(
+      `SELECT model_id, benchmark_type,
+        GROUP_CONCAT(tps) as tpss,
+        GROUP_CONCAT(ttft_ms) as ttfts,
+        COUNT(*) as cnt,
+        SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as success
+     FROM benchmark_runs
+     WHERE started_at >= ? AND started_at < ?
+     GROUP BY model_id, benchmark_type`,
+    )
+    .bind(bucketStart, bucketEnd)
+    .all<{
+      model_id: number;
+      benchmark_type: BenchmarkType;
+      tpss: string | null;
+      ttfts: string | null;
+      cnt: number;
+      success: number;
+    }>();
+
+  if (!rows.results || rows.results.length === 0) return;
+  const stmts: ReturnType<D1Database["prepare"]>[] = [];
+  for (const r of rows.results ?? []) {
+    const tpss = (r.tpss ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
+    const ttfts = (r.ttfts ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
+    const avg_tps = tpss.length
+      ? tpss.reduce((a, b) => a + b, 0) / tpss.length
+      : null;
+    const median_tps = percentile(tpss, 50);
+    const p90_tps = percentile(tpss, 90);
+    const p95_tps = percentile(tpss, 95);
+    const avg_ttft = ttfts.length
+      ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length
+      : null;
+    const median_ttft = percentile(ttfts, 50);
+    const p90_ttft = percentile(ttfts, 90);
+    const p95_ttft = percentile(ttfts, 95);
+    const success_rate = r.cnt ? r.success / r.cnt : 0;
+    const uptime = success_rate;
+    stmts.push(
+      db
+        .prepare(
+          `INSERT OR REPLACE INTO tenmin_model_stats (model_id, bucket_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(
+          r.model_id,
+          bucketStart,
+          r.benchmark_type,
+          avg_tps,
+          median_tps,
+          p90_tps,
+          p95_tps,
+          avg_ttft,
+          median_ttft,
+          p90_ttft,
+          p95_ttft,
+          success_rate,
+          1 - success_rate,
+          uptime,
+          r.cnt,
+        ),
+    );
+  }
+  for (let i = 0; i < stmts.length; i += 50) {
+    const chunk = stmts.slice(i, i + 50);
+    await db.batch(chunk);
+  }
+}
+
 function percentile(vals: number[], p: number): number | null {
   if (vals.length === 0) return null;
   const s = [...vals].sort((a, b) => a - b);
@@ -495,16 +584,27 @@ export async function cleanupRetention(
   db: D1Database,
   rawDays = 7,
   hourlyDays = 30,
+  tenminDays = 30,
 ) {
   const rawCut = new Date(Date.now() - rawDays * 86400 * 1000).toISOString();
   const hourlyCut = new Date(
     Date.now() - hourlyDays * 86400 * 1000,
   ).toISOString();
-  // Batch deletes in one roundtrip — reduces I/O from 2 to 1
-  await db.batch([
+  const tenminCut = new Date(
+    Date.now() - tenminDays * 86400 * 1000,
+  ).toISOString();
+  // Batch deletes — tenmin is best-effort if table not yet migrated
+  const stmts: ReturnType<D1Database["prepare"]>[] = [
     db.prepare("DELETE FROM benchmark_runs WHERE started_at < ?").bind(rawCut),
-    db
-      .prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?")
-      .bind(hourlyCut),
-  ]);
+    db.prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?").bind(hourlyCut),
+    db.prepare("DELETE FROM tenmin_model_stats WHERE bucket_start < ?").bind(tenminCut),
+  ];
+  try {
+    await db.batch(stmts);
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("tenmin_model_stats") || msg.includes("no such table")) {
+      await db.batch(stmts.slice(0, 2));
+    } else throw e;
+  }
 }

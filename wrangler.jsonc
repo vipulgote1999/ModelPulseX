@@ -25,11 +25,11 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PerformanceDO"] }],
   "triggers": {
-    "crons": ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
+    "crons": ["*/5 * * * *", "*/10 * * * *", "*/30 * * * *", "0 * * * *"]
   },
   "observability": { "enabled": true },
   "vars": {
-    "MAX_GLOBAL_CONCURRENCY": "16",
+    "MAX_GLOBAL_CONCURRENCY": "40",
     "MAX_OPENCODE_CONCURRENCY": "3",
     "MAX_OPENROUTER_CONCURRENCY": "4",
     "MAX_GROQ_CONCURRENCY": "3",

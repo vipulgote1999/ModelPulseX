@@ -3,10 +3,15 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Ca
 const COLORS = ["#8b5cf6", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#e879f9"];
 
 export default function TpsChart({ series, range }: { series: Array<{ id: number; label: string; points: Array<{ hour_start: string; median_tps: number | null }> }>; range: string }) {
-  // normalize to time-indexed rows
+  const isTenMin = range === "1h";
+  // normalize to time-indexed rows — 10m buckets for 1h range, hourly otherwise
   const allTimes = Array.from(new Set(series.flatMap((s) => s.points.map((p) => p.hour_start)))).sort();
   const rows = allTimes.map((t) => {
-    const row: Record<string, unknown> = { time: new Date(t).toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit" }) };
+    const d = new Date(t);
+    const label = isTenMin
+      ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit" });
+    const row: Record<string, unknown> = { time: label };
     for (const s of series) {
       const pt = s.points.find((p) => p.hour_start === t);
       (row as Record<string, unknown>)[s.label] = pt?.median_tps ?? null;
@@ -15,13 +20,13 @@ export default function TpsChart({ series, range }: { series: Array<{ id: number
     return row;
   });
 
-  if (series.length === 0) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500">Select models from leaderboard to compare TPS (7d hourly aggregates). Range: {range}.</div>;
+  if (series.length === 0) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500">Select models from leaderboard to compare TPS ({isTenMin ? "10m buckets" : "hourly aggregates"}). Range: {range}.</div>;
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
       <div className="text-sm font-semibold mb-2 flex items-center justify-between">
-        <span>7-day TPS (median per hour) — Measured TPS</span>
-        <span className="text-[11px] text-zinc-500">hourly aggregates • not provider-reported</span>
+        <span>{isTenMin ? "1-hour TPS (median per 10m) — Measured TPS" : "7-day TPS (median per hour) — Measured TPS"}</span>
+        <span className="text-[11px] text-zinc-500">{isTenMin ? "10m buckets • 6 points per hour" : "hourly aggregates • not provider-reported"}</span>
       </div>
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
