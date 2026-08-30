@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 // Gemini OpenAI-compat models list — same base: /v1beta/openai/models (Bearer)
@@ -18,6 +18,8 @@ export class GeminiProvider implements LLMProvider {
   getProviderName() { return "gemini" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const res = await fetch(MODELS_URL, { headers: (this.env.GEMINI_API_KEY ? { authorization: `Bearer ${this.env.GEMINI_API_KEY}` } : {} as Record<string,string>) });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };

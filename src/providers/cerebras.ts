@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://api.cerebras.ai/v1/models";
 const CHAT_URL = "https://api.cerebras.ai/v1/chat/completions";
@@ -15,6 +15,8 @@ export class CerebrasProvider implements LLMProvider {
   getProviderName() { return "cerebras" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const res = await fetch(MODELS_URL, { headers: (this.env.CEREBRAS_API_KEY ? { authorization: `Bearer ${this.env.CEREBRAS_API_KEY}` } : {} as Record<string,string>) });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };

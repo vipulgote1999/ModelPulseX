@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 // 9Router / OmniRoute share same cloud endpoint; local http://localhost:20128/v1 is self-hosted variant
 const MODELS_URL = "https://9router.com/v1/models";
 const CHAT_URL = "https://9router.com/v1/chat/completions";
@@ -12,6 +12,8 @@ export class NineRouterProvider implements LLMProvider {
   getProviderName(){ return "ninerouter" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const r = await fetch(MODELS_URL, { headers: (this.env.NINEROUTER_API_KEY ? { authorization: `Bearer ${this.env.NINEROUTER_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };

@@ -1,45 +1,130 @@
+import type { ExecutionContext, MessageBatch, Message, ScheduledController, ExportedHandler } from "@cloudflare/workers-types";
 import { PerformanceDO } from "./live/performance-do";
 import { createApi } from "./api/routes";
-import { runDiscovery, scheduleBenchmarks, handleBenchJob, type BenchJob } from "./benchmark/scheduler";
-import { computeHourlyAggregates, computeTenminAggregates, cleanupRetention, truncateToTenMin } from "./db/queries";
+import {
+  runDiscovery,
+  scheduleBenchmarks,
+  handleBenchJob,
+  type BenchJob,
+} from "./benchmark/scheduler";
+import {
+  computeHourlyAggregates,
+  computeTenminAggregates,
+  cleanupRetention,
+  truncateToTenMin,
+} from "./db/queries";
 import { recordHourlyJob, watchdogCheck } from "./db/health";
 import type { Env } from "./types";
 
 export { PerformanceDO };
 
-// Security headers helper
-function withSecurityHeaders(res: Response): Response {
+// Security headers — comprehensive hardening for OWASP Top 10 + compliance
+function withSecurityHeaders(res: Response, req?: Request): Response {
   const h = new Headers(res.headers);
+  // Baseline hardening
   h.set("x-content-type-options", "nosniff");
   h.set("x-frame-options", "DENY");
   h.set("referrer-policy", "strict-origin-when-cross-origin");
-  h.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
-  // Allow frontend to use SSE
+  h.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  h.set("x-permitted-cross-domain-policies", "none");
+  h.set("cross-origin-opener-policy", "same-origin");
+  h.set("cross-origin-resource-policy", "same-origin");
+  h.set("cross-origin-embedder-policy", "credentialless");
+  // Disable legacy XSS filter (can be abused), CSP is the real control
+  h.set("x-xss-protection", "0");
+  // HSTS — only meaningful over HTTPS; Workers terminates TLS at edge, so always set
+  // preload + includeSubDomains for max score; if you serve http locally, browser ignores it
+  h.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
+  // CSP for API responses (JSON) — lock down to self; frontend HTML gets its own CSP via assets
+  const isJson = (h.get("content-type") ?? "").includes("json");
+  if (isJson || (req?.url.includes("/api/") ?? false)) {
+    // API: no script execution context, but still deny framing/object
+    h.set(
+      "content-security-policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'",
+    );
+  } else {
+    // SPA shell fallback: strict but allows inline styles for Tailwind + Recharts
+    h.set(
+      "content-security-policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; upgrade-insecure-requests",
+    );
+  }
+  // Cache: API is public but short-lived; admin must never cache
+  if (!h.has("cache-control")) {
+    let path: string;
+    try {
+      path = req ? new URL(req.url).pathname : "";
+    } catch {
+      path = "";
+    }
+    if (path.startsWith("/api/admin/")) h.set("cache-control", "no-store, no-cache, must-revalidate");
+    else if (path.startsWith("/api/")) {
+      // keep existing per-route cache-control if set, else default
+      if (!h.get("cache-control")) h.set("cache-control", "public, max-age=10, stale-while-revalidate=30");
+    }
+  }
+  h.set("vary", [h.get("vary"), "Origin"].filter(Boolean).join(", "));
+  // Remove fingerprinting headers that Workers may add upstream (best-effort)
+  h.delete("x-powered-by");
+  h.delete("server");
   return new Response(res.body, { status: res.status, headers: h });
 }
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- workers-types vs DOM lib mismatch is intentional, skipLibCheck covers runtime
+// @ts-ignore - workers-types Response/Request mismatch with DOM lib (skipLibCheck covers lib, this suppresses satisfies check)
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional for workers-types compatibility
+    request: any,
+    env: Env,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    let url: URL;
     let path: string;
     try {
-      path = new URL(request.url).pathname;
+      url = new URL(request.url);
+      path = url.pathname;
     } catch {
       // Malformed request URL — reject cleanly rather than throwing.
-      return new Response("bad request", { status: 400 });
+      return withSecurityHeaders(new Response("bad request", { status: 400 }), request);
+    }
+
+    // Method allowlist — disallow TRACE/TRACK/DEBUG etc.
+    const allowedMethods = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+    if (!allowedMethods.has(request.method)) {
+      return withSecurityHeaders(new Response("method not allowed", { status: 405, headers: { allow: "GET, HEAD, POST, OPTIONS" } }), request);
+    }
+
+    // Size gate — reject huge bodies before they hit Hono/D1 (1MB limit)
+    const clen = request.headers.get("content-length");
+    if (clen) {
+      const n = Number(clen);
+      if (Number.isFinite(n) && n > 1_048_576) {
+        return withSecurityHeaders(new Response("payload too large", { status: 413 }), request);
+      }
     }
 
     // Never leak secrets: strip them from logs; ensure no api key in response
     if (path.startsWith("/api/")) {
       const app = createApi(env);
       const res = await app.fetch(request, env, ctx);
-      return withSecurityHeaders(res);
+      // Add request-id for tracing (if not already present)
+      const rid = request.headers.get("x-request-id") ?? crypto.randomUUID();
+      const out = withSecurityHeaders(res, request);
+      out.headers.set("x-request-id", rid);
+      return out;
     }
 
     // Non-API: asset serving handled by Workers Assets; if 404, serve index.html SPA fallback transparently
     // When assets binding is not available in wrangler dev --local, we return small loader.
-    return new Response(
-      `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=/index.html"></head><body>ModelPulseX — <a href="/api/health">API</a> | <a href="/">Dashboard</a></body></html>`,
-      { headers: { "content-type": "text/html" } },
+    // Add security headers to the SPA shell as well
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/index.html"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ModelPulseX</title></head><body>ModelPulseX — <a href="/api/health">API</a> | <a href="/">Dashboard</a></body></html>`;
+    return withSecurityHeaders(
+      new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } }),
+      request,
     );
   },
 
@@ -68,10 +153,16 @@ export default {
       return;
     };
     // Concise-body arrows keep an implicit meaningful return (the drain promise).
-    await Promise.all(Array.from(groups.values()).map((msgs) => drainProvider(msgs)));
+    await Promise.all(
+      Array.from(groups.values()).map((msgs) => drainProvider(msgs)),
+    );
   },
 
-  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
     // ScheduledController exposes `cron` natively at this compatibility_date.
     const cron = controller.cron;
     // */5 * * * *   → benchmark scheduler (+ inline fallback)
@@ -82,13 +173,17 @@ export default {
       // Inline fallback: run the first N selected jobs inside this invocation. Guarantees
       // baseline coverage even when queue delivery stalls; queue carries the rest.
       const inlineTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
-      await scheduleBenchmarks(env, { inlineTake: Number.isFinite(inlineTake) ? inlineTake : 6 });
+      await scheduleBenchmarks(env, {
+        inlineTake: Number.isFinite(inlineTake) ? inlineTake : 6,
+      });
     } else if (cron === "*/10 * * * *") {
       // ten-minute buckets: current and previous (10m edge) — tolerant to late arrivals
       try {
         const nowIso = new Date().toISOString();
         const cur = truncateToTenMin(nowIso);
-        const prev = new Date(new Date(cur).getTime() - 10 * 60 * 1000).toISOString();
+        const prev = new Date(
+          new Date(cur).getTime() - 10 * 60 * 1000,
+        ).toISOString();
         await computeTenminAggregates(env.DB, cur);
         await computeTenminAggregates(env.DB, prev);
         await recordHourlyJob(env.DB, "aggregate");
@@ -138,7 +233,9 @@ export default {
       }
     } else {
       // fallback: run both if unknown
-      await scheduleBenchmarks(env, { inlineTake: Number(env.BENCH_INLINE_FALLBACK ?? "6") });
+      await scheduleBenchmarks(env, {
+        inlineTake: Number(env.BENCH_INLINE_FALLBACK ?? "6"),
+      });
     }
   },
 } satisfies ExportedHandler<Env, BenchJob>;

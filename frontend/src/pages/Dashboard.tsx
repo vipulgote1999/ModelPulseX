@@ -76,6 +76,7 @@ export default function Dashboard() {
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        // SAFETY: history Point comes from D1 JSON with hourly or tenmin columns; untyped rows may have only avg_tps or median_tps, so fallback is safe
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_tps: (p as unknown as { median_tps: number | null }).median_tps ?? (p as unknown as { avg_tps: number | null }).avg_tps ?? null })) };
       })
       .filter((s) => s.points.length > 0);
@@ -86,6 +87,7 @@ export default function Dashboard() {
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        // SAFETY: ttft columns may be avg_ttft-only on fallback rows; coalesce to median_ttft safely
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? (p as unknown as { avg_ttft: number | null }).avg_ttft ?? null })) };
       })
       .filter((s) => s.points.length > 0);
@@ -96,6 +98,7 @@ export default function Dashboard() {
       .map((id) => {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        // SAFETY: median_itl may be null for old aggregates; cast is safe for D1 untyped row
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_itl: (p as unknown as { median_itl: number | null }).median_itl ?? null })) };
       })
       .filter((s) => s.points.length > 0);
@@ -105,6 +108,7 @@ export default function Dashboard() {
     const ids = chartIds;
     return ids.map((id) => {
       const meta = rows.find((r) => r.model_id === id);
+      // SAFETY: success_rate/uptime aliasing from raw benchmark_runs fallback vs aggregates
       return { display_name: meta?.display_name ?? String(id), provider: meta?.provider ?? "", points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, success_rate: (p as unknown as { success_rate: number | null }).success_rate ?? (p as unknown as { uptime: number | null }).uptime ?? null })) };
     });
   }, [history.data, chartIds, rows]);
@@ -130,6 +134,7 @@ export default function Dashboard() {
         <span className="ml-auto text-[11px] text-zinc-500">{rows.length ? `${rows.length} models · ${data?.range} ${data?.benchmark} sort:${data?.sort} profile:${data?.profile}` : ""}</span>
       </div>
 
+      {/* SAFETY: API responses are untyped JSON; narrow summary/meta/leaderboard shapes safely for display */}
       <SummaryCards summary={data?.summary as unknown as { free_models: number; online_now: number; best_tps: { display_name?: string; model?: string; tps_now?: number | null; tps_7d?: number | null } | null; best_ttft: { display_name?: string; ttft_now?: number | null; ttft_7d?: number | null } | null; benchmarks_24h: number }} meta={data?.meta as unknown as { is_stale: boolean; live: string | null; stale_message: string | null }} leaderboard={rows as unknown as Array<{ uptime_7d: number | null; overall_score: number | null }>} />
 
       {/* controls */}
@@ -175,15 +180,18 @@ export default function Dashboard() {
         <span className="text-xs text-zinc-500 ml-auto hidden lg:inline">Measured TPS (not provider-reported) · TTFT = first_token - started · {range === "1h" ? "1h → 10m buckets (6 points)" : "range affects charts (hourly aggregates)"}</span>
       </div>
 
+      {/* SAFETY: rows are LeaderboardRow[] widened for card props; safe structural subset */}
       <RecommendationCards rows={rows as unknown as Array<{ display_name: string; model: string; provider: string; tps_now: number | null; ttft_now: number | null; uptime_7d: number | null; overall_score: number | null }>} />
 
       <CooldownPanel />
 
       <div>
         <div className="text-sm font-semibold mb-2">Live leaderboard — click rows to pin for graph comparison (max 3) · sorted by {String(sort)} · {rows.length} models</div>
+        {/* SAFETY: Leaderboard expects Row shape; rows are LeaderboardRow[] narrowed to displayed columns safely */}
         <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; itl_now: number | null; itl_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
       </div>
 
+      {/* SAFETY: ChartModelSelector expects minimal Row subset; safe projection */}
       <ChartModelSelector rows={rows as unknown as Array<{ model_id: number; model: string; display_name: string; provider: string; tps_now: number | null; overall_score: number | null }>} selected={selected} onChange={setSelected} />
 
       <Suspense fallback={<ChartFallback />}>

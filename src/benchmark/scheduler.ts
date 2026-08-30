@@ -391,6 +391,7 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));
     await stub.fetch("https://live/publish", {
       method: "POST",
+      headers: { "content-type": "application/json", "x-mpulse-internal": "1" },
       body: JSON.stringify({
         type: "benchmark.completed",
         model: job.provider_model_id,

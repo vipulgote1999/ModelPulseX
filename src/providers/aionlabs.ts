@@ -5,7 +5,7 @@ import type {
     LLMProvider,
     ModelMetadata,
 } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://api.aionlabs.ai/v1/models";
 const CHAT_URL = "https://api.aionlabs.ai/v1/chat/completions";
 const VERIFIED_FREE = new Set<string>([
@@ -45,6 +45,8 @@ export class AionLabsProvider implements LLMProvider {
     }
     async discoverModels(): Promise<ModelMetadata[]> {
         try {
+            assertSafeApiUrl(MODELS_URL);
+
             const r = await fetch(MODELS_URL, {
                 headers: this.env.AIONLABS_API_KEY
                     ? { authorization: `Bearer ${this.env.AIONLABS_API_KEY}` }

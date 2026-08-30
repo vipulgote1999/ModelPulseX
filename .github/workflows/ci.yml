@@ -1,4 +1,4 @@
-# ModelPulseX CI — lint + tests + typecheck on every push/PR.
+# ModelPulseX CI — lint + tests + typecheck + security on every push/PR.
 name: CI
 
 on:
@@ -23,6 +23,12 @@ jobs:
         run: npm test
       - name: Typecheck
         run: npm run typecheck
+      - name: Build check
+        run: npm run build
+      - name: Audit (no vulnerabilities)
+        run: npm audit --audit-level=moderate
+      - name: Secret scan
+        run: node scripts/secret-scan.js
 
   # Deploy job intentionally absent: production deploys run via `npm run deploy`
   # from an authenticated environment (wrangler) — see deploy.bat / README ops.

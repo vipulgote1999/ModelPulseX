@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://speka.me/v1/models";
 const CHAT_URL = "https://speka.me/v1/chat/completions";
 const FALLBACK = [
@@ -11,6 +11,8 @@ export class SpekaProvider implements LLMProvider {
   getProviderName(){ return "speka" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const r = await fetch(MODELS_URL, { headers: (this.env.SPEKA_API_KEY ? { authorization: `Bearer ${this.env.SPEKA_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };

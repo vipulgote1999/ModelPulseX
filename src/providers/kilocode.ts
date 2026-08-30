@@ -5,7 +5,7 @@ import type {
     LLMProvider,
     ModelMetadata,
 } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://api.kilo.ai/api/gateway/models";
 const CHAT_URL = "https://api.kilo.ai/api/gateway/chat/completions";
 const FALLBACK = [
@@ -54,6 +54,8 @@ export class KiloCodeProvider implements LLMProvider {
     }
     async discoverModels(): Promise<ModelMetadata[]> {
         try {
+            assertSafeApiUrl(MODELS_URL);
+
             const r = await fetch(MODELS_URL, {
                 headers: this.env.KILOCODE_API_KEY
                     ? { authorization: `Bearer ${this.env.KILOCODE_API_KEY}` }

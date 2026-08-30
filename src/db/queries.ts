@@ -508,7 +508,9 @@ export async function computeTenminAggregates(
   forBucketStart: string,
 ) {
   const bucketStart = truncateToTenMin(forBucketStart);
-  const bucketEnd = new Date(new Date(bucketStart).getTime() + 10 * 60 * 1000).toISOString();
+  const bucketEnd = new Date(
+    new Date(bucketStart).getTime() + 10 * 60 * 1000,
+  ).toISOString();
   const rows = await db
     .prepare(
       `SELECT model_id, benchmark_type,
@@ -618,8 +620,12 @@ export async function cleanupRetention(
   // Batch deletes — tenmin is best-effort if table not yet migrated
   const stmts: ReturnType<D1Database["prepare"]>[] = [
     db.prepare("DELETE FROM benchmark_runs WHERE started_at < ?").bind(rawCut),
-    db.prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?").bind(hourlyCut),
-    db.prepare("DELETE FROM tenmin_model_stats WHERE bucket_start < ?").bind(tenminCut),
+    db
+      .prepare("DELETE FROM hourly_model_stats WHERE hour_start < ?")
+      .bind(hourlyCut),
+    db
+      .prepare("DELETE FROM tenmin_model_stats WHERE bucket_start < ?")
+      .bind(tenminCut),
   ];
   try {
     await db.batch(stmts);

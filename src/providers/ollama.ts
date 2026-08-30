@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://ollama.com/v1/models";
 const CHAT_URL = "https://ollama.com/v1/chat/completions";
@@ -33,12 +33,15 @@ export class OllamaProvider implements LLMProvider {
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const res = await fetch(MODELS_URL, {
         headers: this.env.OLLAMA_API_KEY ? { authorization: `Bearer ${this.env.OLLAMA_API_KEY}` } : {},
       });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }>; models?: Array<{ name: string }> };
       const idsRaw = (data.data ?? []).map((m) => m.id).filter(Boolean) as string[];
+      // SAFETY: Ollama API may return {data:[{id}]} or {models:[{name}]}; widen to handle both shapes safely
       const idsTags = ((data as unknown as { models?: Array<{ name: string }> }).models ?? []).map((m) => m.name).filter(Boolean);
       const ids = idsRaw.length ? idsRaw : idsTags;
       if (ids.length === 0) return this.fallback();

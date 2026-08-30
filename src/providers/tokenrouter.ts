@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 // TrueRouter / TokenRouter — free token router
 const MODELS_URL = "https://api.tokenrouter.com/v1/models";
 const CHAT_URL = "https://api.tokenrouter.com/v1/chat/completions";
@@ -19,6 +19,8 @@ export class TokenRouterProvider implements LLMProvider {
   getProviderName(){ return "tokenrouter" as const; }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+      assertSafeApiUrl(MODELS_URL);
+
       const r = await fetch(MODELS_URL, { headers: (this.env.TOKENROUTER_API_KEY ? { authorization: `Bearer ${this.env.TOKENROUTER_API_KEY}` } : {} as Record<string,string>) });
       if (!r.ok) return this.fallback();
       const j = (await r.json()) as { data?: Array<{ id: string }> };

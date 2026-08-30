@@ -5,7 +5,7 @@ import type {
   LLMProvider,
   ModelMetadata,
 } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -73,6 +73,9 @@ export class GroqProvider implements LLMProvider {
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+
+      assertSafeApiUrl(GROQ_MODELS_URL);
+
       const res = await fetch(GROQ_MODELS_URL, {
         headers: this.env.GROQ_API_KEY
           ? { authorization: `Bearer ${this.env.GROQ_API_KEY}` }

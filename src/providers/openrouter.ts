@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const OR_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const OR_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -21,6 +21,9 @@ export class OpenRouterProvider implements LLMProvider {
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+
+      assertSafeApiUrl(OR_MODELS_URL);
+
       const res = await fetch(OR_MODELS_URL, {
         headers: this.env.OPENROUTER_API_KEY ? { authorization: `Bearer ${this.env.OPENROUTER_API_KEY}` } : {},
       });

@@ -1,5 +1,5 @@
 import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
-import { measureBenchmark } from "../benchmark/engine";
+import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models";
 const ZEN_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
@@ -40,6 +40,9 @@ export class OpenCodeZenProvider implements LLMProvider {
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
+
+      assertSafeApiUrl(ZEN_MODELS_URL);
+
       const res = await fetch(ZEN_MODELS_URL, {
         headers: this.env.OPENCODE_API_KEY ? { authorization: `Bearer ${this.env.OPENCODE_API_KEY}` } : {},
       });

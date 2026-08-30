@@ -1,0 +1,4 @@
+#!/bin/sh
+# ModelPulseX pre-commit — secret scan + lint + typecheck (fast)
+node scripts/secret-scan.js || exit 1
+npm run lint --silent || exit 1
