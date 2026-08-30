@@ -14,11 +14,21 @@ const patterns = [
 ];
 let found = false;
 try {
-  const diff = execSync("git diff --cached --unified=0 2>&1", { encoding: "utf8" });
+  const diff = execSync("git diff --cached --unified=0 2>&1", {
+    encoding: "utf8",
+  });
   // Also scan staged file names for .env
-  const staged = execSync("git diff --cached --name-only 2>&1", { encoding: "utf8" });
-  if (staged.split("\n").some((f) => f.trim() === ".env" || f.trim() === ".dev.vars")) {
-    console.error("BLOCKED: .env / .dev.vars are staged — unstage and use wrangler secret put instead");
+  const staged = execSync("git diff --cached --name-only 2>&1", {
+    encoding: "utf8",
+  });
+  if (
+    staged
+      .split("\n")
+      .some((f) => f.trim() === ".env" || f.trim() === ".dev.vars")
+  ) {
+    console.error(
+      "BLOCKED: .env / .dev.vars are staged — unstage and use wrangler secret put instead",
+    );
     found = true;
   }
   for (const pat of patterns) {
@@ -28,13 +38,27 @@ try {
     }
   }
   // Also scan file content direct
-  const files = staged.split("\n").map((s) => s.trim()).filter(Boolean);
+  const files = staged
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
   for (const f of files) {
     try {
       const content = fs.readFileSync(f, "utf8");
-      for (const pat of patterns) if (pat.test(content)) { console.error("BLOCKED secret in", f, pat); found = true; }
+      for (const pat of patterns)
+        if (pat.test(content)) {
+          console.error("BLOCKED secret in", f, pat);
+          found = true;
+        }
     } catch {}
   }
-} catch (e) { console.error("scan error", e.message); }
-if (found) { console.error("\nFix: remove secrets, use wrangler secret put, then commit again."); process.exit(1); }
+} catch (e) {
+  console.error("scan error", e.message);
+}
+if (found) {
+  console.error(
+    "\nFix: remove secrets, use wrangler secret put, then commit again.",
+  );
+  process.exit(1);
+}
 console.log("secret-scan: ok");

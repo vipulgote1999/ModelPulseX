@@ -49,16 +49,14 @@ await page.waitForTimeout(2000);
 const lb = await page.evaluate(async () => {
   const r = await fetch("/api/leaderboard?range=7d");
   const j = await r.json();
-  return j.leaderboard
-    .slice(0, 15)
-    .map((m) => ({
-      id: m.model_id,
-      name: m.display_name,
-      provider: m.provider,
-      tps7d: m.tps_7d,
-      up: m.uptime_7d,
-      status: m.status,
-    }));
+  return j.leaderboard.slice(0, 15).map((m) => ({
+    id: m.model_id,
+    name: m.display_name,
+    provider: m.provider,
+    tps7d: m.tps_7d,
+    up: m.uptime_7d,
+    status: m.status,
+  }));
 });
 console.log("top 15", JSON.stringify(lb, null, 2));
 fs.writeFileSync(path.join(OUT, "lb-top15.json"), JSON.stringify(lb, null, 2));

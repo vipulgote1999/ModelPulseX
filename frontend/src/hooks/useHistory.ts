@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 
-type Point = { hour_start: string; median_tps: number | null; median_ttft: number | null; median_itl: number | null; success_rate: number | null; uptime: number | null };
+type Point = {
+  hour_start: string;
+  median_tps: number | null;
+  median_ttft: number | null;
+  median_itl: number | null;
+  success_rate: number | null;
+  uptime: number | null;
+};
 
-export function useHistory(modelIds: number[], range: string, benchmark: string) {
+export function useHistory(
+  modelIds: number[],
+  range: string,
+  benchmark: string,
+) {
   const [data, setData] = useState<Record<number, Point[]>>({});
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -16,7 +27,12 @@ export function useHistory(modelIds: number[], range: string, benchmark: string)
     // live 10m lines. Longer ranges keep hourly to stay readable. Backend honors
     // granularity=10m (tenmin_model_stats) with hourly fallback if not yet migrated.
     const granularity = range === "1h" ? "10m" : "hourly";
-    const qs = new URLSearchParams({ ids: modelIds.join(","), range, benchmark, granularity });
+    const qs = new URLSearchParams({
+      ids: modelIds.join(","),
+      range,
+      benchmark,
+      granularity,
+    });
     fetch(`/api/history?${qs}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -36,8 +52,14 @@ export function useHistory(modelIds: number[], range: string, benchmark: string)
           modelIds.map(async (id) => {
             try {
               const gran2 = range === "1h" ? "10m" : "hourly";
-              const qs2 = new URLSearchParams({ range, benchmark, granularity: gran2 });
-              const r = await fetch(`/api/models/${id}/history?${qs2}`, { signal: controller.signal });
+              const qs2 = new URLSearchParams({
+                range,
+                benchmark,
+                granularity: gran2,
+              });
+              const r = await fetch(`/api/models/${id}/history?${qs2}`, {
+                signal: controller.signal,
+              });
               const jj = (await r.json()) as { history?: Point[] };
               return [id, (jj.history ?? []) as Point[]] as const;
             } catch {

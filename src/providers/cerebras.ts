@@ -1,4 +1,10 @@
-import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  Env,
+  LLMProvider,
+  ModelMetadata,
+} from "../types";
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://api.cerebras.ai/v1/models";
@@ -12,17 +18,23 @@ const FALLBACK = [
 
 export class CerebrasProvider implements LLMProvider {
   constructor(private env: Env) {}
-  getProviderName() { return "cerebras" as const; }
+  getProviderName() {
+    return "cerebras" as const;
+  }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
       assertSafeApiUrl(MODELS_URL);
 
-      const res = await fetch(MODELS_URL, { headers: (this.env.CEREBRAS_API_KEY ? { authorization: `Bearer ${this.env.CEREBRAS_API_KEY}` } : {} as Record<string,string>) });
+      const res = await fetch(MODELS_URL, {
+        headers: this.env.CEREBRAS_API_KEY
+          ? { authorization: `Bearer ${this.env.CEREBRAS_API_KEY}` }
+          : ({} as Record<string, string>),
+      });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };
-      const ids = (data.data ?? []).map(m => m.id).filter(Boolean);
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean);
       if (ids.length === 0) return this.fallback();
-      return ids.map(id => ({
+      return ids.map((id) => ({
         provider: "cerebras" as const,
         provider_model_id: id,
         display_name: id,
@@ -33,10 +45,12 @@ export class CerebrasProvider implements LLMProvider {
         is_free: true,
         free_status: "FREE" as const,
       }));
-    } catch { return this.fallback(); }
+    } catch {
+      return this.fallback();
+    }
   }
   private fallback(): ModelMetadata[] {
-    return FALLBACK.map(m => ({
+    return FALLBACK.map((m) => ({
       provider: "cerebras" as const,
       provider_model_id: m.id,
       display_name: m.name,
@@ -50,9 +64,12 @@ export class CerebrasProvider implements LLMProvider {
   }
   async getModelMetadata(modelId: string): Promise<ModelMetadata | null> {
     const all = await this.discoverModels();
-    return all.find(m => m.provider_model_id === modelId) ?? null;
+    return all.find((m) => m.provider_model_id === modelId) ?? null;
   }
-  async benchmarkModel(model: { provider_model_id: string }, benchmark: BenchmarkDefinition): Promise<BenchmarkResult> {
+  async benchmarkModel(
+    model: { provider_model_id: string },
+    benchmark: BenchmarkDefinition,
+  ): Promise<BenchmarkResult> {
     return measureBenchmark({
       provider: "cerebras",
       providerModelId: model.provider_model_id,

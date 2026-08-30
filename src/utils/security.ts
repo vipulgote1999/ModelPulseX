@@ -19,14 +19,26 @@ export function isStrongToken(token: string | undefined): boolean {
   if (token.length < 32) return false;
   // reject obvious placeholders
   const lower = token.toLowerCase();
-  if (lower.includes("change-me") || lower.includes("local-admin") || lower === "admin" || lower === "password") return false;
+  if (
+    lower.includes("change-me") ||
+    lower.includes("local-admin") ||
+    lower === "admin" ||
+    lower === "password"
+  )
+    return false;
   return true;
 }
 
 export const VALID_RANGES = new Set(["1h", "24h", "3d", "7d", "30d"]);
 export const VALID_BENCHMARKS = new Set(["all", "short", "medium", "coding"]);
 export const VALID_SORTS = new Set(["overall", "tps", "ttft", "uptime"]);
-export const VALID_PROFILES = new Set(["balanced", "fastest", "latency", "reliable", "coding"]);
+export const VALID_PROFILES = new Set([
+  "balanced",
+  "fastest",
+  "latency",
+  "reliable",
+  "coding",
+]);
 export const VALID_GRANULARITIES = new Set(["hourly", "10m"]);
 
 export function isValidRange(v: string | null | undefined): boolean {
@@ -43,7 +55,10 @@ export function isValidProfile(v: string | null | undefined): boolean {
 }
 
 /** Sanitize free-text search query: trim, cap length, strip control chars and SQL wildcard abuse. */
-export function sanitizeSearchQuery(q: string | null | undefined, maxLen = 100): string | null {
+export function sanitizeSearchQuery(
+  q: string | null | undefined,
+  maxLen = 100,
+): string | null {
   if (!q) return null;
   let s = q.trim().slice(0, maxLen);
   // strip control chars and null bytes (keep printable + unicode)
@@ -55,13 +70,21 @@ export function sanitizeSearchQuery(q: string | null | undefined, maxLen = 100):
 }
 
 /** Validate and sanitize comma-separated IDs, max 12, numeric, positive. */
-export function parseIdsParam(raw: string | null | undefined, max = 12): number[] | null {
+export function parseIdsParam(
+  raw: string | null | undefined,
+  max = 12,
+): number[] | null {
   if (!raw) return null;
-  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, max);
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, max);
   const nums: number[] = [];
   for (const p of parts) {
     const n = Number(p);
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n) || n > 1_000_000) return null;
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n) || n > 1_000_000)
+      return null;
     nums.push(n);
   }
   if (nums.length === 0) return null;
@@ -118,14 +141,24 @@ export function tokenFingerprint(token: string): string {
 }
 
 /** Check if origin is allowed strictly — rejects "*" and empty, validates URL shape. */
-export function isOriginAllowed(origin: string | null | undefined, allowlist: string[]): boolean {
+export function isOriginAllowed(
+  origin: string | null | undefined,
+  allowlist: string[],
+): boolean {
   if (!origin) return false;
   origin = origin.trim();
   if (origin === "*" || origin === "null") return false;
   // Must be a valid https origin (or http for localhost dev)
   try {
     const u = new URL(origin);
-    if (u.protocol !== "https:" && !(u.protocol === "http:" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname))) return false;
+    if (
+      u.protocol !== "https:" &&
+      !(
+        u.protocol === "http:" &&
+        /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname)
+      )
+    )
+      return false;
     // Exact match against allowlist (allowlist entries are full origins)
     return allowlist.includes(origin);
   } catch {
@@ -134,10 +167,19 @@ export function isOriginAllowed(origin: string | null | undefined, allowlist: st
 }
 
 /** Sanitize error message for client — hide internal details, keep generic. */
-export function sanitizeErrorMessage(e: unknown, fallback = "internal error"): string {
+export function sanitizeErrorMessage(
+  e: unknown,
+  fallback = "internal error",
+): string {
   const msg = String((e as Error)?.message ?? e ?? fallback);
   // Never echo SQL, paths, or stack traces to client
-  if (msg.includes("D1_ERROR") || msg.includes("no such table") || msg.includes("SQLITE") || msg.includes("prepare") || msg.includes(".ts:")) {
+  if (
+    msg.includes("D1_ERROR") ||
+    msg.includes("no such table") ||
+    msg.includes("SQLITE") ||
+    msg.includes("prepare") ||
+    msg.includes(".ts:")
+  ) {
     return fallback;
   }
   // Truncate and strip newlines
@@ -145,18 +187,47 @@ export function sanitizeErrorMessage(e: unknown, fallback = "internal error"): s
 }
 
 /** Validate that CORS_ORIGIN env doesn't contain wildcard or insecure values. */
-export function validateCorsConfig(corsOrigin: string | undefined): { valid: boolean; reason?: string; origins: string[] } {
+export function validateCorsConfig(corsOrigin: string | undefined): {
+  valid: boolean;
+  reason?: string;
+  origins: string[];
+} {
   const raw = corsOrigin ?? "https://modelpulsex.vipulgote5.workers.dev";
-  const origins = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  if (origins.includes("*")) return { valid: false, reason: "CORS_ORIGIN must not contain * when credentials are used", origins };
-  if (origins.some((o) => o.includes("*"))) return { valid: false, reason: "CORS_ORIGIN wildcard subdomain not allowed", origins };
+  const origins = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (origins.includes("*"))
+    return {
+      valid: false,
+      reason: "CORS_ORIGIN must not contain * when credentials are used",
+      origins,
+    };
+  if (origins.some((o) => o.includes("*")))
+    return {
+      valid: false,
+      reason: "CORS_ORIGIN wildcard subdomain not allowed",
+      origins,
+    };
   for (const o of origins) {
-    if (o === "null") return { valid: false, reason: "CORS_ORIGIN must not be null", origins };
+    if (o === "null")
+      return { valid: false, reason: "CORS_ORIGIN must not be null", origins };
     try {
       const u = new URL(o);
-      if (u.protocol !== "https:" && !(u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) {
+      if (
+        u.protocol !== "https:" &&
+        !(
+          u.protocol === "http:" &&
+          /^(localhost|127\.0\.0\.1)$/.test(u.hostname)
+        )
+      ) {
         // allow http localhost for dev only
-        if (!u.hostname.includes("localhost")) return { valid: false, reason: `CORS_ORIGIN insecure protocol: ${o}`, origins };
+        if (!u.hostname.includes("localhost"))
+          return {
+            valid: false,
+            reason: `CORS_ORIGIN insecure protocol: ${o}`,
+            origins,
+          };
       }
     } catch {
       return { valid: false, reason: `CORS_ORIGIN invalid URL: ${o}`, origins };

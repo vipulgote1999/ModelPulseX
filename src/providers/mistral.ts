@@ -1,4 +1,10 @@
-import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  Env,
+  LLMProvider,
+  ModelMetadata,
+} from "../types";
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://api.mistral.ai/v1/models";
@@ -14,17 +20,23 @@ const FALLBACK = [
 
 export class MistralProvider implements LLMProvider {
   constructor(private env: Env) {}
-  getProviderName() { return "mistral" as const; }
+  getProviderName() {
+    return "mistral" as const;
+  }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
       assertSafeApiUrl(MODELS_URL);
 
-      const res = await fetch(MODELS_URL, { headers: (this.env.MISTRAL_API_KEY ? { authorization: `Bearer ${this.env.MISTRAL_API_KEY}` } : {} as Record<string,string>) });
+      const res = await fetch(MODELS_URL, {
+        headers: this.env.MISTRAL_API_KEY
+          ? { authorization: `Bearer ${this.env.MISTRAL_API_KEY}` }
+          : ({} as Record<string, string>),
+      });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };
-      const ids = (data.data ?? []).map(m => m.id).filter(Boolean);
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean);
       if (ids.length === 0) return this.fallback();
-      return ids.slice(0, 10).map(id => ({
+      return ids.slice(0, 10).map((id) => ({
         provider: "mistral" as const,
         provider_model_id: id,
         display_name: id,
@@ -35,10 +47,12 @@ export class MistralProvider implements LLMProvider {
         is_free: true,
         free_status: "FREE" as const,
       }));
-    } catch { return this.fallback(); }
+    } catch {
+      return this.fallback();
+    }
   }
   private fallback(): ModelMetadata[] {
-    return FALLBACK.map(m => ({
+    return FALLBACK.map((m) => ({
       provider: "mistral" as const,
       provider_model_id: m.id,
       display_name: m.name,
@@ -52,9 +66,12 @@ export class MistralProvider implements LLMProvider {
   }
   async getModelMetadata(id: string): Promise<ModelMetadata | null> {
     const all = await this.discoverModels();
-    return all.find(m => m.provider_model_id === id) ?? null;
+    return all.find((m) => m.provider_model_id === id) ?? null;
   }
-  async benchmarkModel(model: { provider_model_id: string }, benchmark: BenchmarkDefinition): Promise<BenchmarkResult> {
+  async benchmarkModel(
+    model: { provider_model_id: string },
+    benchmark: BenchmarkDefinition,
+  ): Promise<BenchmarkResult> {
     return measureBenchmark({
       provider: "mistral",
       providerModelId: model.provider_model_id,

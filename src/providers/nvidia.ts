@@ -1,30 +1,50 @@
-import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  Env,
+  LLMProvider,
+  ModelMetadata,
+} from "../types";
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://integrate.api.nvidia.com/v1/models";
 const CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
 const FALLBACK = [
-  { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", ctx: 131072 },
+  {
+    id: "meta/llama-3.3-70b-instruct",
+    name: "Llama 3.3 70B Instruct",
+    ctx: 131072,
+  },
   { id: "meta/llama-3.1-8b-instruct", name: "Llama 3.1 8B", ctx: 131072 },
-  { id: "nvidia/llama-3.1-nemotron-70b-instruct", name: "Nemotron 70B", ctx: 131072 },
+  {
+    id: "nvidia/llama-3.1-nemotron-70b-instruct",
+    name: "Nemotron 70B",
+    ctx: 131072,
+  },
   { id: "google/gemma-2-27b-it", name: "Gemma 2 27B", ctx: 8192 },
   { id: "mistralai/mistral-7b-instruct-v0.3", name: "Mistral 7B", ctx: 32768 },
 ];
 
 export class NvidiaProvider implements LLMProvider {
   constructor(private env: Env) {}
-  getProviderName() { return "nvidia" as const; }
+  getProviderName() {
+    return "nvidia" as const;
+  }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
       assertSafeApiUrl(MODELS_URL);
 
-      const res = await fetch(MODELS_URL, { headers: (this.env.NVIDIA_API_KEY ? { authorization: `Bearer ${this.env.NVIDIA_API_KEY}` } : {} as Record<string,string>) });
+      const res = await fetch(MODELS_URL, {
+        headers: this.env.NVIDIA_API_KEY
+          ? { authorization: `Bearer ${this.env.NVIDIA_API_KEY}` }
+          : ({} as Record<string, string>),
+      });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };
-      const ids = (data.data ?? []).map(m => m.id).filter(Boolean);
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean);
       if (ids.length === 0) return this.fallback();
-      return ids.slice(0, 15).map(id => ({
+      return ids.slice(0, 15).map((id) => ({
         provider: "nvidia" as const,
         provider_model_id: id,
         display_name: id,
@@ -35,10 +55,12 @@ export class NvidiaProvider implements LLMProvider {
         is_free: true,
         free_status: "FREE" as const,
       }));
-    } catch { return this.fallback(); }
+    } catch {
+      return this.fallback();
+    }
   }
   private fallback(): ModelMetadata[] {
-    return FALLBACK.map(m => ({
+    return FALLBACK.map((m) => ({
       provider: "nvidia" as const,
       provider_model_id: m.id,
       display_name: m.name,
@@ -52,9 +74,12 @@ export class NvidiaProvider implements LLMProvider {
   }
   async getModelMetadata(id: string): Promise<ModelMetadata | null> {
     const all = await this.discoverModels();
-    return all.find(m => m.provider_model_id === id) ?? null;
+    return all.find((m) => m.provider_model_id === id) ?? null;
   }
-  async benchmarkModel(model: { provider_model_id: string }, benchmark: BenchmarkDefinition): Promise<BenchmarkResult> {
+  async benchmarkModel(
+    model: { provider_model_id: string },
+    benchmark: BenchmarkDefinition,
+  ): Promise<BenchmarkResult> {
     return measureBenchmark({
       provider: "nvidia",
       providerModelId: model.provider_model_id,

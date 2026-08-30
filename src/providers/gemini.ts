@@ -1,9 +1,17 @@
-import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  Env,
+  LLMProvider,
+  ModelMetadata,
+} from "../types";
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
-const CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+const CHAT_URL =
+  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 // Gemini OpenAI-compat models list — same base: /v1beta/openai/models (Bearer)
-const MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/openai/models";
+const MODELS_URL =
+  "https://generativelanguage.googleapis.com/v1beta/openai/models";
 
 const FALLBACK = [
   { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", ctx: 1048576 },
@@ -15,19 +23,25 @@ const FALLBACK = [
 
 export class GeminiProvider implements LLMProvider {
   constructor(private env: Env) {}
-  getProviderName() { return "gemini" as const; }
+  getProviderName() {
+    return "gemini" as const;
+  }
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
       assertSafeApiUrl(MODELS_URL);
 
-      const res = await fetch(MODELS_URL, { headers: (this.env.GEMINI_API_KEY ? { authorization: `Bearer ${this.env.GEMINI_API_KEY}` } : {} as Record<string,string>) });
+      const res = await fetch(MODELS_URL, {
+        headers: this.env.GEMINI_API_KEY
+          ? { authorization: `Bearer ${this.env.GEMINI_API_KEY}` }
+          : ({} as Record<string, string>),
+      });
       if (!res.ok) return this.fallback();
       const data = (await res.json()) as { data?: Array<{ id: string }> };
-      const ids = (data.data ?? []).map(m => m.id).filter(Boolean);
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean);
       // filter to known free-tier gemini models only
-      const free = ids.filter(id => /gemini|gemma/i.test(id));
+      const free = ids.filter((id) => /gemini|gemma/i.test(id));
       if (free.length === 0) return this.fallback();
-      return free.slice(0, 12).map(id => ({
+      return free.slice(0, 12).map((id) => ({
         provider: "gemini" as const,
         provider_model_id: id,
         display_name: id,
@@ -38,10 +52,12 @@ export class GeminiProvider implements LLMProvider {
         is_free: true,
         free_status: "FREE" as const,
       }));
-    } catch { return this.fallback(); }
+    } catch {
+      return this.fallback();
+    }
   }
   private fallback(): ModelMetadata[] {
-    return FALLBACK.map(m => ({
+    return FALLBACK.map((m) => ({
       provider: "gemini" as const,
       provider_model_id: m.id,
       display_name: m.name,
@@ -55,9 +71,12 @@ export class GeminiProvider implements LLMProvider {
   }
   async getModelMetadata(modelId: string): Promise<ModelMetadata | null> {
     const all = await this.discoverModels();
-    return all.find(m => m.provider_model_id === modelId) ?? null;
+    return all.find((m) => m.provider_model_id === modelId) ?? null;
   }
-  async benchmarkModel(model: { provider_model_id: string }, benchmark: BenchmarkDefinition): Promise<BenchmarkResult> {
+  async benchmarkModel(
+    model: { provider_model_id: string },
+    benchmark: BenchmarkDefinition,
+  ): Promise<BenchmarkResult> {
     return measureBenchmark({
       provider: "gemini",
       providerModelId: model.provider_model_id,

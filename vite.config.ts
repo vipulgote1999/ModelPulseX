@@ -46,7 +46,8 @@ export default defineConfig({
       "Referrer-Policy": "strict-origin-when-cross-origin",
       "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
       "Cross-Origin-Opener-Policy": "same-origin",
-      "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173 https: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+      "Content-Security-Policy":
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173 https: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
     },
   },
 });

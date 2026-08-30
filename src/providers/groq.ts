@@ -73,7 +73,6 @@ export class GroqProvider implements LLMProvider {
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
-
       assertSafeApiUrl(GROQ_MODELS_URL);
 
       const res = await fetch(GROQ_MODELS_URL, {

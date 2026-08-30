@@ -1,4 +1,10 @@
-import type { ExecutionContext, MessageBatch, Message, ScheduledController, ExportedHandler } from "@cloudflare/workers-types";
+import type {
+  ExecutionContext,
+  MessageBatch,
+  Message,
+  ScheduledController,
+  ExportedHandler,
+} from "@cloudflare/workers-types";
 import { PerformanceDO } from "./live/performance-do";
 import { createApi } from "./api/routes";
 import {
@@ -25,7 +31,10 @@ function withSecurityHeaders(res: Response, req?: Request): Response {
   h.set("x-content-type-options", "nosniff");
   h.set("x-frame-options", "DENY");
   h.set("referrer-policy", "strict-origin-when-cross-origin");
-  h.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  h.set(
+    "permissions-policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  );
   h.set("x-permitted-cross-domain-policies", "none");
   h.set("cross-origin-opener-policy", "same-origin");
   h.set("cross-origin-resource-policy", "same-origin");
@@ -34,7 +43,10 @@ function withSecurityHeaders(res: Response, req?: Request): Response {
   h.set("x-xss-protection", "0");
   // HSTS — only meaningful over HTTPS; Workers terminates TLS at edge, so always set
   // preload + includeSubDomains for max score; if you serve http locally, browser ignores it
-  h.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
+  h.set(
+    "strict-transport-security",
+    "max-age=63072000; includeSubDomains; preload",
+  );
   // CSP for API responses (JSON) — lock down to self; frontend HTML gets its own CSP via assets
   const isJson = (h.get("content-type") ?? "").includes("json");
   if (isJson || (req?.url.includes("/api/") ?? false)) {
@@ -58,10 +70,12 @@ function withSecurityHeaders(res: Response, req?: Request): Response {
     } catch {
       path = "";
     }
-    if (path.startsWith("/api/admin/")) h.set("cache-control", "no-store, no-cache, must-revalidate");
+    if (path.startsWith("/api/admin/"))
+      h.set("cache-control", "no-store, no-cache, must-revalidate");
     else if (path.startsWith("/api/")) {
       // keep existing per-route cache-control if set, else default
-      if (!h.get("cache-control")) h.set("cache-control", "public, max-age=10, stale-while-revalidate=30");
+      if (!h.get("cache-control"))
+        h.set("cache-control", "public, max-age=10, stale-while-revalidate=30");
     }
   }
   h.set("vary", [h.get("vary"), "Origin"].filter(Boolean).join(", "));
@@ -80,7 +94,7 @@ export default {
     env: Env,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ctx: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
     let url: URL;
     let path: string;
@@ -89,13 +103,30 @@ export default {
       path = url.pathname;
     } catch {
       // Malformed request URL — reject cleanly rather than throwing.
-      return withSecurityHeaders(new Response("bad request", { status: 400 }), request);
+      return withSecurityHeaders(
+        new Response("bad request", { status: 400 }),
+        request,
+      );
     }
 
     // Method allowlist — disallow TRACE/TRACK/DEBUG etc.
-    const allowedMethods = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+    const allowedMethods = new Set([
+      "GET",
+      "HEAD",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ]);
     if (!allowedMethods.has(request.method)) {
-      return withSecurityHeaders(new Response("method not allowed", { status: 405, headers: { allow: "GET, HEAD, POST, OPTIONS" } }), request);
+      return withSecurityHeaders(
+        new Response("method not allowed", {
+          status: 405,
+          headers: { allow: "GET, HEAD, POST, OPTIONS" },
+        }),
+        request,
+      );
     }
 
     // Size gate — reject huge bodies before they hit Hono/D1 (1MB limit)
@@ -103,7 +134,10 @@ export default {
     if (clen) {
       const n = Number(clen);
       if (Number.isFinite(n) && n > 1_048_576) {
-        return withSecurityHeaders(new Response("payload too large", { status: 413 }), request);
+        return withSecurityHeaders(
+          new Response("payload too large", { status: 413 }),
+          request,
+        );
       }
     }
 
@@ -123,7 +157,12 @@ export default {
     // Add security headers to the SPA shell as well
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/index.html"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ModelPulseX</title></head><body>ModelPulseX — <a href="/api/health">API</a> | <a href="/">Dashboard</a></body></html>`;
     return withSecurityHeaders(
-      new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } }),
+      new Response(html, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=300",
+        },
+      }),
       request,
     );
   },

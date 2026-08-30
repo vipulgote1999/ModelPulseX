@@ -1,4 +1,10 @@
-import type { BenchmarkDefinition, BenchmarkResult, Env, LLMProvider, ModelMetadata } from "../types";
+import type {
+  BenchmarkDefinition,
+  BenchmarkResult,
+  Env,
+  LLMProvider,
+  ModelMetadata,
+} from "../types";
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 
 const MODELS_URL = "https://ollama.com/v1/models";
@@ -20,9 +26,21 @@ const FALLBACK = [
   { id: "minimax-m3", name: "MiniMax M3 (Ollama Cloud)", ctx: 128000 },
   { id: "gpt-oss:20b", name: "GPT OSS 20B (Ollama Cloud)", ctx: 131072 },
   { id: "gpt-oss:120b", name: "GPT OSS 120B (Ollama Cloud)", ctx: 131072 },
-  { id: "nemotron-3-super", name: "Nemotron 3 Super (Ollama Cloud)", ctx: 128000 },
-  { id: "nemotron-3-ultra", name: "Nemotron 3 Ultra (Ollama Cloud)", ctx: 128000 },
-  { id: "nemotron-3-nano:30b", name: "Nemotron 3 Nano 30B (Ollama Cloud)", ctx: 128000 },
+  {
+    id: "nemotron-3-super",
+    name: "Nemotron 3 Super (Ollama Cloud)",
+    ctx: 128000,
+  },
+  {
+    id: "nemotron-3-ultra",
+    name: "Nemotron 3 Ultra (Ollama Cloud)",
+    ctx: 128000,
+  },
+  {
+    id: "nemotron-3-nano:30b",
+    name: "Nemotron 3 Nano 30B (Ollama Cloud)",
+    ctx: 128000,
+  },
 ];
 
 export class OllamaProvider implements LLMProvider {
@@ -36,13 +54,24 @@ export class OllamaProvider implements LLMProvider {
       assertSafeApiUrl(MODELS_URL);
 
       const res = await fetch(MODELS_URL, {
-        headers: this.env.OLLAMA_API_KEY ? { authorization: `Bearer ${this.env.OLLAMA_API_KEY}` } : {},
+        headers: this.env.OLLAMA_API_KEY
+          ? { authorization: `Bearer ${this.env.OLLAMA_API_KEY}` }
+          : {},
       });
       if (!res.ok) return this.fallback();
-      const data = (await res.json()) as { data?: Array<{ id: string }>; models?: Array<{ name: string }> };
-      const idsRaw = (data.data ?? []).map((m) => m.id).filter(Boolean) as string[];
+      const data = (await res.json()) as {
+        data?: Array<{ id: string }>;
+        models?: Array<{ name: string }>;
+      };
+      const idsRaw = (data.data ?? [])
+        .map((m) => m.id)
+        .filter(Boolean) as string[];
       // SAFETY: Ollama API may return {data:[{id}]} or {models:[{name}]}; widen to handle both shapes safely
-      const idsTags = ((data as unknown as { models?: Array<{ name: string }> }).models ?? []).map((m) => m.name).filter(Boolean);
+      const idsTags = (
+        (data as unknown as { models?: Array<{ name: string }> }).models ?? []
+      )
+        .map((m) => m.name)
+        .filter(Boolean);
       const ids = idsRaw.length ? idsRaw : idsTags;
       if (ids.length === 0) return this.fallback();
       // Only benchmark verified free models — paid/subscription models would always return PROVIDER_ERROR and waste quota
@@ -83,7 +112,10 @@ export class OllamaProvider implements LLMProvider {
     return all.find((m) => m.provider_model_id === modelId) ?? null;
   }
 
-  async benchmarkModel(model: { provider_model_id: string }, benchmark: BenchmarkDefinition): Promise<BenchmarkResult> {
+  async benchmarkModel(
+    model: { provider_model_id: string },
+    benchmark: BenchmarkDefinition,
+  ): Promise<BenchmarkResult> {
     return measureBenchmark({
       provider: "ollama",
       providerModelId: model.provider_model_id,

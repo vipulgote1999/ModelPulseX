@@ -25,7 +25,10 @@ function sweep(now: number): void {
   }
 }
 
-export function checkRateLimit(key: string, opts: RateLimitOpts): { allowed: boolean; remaining: number; resetMs: number } {
+export function checkRateLimit(
+  key: string,
+  opts: RateLimitOpts,
+): { allowed: boolean; remaining: number; resetMs: number } {
   const now = Date.now();
   sweep(now);
   let b = buckets.get(key);
@@ -41,7 +44,11 @@ export function checkRateLimit(key: string, opts: RateLimitOpts): { allowed: boo
     return { allowed: false, remaining: 0, resetMs: Math.max(0, resetMs) };
   }
   b.timestamps.push(now);
-  return { allowed: true, remaining: opts.max - b.timestamps.length, resetMs: opts.windowMs };
+  return {
+    allowed: true,
+    remaining: opts.max - b.timestamps.length,
+    resetMs: opts.windowMs,
+  };
 }
 
 /** Extract client IP best-effort from Cloudflare headers. */
