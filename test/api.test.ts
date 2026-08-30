@@ -17,7 +17,7 @@ describe("api/contracts — D1 schema", () => {
     expect(sql).toContain("idx_benchmark_runs_model_time");
   });
   it("leaderboard query does not scan raw per request — uses hourly stats", async () => {
-    const routes = readFileSync("src/api/routes.ts", "utf8");
+    const routes = readFileSync("src/api/leaderboard.ts", "utf8");
     expect(routes).toContain("hourly_model_stats");
     expect(routes).toContain("parseRange");
     expect(routes).toContain("is_stale");
