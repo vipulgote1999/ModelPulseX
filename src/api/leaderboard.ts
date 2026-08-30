@@ -125,8 +125,8 @@ export function leaderboardRoutes(env: Env) {
 
     // Optimized: 6 parallel queries instead of 9 — meta combined into 1, rawWindow covers 1h/24h/7d in single scan
     // Uses covering indexes: idx_benchmark_runs_model_started_type, idx_hourly_model_hour_type
-    const lastRunSql = `SELECT model_id, tps, ttft_ms, started_at, status FROM (
-        SELECT model_id, tps, ttft_ms, started_at, status,
+    const lastRunSql = `SELECT model_id, tps, ttft_ms, itl_ms, started_at, status FROM (
+        SELECT model_id, tps, ttft_ms, itl_ms, started_at, status,
                ROW_NUMBER() OVER (PARTITION BY model_id ORDER BY started_at DESC) as rn
         FROM benchmark_runs
         WHERE ${providerSubquery} ${benchmarkFilter}
@@ -143,6 +143,7 @@ export function leaderboardRoutes(env: Env) {
         SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt7h,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_7d,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_7d,
+        AVG(CASE WHEN hour_start >= ? THEN median_itl END) as itl_7d,
         AVG(CASE WHEN hour_start >= ? THEN uptime END) as up_7,
         AVG(CASE WHEN hour_start >= ? THEN error_rate END) as er_7
       FROM hourly_model_stats
@@ -160,6 +161,7 @@ export function leaderboardRoutes(env: Env) {
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_24h,
         GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_7d,
         GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_7d,
+        GROUP_CONCAT(CASE WHEN started_at >= ? THEN itl_ms END) as gc_itl_7d,
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_7d,
         AVG(CASE WHEN started_at >= ? THEN CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END END) as er_7d,
         SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
@@ -185,7 +187,7 @@ export function leaderboardRoutes(env: Env) {
       ...(benchmarkVal ? [benchmarkVal] : []),
     ];
     const hourlyBinds: unknown[] = [
-      // cnt_1h, t_1h, tt_1h | cnt_24, t_24h, tt_24h, up_24 | cnt7h, t_7d, tt_7d, up_7, er_7
+      // cnt_1h, t_1h, tt_1h | cnt_24, t_24h, tt_24h, up_24 | cnt7h, t_7d, tt_7d, itl_7d, up_7, er_7
       since1h,
       since1h,
       since1h,
@@ -193,6 +195,7 @@ export function leaderboardRoutes(env: Env) {
       since24h,
       since24h,
       since24h,
+      since7dIso,
       since7dIso,
       since7dIso,
       since7dIso,
@@ -203,7 +206,7 @@ export function leaderboardRoutes(env: Env) {
       since7dIso,
     ];
     // rawWindow binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
-    //                  | gc_tps_7d, gc_ttft_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
+    //                  | gc_tps_7d, gc_ttft_7d, gc_itl_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
     const rawWindowBinds: unknown[] = [
       since1h,
       since1h,
@@ -211,6 +214,7 @@ export function leaderboardRoutes(env: Env) {
       since24h,
       since24h,
       since24h,
+      since7dIso,
       since7dIso,
       since7dIso,
       since7dIso,
@@ -238,6 +242,7 @@ export function leaderboardRoutes(env: Env) {
       cnt7h: number | null;
       t_7d: number | null;
       tt_7d: number | null;
+      itl_7d: number | null;
       up_7: number | null;
       er_7: number | null;
     }
@@ -251,6 +256,7 @@ export function leaderboardRoutes(env: Env) {
       up_24h: number | null;
       gc_tps_7d: string | null;
       gc_ttft_7d: string | null;
+      gc_itl_7d: string | null;
       up_7d: number | null;
       er_7d: number | null;
       cnt7: number | null;
@@ -278,6 +284,7 @@ export function leaderboardRoutes(env: Env) {
           model_id: number;
           tps: number | null;
           ttft_ms: number | null;
+          itl_ms: number | null;
           started_at: string;
           status: string;
         }>(),
@@ -299,11 +306,12 @@ export function leaderboardRoutes(env: Env) {
       {
         tps: number | null;
         ttft_ms: number | null;
+        itl_ms: number | null;
         started_at: string;
         status: string;
       }
     >();
-    for (const r of lastRunsRes.results ?? []) lastMap.set(r.model_id, r);
+    for (const r of lastRunsRes.results ?? []) lastMap.set(r.model_id, r as never);
 
     const hourlyMap = new Map<number, HourlyRow>();
     for (const r of hourlyRes.results ?? []) hourlyMap.set(r.model_id, r);
@@ -335,6 +343,7 @@ export function leaderboardRoutes(env: Env) {
       cnt7h: null,
       t_7d: null,
       tt_7d: null,
+      itl_7d: null,
       up_7: null,
       er_7: null,
     };
@@ -399,6 +408,14 @@ export function leaderboardRoutes(env: Env) {
         raw?.cnt7 ?? null,
         MIN_SAMPLES.w7d,
       );
+      const itl_7d = gatedMedian(
+        h.itl_7d,
+        h.cnt7h,
+        raw?.gc_itl_7d ?? null,
+        raw?.cnt7 ?? null,
+        MIN_SAMPLES.w7d,
+      );
+      const itl_now = nowRow?.itl_ms ?? null;
       const samples7 = Math.max(h.cnt7h ?? 0, raw?.cnt7 ?? 0);
       const uptime_7d: number | null =
         samples7 >= MIN_SAMPLES.w7d ? (h.up_7 ?? raw?.up_7d ?? null) : null;
@@ -428,6 +445,8 @@ export function leaderboardRoutes(env: Env) {
         ttft_1h,
         ttft_24h,
         ttft_7d,
+        itl_now,
+        itl_7d,
         uptime_7d,
         error_rate_7d: error_rate,
         success_rate: uptime_7d,

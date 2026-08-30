@@ -11,6 +11,7 @@ import { getAA } from "../lib/intelligence";
 // Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
 const TpsChart = lazy(() => import("../charts/TpsChart"));
 const TtftChart = lazy(() => import("../charts/TtftChart"));
+const ItlChart = lazy(() => import("../charts/ItlChart"));
 const ReliabilityChart = lazy(() => import("../charts/ReliabilityChart"));
 const ComparePanel = lazy(() => import("../components/ComparePanel"));
 
@@ -86,6 +87,16 @@ export default function Dashboard() {
         const meta = rows.find((r) => r.model_id === id);
         const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
         return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_ttft: (p as unknown as { median_ttft: number | null }).median_ttft ?? (p as unknown as { avg_ttft: number | null }).avg_ttft ?? null })) };
+      })
+      .filter((s) => s.points.length > 0);
+  }, [history.data, chartIds, rows]);
+
+  const itlSeries = useMemo(() => {
+    return chartIds
+      .map((id) => {
+        const meta = rows.find((r) => r.model_id === id);
+        const label = meta ? `${meta.display_name.slice(0, 18)} · ${meta.provider}` : String(id);
+        return { id, label, points: (history.data[id] ?? []).map((p) => ({ hour_start: p.hour_start, median_itl: (p as unknown as { median_itl: number | null }).median_itl ?? null })) };
       })
       .filter((s) => s.points.length > 0);
   }, [history.data, chartIds, rows]);
@@ -170,7 +181,7 @@ export default function Dashboard() {
 
       <div>
         <div className="text-sm font-semibold mb-2">Live leaderboard — click rows to pin for graph comparison (max 3) · sorted by {String(sort)} · {rows.length} models</div>
-        <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
+        <Leaderboard rows={rows as unknown as Array<{ rank: number; model_id: number; model: string; display_name: string; provider: string; free_status: string; active: boolean; tps_now: number | null; tps_1h: number | null; tps_24h: number | null; tps_7d: number | null; ttft_now: number | null; ttft_7d: number | null; itl_now: number | null; itl_7d: number | null; uptime_7d: number | null; error_rate_7d: number | null; status: string; last_test: string | null; overall_score: number | null }>} onSelect={setSelected} selected={selected} />
       </div>
 
       <ChartModelSelector rows={rows as unknown as Array<{ model_id: number; model: string; display_name: string; provider: string; tps_now: number | null; overall_score: number | null }>} selected={selected} onChange={setSelected} />
@@ -180,6 +191,9 @@ export default function Dashboard() {
       </Suspense>
       <Suspense fallback={<ChartFallback />}>
         <TtftChart series={ttftSeries} range={range} />
+      </Suspense>
+      <Suspense fallback={<ChartFallback />}>
+        <ItlChart series={itlSeries} range={range} />
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>

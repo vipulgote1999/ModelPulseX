@@ -43,6 +43,22 @@ export function parseConcatNumbers(gc: string | null | undefined): number[] {
     .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+
+/** Median gap between consecutive streamed chunks (ms). Measures streaming smoothness
+ *  that identical TPS hides: 40 TPS delivered in bursts feels much worse than 40 TPS
+ *  delivered evenly. Null until at least two chunks are observed. */
+export function computeInterTokenLatency(chunkTimesMs: number[]): number | null {
+  if (chunkTimesMs.length < 2) return null;
+  const gaps: number[] = [];
+  for (let i = 1; i < chunkTimesMs.length; i++) {
+    const gap = chunkTimesMs[i]! - chunkTimesMs[i - 1]!;
+    if (gap < 0) return null; // non-monotonic clock — refuse to guess
+    gaps.push(gap);
+  }
+  if (gaps.length === 0) return null;
+  return percentile(gaps, 50);
+}
+
 // quick uptime from success/total
 export function uptimeRate(success: number, total: number): number | null {
   if (total === 0) return null;

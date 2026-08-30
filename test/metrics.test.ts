@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores } from "../src/utils/metrics";
+import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency } from "../src/utils/metrics";
 
 describe("metrics", () => {
   it("TTFT = first - started", () => {
@@ -41,5 +41,21 @@ describe("metrics", () => {
     const s2 = overallScore(0, 0, 0, 0);
     expect(s2).toBeCloseTo(0);
     expect(overallScore(null, null, null, null)).toBeNull();
+  });
+});
+
+describe("computeInterTokenLatency", () => {
+  it("returns null with fewer than two chunks", () => {
+    expect(computeInterTokenLatency([])).toBeNull();
+    expect(computeInterTokenLatency([100])).toBeNull();
+  });
+  it("returns the gap for a single pair", () => {
+    expect(computeInterTokenLatency([100, 150])).toBe(50);
+  });
+  it("uses the median so one stall does not dominate", () => {
+    expect(computeInterTokenLatency([0, 10, 20, 30, 530])).toBe(10);
+  });
+  it("ignores non-monotonic and nullish input", () => {
+    expect(computeInterTokenLatency([50, 10])).toBeNull();
   });
 });

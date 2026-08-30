@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA } from "../lib/intelligence";
@@ -18,6 +18,8 @@ type Row = {
   tps_7d: number | null;
   ttft_now: number | null;
   ttft_7d: number | null;
+  itl_now: number | null;
+  itl_7d: number | null;
   uptime_7d: number | null;
   error_rate_7d: number | null;
   status: string;
@@ -40,7 +42,7 @@ export default function Leaderboard({
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const sort = (k: keyof Row | "overall_score") => {
     if (sortKey === k) setDir((d) => (d === "desc" ? "asc" : "desc"));
-    else { setSortKey(k); setDir(k === "ttft_now" || k === "ttft_7d" ? "asc" : "desc"); }
+    else { setSortKey(k); setDir(k === "ttft_now" || k === "ttft_7d" || k === "itl_now" || k === "itl_7d" ? "asc" : "desc"); }
   };
   const sorted = [...rows].sort((a, b) => {
     const av = (a as unknown as Record<string, number | null>)[sortKey] ?? null;
@@ -61,6 +63,21 @@ export default function Leaderboard({
   const { data: cd } = useCooldowns(12000);
   const modelCdMap = new Map((cd?.models ?? []).map((m) => [m.model_id, m]));
   const providerCdMap = new Map((cd?.providers ?? []).map((p) => [p.provider, p]));
+  const [limitsMap, setLimitsMap] = useState<Map<string, { rpm?: number; rpd?: number; tokensPerDay?: number; notes?: string; usage24h?: number }>>(new Map());
+  useEffect(() => {
+    fetch("/api/providers").then(r=>r.json()).then((j: unknown)=>{
+      const list = ((j as { providers?: Array<Record<string, unknown>> }).providers ?? []) as Array<Record<string, unknown>>;
+      const m = new Map<string, { rpm?: number; rpd?: number; tokensPerDay?: number; notes?: string; usage24h?: number }>();
+      for (const p of list) {
+        const name = String(p["name"] ?? "");
+        const ft = p["freeTier"] as { rpm?: number; rpd?: number; tokensPerDay?: number; notes?: string } | null | undefined;
+        const usage24h = typeof p["usage24h"] === "number" ? p["usage24h"] as number : undefined;
+        if (ft || usage24h !== undefined) m.set(name, { ...ft, usage24h } as never);
+        else if (name) m.set(name, {});
+      }
+      setLimitsMap(m);
+    }).catch(()=>{});
+  }, []);
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
@@ -76,6 +93,7 @@ export default function Leaderboard({
               <th className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white" onClick={() => sort("tps_24h")}>24h</th>
               <th className="text-right px-2 py-2 cursor-pointer hover:text-white" onClick={() => sort("tps_7d")}>7d</th>
               <th className="text-right px-2 py-2 cursor-pointer hover:text-white" onClick={() => sort("ttft_now")}>TTFT</th>
+              <th className="text-right px-2 py-2 cursor-pointer hover:text-white hidden xl:table-cell" onClick={() => sort("itl_now")}>ITL</th>
               <th className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white" onClick={() => sort("uptime_7d")}>7d Up</th>
               <th className="text-right px-2 py-2 hidden lg:table-cell">Intelligence</th>
               <th className="text-left px-2 py-2 hidden lg:table-cell">Trend (24h)</th>
@@ -86,7 +104,7 @@ export default function Leaderboard({
           </thead>
           <tbody>
             {sorted.length === 0 && (
-              <tr><td colSpan={12} className="px-4 py-10 text-center text-zinc-500">No free models discovered yet — discovery runs hourly + on deploy. Check <span className="text-zinc-300">/api/models</span>.</td></tr>
+              <tr><td colSpan={15} className="px-4 py-10 text-center text-zinc-500">No free models discovered yet — discovery runs hourly + on deploy. Check <span className="text-zinc-300">/api/models</span>.</td></tr>
             )}
             {sorted.map((r) => (
               <tr key={r.model_id} onClick={() => toggle(r.model_id)} className={`border-b border-zinc-800/60 hover:bg-zinc-800/40 cursor-pointer ${selected?.includes(r.model_id) ? "bg-violet-950/30" : ""}`}>
@@ -100,12 +118,24 @@ export default function Leaderboard({
                 <td className="px-3 py-2 hidden md:table-cell">
                   <span className={`text-xs px-2 py-0.5 rounded-full border ${r.provider === "opencode_zen" ? "border-violet-800 bg-violet-900/30 text-violet-300" : "border-sky-800 bg-sky-900/30 text-sky-300"}`}>{r.provider}</span>
                   {r.overall_score != null && <span className="ml-2 text-[11px] text-zinc-500">{r.overall_score}</span>}
+                  {(() => {
+                    const lim = limitsMap.get(r.provider);
+                    if (!lim) return null;
+                    const parts: string[] = [];
+                    if (lim.rpm) parts.push(`${lim.rpm} rpm`);
+                    if (lim.rpd) parts.push(`${lim.rpd} rpd`);
+                    if (parts.length === 0 && lim.tokensPerDay) parts.push(`${lim.tokensPerDay} tok/d`);
+                    const label = parts.length ? parts.join(" · ") : "unknown";
+                    const title = [lim.notes, lim.usage24h != null ? `usage 24h: ${lim.usage24h}` : null].filter(Boolean).join(" · ");
+                    return <div title={title || label} className="mt-1 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-400 border border-zinc-700 inline-block">{label}</div>;
+                  })()}
                 </td>
                 <td className="px-2 py-2 text-right mono font-medium">{fmtTps(r.tps_now)}</td>
                 <td className="px-2 py-2 text-right mono hidden lg:table-cell text-zinc-400">{fmtTps(r.tps_1h)}</td>
                 <td className="px-2 py-2 text-right mono hidden lg:table-cell text-zinc-400">{fmtTps(r.tps_24h)}</td>
                 <td className="px-2 py-2 text-right mono text-zinc-200">{fmtTps(r.tps_7d)}</td>
                 <td className="px-2 py-2 text-right mono">{fmtMs(r.ttft_now ?? r.ttft_7d)}</td>
+                <td className="px-2 py-2 text-right mono hidden xl:table-cell">{fmtMs(r.itl_now ?? r.itl_7d)}</td>
                 <td className="px-2 py-2 text-right mono hidden lg:table-cell">{r.uptime_7d != null ? `${(r.uptime_7d * 100).toFixed(1)}%${(r as unknown as { sampleCount24h?: number }).sampleCount24h != null && (r as unknown as { sampleCount24h?: number }).sampleCount24h! < 12 ? ` n=${(r as unknown as { sampleCount24h?: number }).sampleCount24h}` : ""}` : "—"}</td>
                 <td className="px-2 py-2 text-center hidden lg:table-cell">{(() => { const aa = getAA(r.model); return aa ? <a href={aa.url} target="_blank" rel="noreferrer" className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500" title="Artificial Analysis Intelligence Index">{aa.score.toFixed(1)}</a> : <span className="text-xs text-zinc-600">—</span>; })()}</td>
                 <td className="px-2 py-2 hidden lg:table-cell"><Sparkline points={(r as unknown as { sparkline?: Array<number | null> }).sparkline ?? []} /></td>

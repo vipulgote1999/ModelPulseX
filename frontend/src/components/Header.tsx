@@ -2,7 +2,7 @@ export default function Header({
   onNavigate,
   current,
 }: {
-  onNavigate: (p: "dashboard" | "methodology" | "admin") => void;
+  onNavigate: (p: "dashboard" | "methodology" | "admin" | "docs") => void;
   current: string;
 }) {
   return (
@@ -31,6 +31,12 @@ export default function Header({
             className={`px-3 py-1.5 rounded-md ${current === "dashboard" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
           >
             Dashboard
+          </button>
+          <button
+            onClick={() => onNavigate("docs")}
+            className={`px-3 py-1.5 rounded-md ${current === "docs" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+          >
+            Docs
           </button>
           <button
             onClick={() => onNavigate("methodology")}

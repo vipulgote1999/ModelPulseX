@@ -117,3 +117,14 @@ export async function getProviderRPMUsage(db: D1Database, windowMs = 60000): Pro
     return m;
   } catch { return new Map(); }
 }
+
+/** Requests per provider in the trailing 24h — lets the UI show consumption against a documented daily quota. */
+export async function getProviderDailyUsage(db: D1Database, windowMs = 86_400_000): Promise<Map<string, number>> {
+  try {
+    const since = new Date(Date.now() - windowMs).toISOString();
+    const rows = await db.prepare(`SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY provider`).bind(since).all<{ provider: string; cnt: number }>();
+    const m = new Map<string, number>();
+    for (const r of (rows.results ?? [])) m.set(r.provider, r.cnt);
+    return m;
+  } catch { return new Map(); }
+}

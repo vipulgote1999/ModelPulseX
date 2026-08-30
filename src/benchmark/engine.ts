@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import {
   computeGenerationMs,
+  computeInterTokenLatency,
   computeTPS,
   computeTTFT,
   estimateTokensHeuristic,
@@ -30,6 +31,10 @@ export interface BenchmarkOpts {
  */
 /** Thrown when the outbound provider URL fails the SSRF shape guard. */
 export class BlockedApiUrlError extends Error {}
+
+/** Cap retained chunk timestamps — a median over 512 gaps is statistically
+ *  indistinguishable from the full stream, and raw runs must stay small. */
+const MAX_CHUNK_SAMPLES = 512;
 
 const LOOPBACK_HOST_RE =
   /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\]|::1)$/;
@@ -96,6 +101,7 @@ export async function measureBenchmark(
   let timedOut = false;
   let streamError = false;
   let isReasoning = false;
+  const chunkTimes: number[] = [];
 
   const body = {
     model: opts.providerModelId,
@@ -242,6 +248,15 @@ export async function measureBenchmark(
                   ? performance.now()
                   : Date.now();
             }
+            if (typeof delta === "string" && delta.length > 0) {
+              if (chunkTimes.length < MAX_CHUNK_SAMPLES) {
+                chunkTimes.push(
+                  typeof performance !== "undefined" && performance.now
+                    ? performance.now()
+                    : Date.now(),
+                );
+              }
+            }
             if (typeof delta === "string") outputText += delta;
           } catch {
             // ignore non-JSON data lines
@@ -287,6 +302,7 @@ export async function measureBenchmark(
       startedPerf,
       firstPerf,
       completedPerf,
+      chunkTimes,
       isReasoning,
     );
   } catch (e: unknown) {
@@ -335,6 +351,7 @@ function finalize(
   startPerf?: number | null,
   firstPerf?: number | null,
   completedPerf?: number | null,
+  chunkTimesMs?: number[],
   isReasoning?: boolean,
 ): BenchmarkResult {
   const startedMs = new Date(startedAtIso).getTime();
@@ -372,6 +389,12 @@ function finalize(
       tps = computeTPS(outputTokens, 20);
   }
   // if not SUCCESS, null out ttft/tps
+  const itlRaw = computeInterTokenLatency(chunkTimesMs ?? []);
+  const itl_ms = status === "SUCCESS" ? itlRaw : null;
+  const chunk_count =
+    status === "SUCCESS" && chunkTimesMs != null && chunkTimesMs.length > 0
+      ? chunkTimesMs.length
+      : null;
   const ttft_ms = status === "SUCCESS" ? ttft : null;
   const generation_ms = status === "SUCCESS" ? gen : null;
   const tpsVal = status === "SUCCESS" ? tps : null;
@@ -384,6 +407,8 @@ function finalize(
     ttft_ms: ttft_ms,
     generation_ms,
     tps: tpsVal,
+    itl_ms,
+    chunk_count,
     status,
     error_type: errorType,
     http_status: httpStatus,

@@ -48,6 +48,15 @@ export interface ProviderDescriptor {
    *  verified-free model ids. Used in leaderboard/scheduler queries as an immediate
    *  hide of polluted rows even before discovery cleanup lands. */
   hardFreeFilter?(modelAlias: string): string;
+  /** Documented free-tier limits, sourced from plan/Free-Providers.txt and each
+   *  provider's own docs. Descriptive metadata for display only — NOT scheduler
+   *  enforcement limits (those come from getRPMConfig). null = unknown. */
+  freeTier?: {
+    rpm?: number;
+    rpd?: number;
+    tokensPerDay?: number;
+    notes?: string;
+  };
 }
 
 /** Central endpoint table — single source of truth for admin display and provider wiring.
@@ -165,51 +174,61 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     name: "opencode_zen",
     create: (e) => new OpenCodeZenProvider(e),
     ...PROVIDER_ENDPOINTS["opencode_zen"],
+    freeTier: { notes: "free models available via Zen" },
   },
   {
     name: "openrouter",
     create: (e) => new OpenRouterProvider(e),
     ...PROVIDER_ENDPOINTS["openrouter"],
+    freeTier: { notes: "free models flagged via pricing" },
   },
   {
     name: "groq",
     create: (e) => new GroqProvider(e),
     ...PROVIDER_ENDPOINTS["groq"],
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "cerebras",
     create: (e) => new CerebrasProvider(e),
     ...PROVIDER_ENDPOINTS["cerebras"],
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "gemini",
     create: (e) => new GeminiProvider(e),
     ...PROVIDER_ENDPOINTS["gemini"],
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "nvidia",
     create: (e) => new NvidiaProvider(e),
     ...PROVIDER_ENDPOINTS["nvidia"],
+    freeTier: { notes: "1,000 free inference credits for new users" },
   },
   {
     name: "sambanova",
     create: (e) => new SambanovaProvider(e),
     ...PROVIDER_ENDPOINTS["sambanova"],
+    freeTier: { rpd: 20, tokensPerDay: 200000 },
   },
   {
     name: "mistral",
     create: (e) => new MistralProvider(e),
     ...PROVIDER_ENDPOINTS["mistral"],
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "agnes_ai",
     create: (e) => new AgnesAiProvider(e),
     ...PROVIDER_ENDPOINTS["agnes_ai"],
+    freeTier: { rpm: 25, notes: "permanently free, no credit card · 20-30 RPM documented" },
   },
   {
     name: "aionlabs",
     create: (e) => new AionLabsProvider(e),
     ...PROVIDER_ENDPOINTS["aionlabs"],
+    freeTier: { rpm: 15, tokensPerDay: 20000, notes: "permanent free tier, no credit card" },
   },
   {
     name: "kilocode",
@@ -217,42 +236,50 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     ...PROVIDER_ENDPOINTS["kilocode"],
     hardFreeFilter: (m) =>
       `(lower(${m}.provider_model_id) LIKE '%:free' OR lower(${m}.provider_model_id) LIKE '%-free' OR lower(${m}.provider_model_id) LIKE '%/free')`,
+    freeTier: { notes: "~200 req/hr, 1M context" },
   },
   {
     name: "glhf",
     create: (e) => new GlhfProvider(e),
     ...PROVIDER_ENDPOINTS["glhf"],
+    freeTier: { rpm: 30, notes: "unlimited usage on free models" },
   },
   {
     name: "nscale",
     create: (e) => new NscaleProvider(e),
     ...PROVIDER_ENDPOINTS["nscale"],
+    freeTier: { notes: "128K context" },
   },
   {
     name: "speka",
     create: (e) => new SpekaProvider(e),
     ...PROVIDER_ENDPOINTS["speka"],
+    freeTier: { rpm: 10, notes: "$1 in monthly credits" },
   },
   {
     name: "nexaapi",
     create: (e) => new NexaApiProvider(e),
     ...PROVIDER_ENDPOINTS["nexaapi"],
+    freeTier: { notes: "free tier, no credit card" },
   },
   {
     name: "orcarouter",
     create: (e) => new OrcaRouterProvider(e),
     ...PROVIDER_ENDPOINTS["orcarouter"],
+    freeTier: { notes: "4 flagship models free ($0/token)" },
   },
   {
     name: "ninerouter",
     create: (e) => new NineRouterProvider(e),
     ...PROVIDER_ENDPOINTS["ninerouter"],
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "tokenrouter",
     create: (e) => new TokenRouterProvider(e),
     ...PROVIDER_ENDPOINTS["tokenrouter"],
     hardFreeFilter: (m) => `lower(${m}.provider_model_id) LIKE '%free'`,
+    freeTier: { notes: "free tier available" },
   },
   {
     name: "ollama",
@@ -260,8 +287,13 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     ...PROVIDER_ENDPOINTS["ollama"],
     hardFreeFilter: (m) =>
       `${m}.provider_model_id IN (${OLLAMA_FREE_MODELS.map((id) => `'${id}'`).join(",")})`,
+    freeTier: { notes: "free tier available" },
   },
 ];
+
+export function freeTierFor(name: string): ProviderDescriptor["freeTier"] | null {
+  return PROVIDER_REGISTRY.find((d) => d.name === name)?.freeTier ?? null;
+}
 
 /** AND-fragment applying every registered hard filter to a query joining providers+models.
  *  `exclude` omits one provider's filter (used where a caller already special-cases it). */

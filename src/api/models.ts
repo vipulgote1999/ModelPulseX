@@ -94,7 +94,7 @@ export function modelsRoutes(env: Env) {
     }
     if (points.length === 0) {
       // Fixed: benchmark_runs has no median_tps/success_rate columns — select only correct columns
-      let rawSql = `SELECT started_at as hour_start, benchmark_type, tps as avg_tps, tps as median_tps, ttft_ms as avg_ttft, ttft_ms as median_ttft, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as success_rate, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as uptime, 1 as request_count FROM benchmark_runs WHERE model_id=? AND started_at >= ?`;
+      let rawSql = `SELECT started_at as hour_start, benchmark_type, tps as avg_tps, tps as median_tps, ttft_ms as avg_ttft, ttft_ms as median_ttft, itl_ms as median_itl, itl_ms as p90_itl, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as success_rate, CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END as uptime, 1 as request_count FROM benchmark_runs WHERE model_id=? AND started_at >= ?`;
       const rawBinds: unknown[] = [id, since];
       if (benchmark !== "all") {
         rawSql += " AND benchmark_type=?";

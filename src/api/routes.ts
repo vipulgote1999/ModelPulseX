@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "../types";
 import { healthRoutes } from "./health";
+import { openApiRoutes } from "./openapi";
+import { ogRoutes } from "./og";
 import { providersRoutes } from "./providers";
 import { modelsRoutes } from "./models";
 import { leaderboardRoutes } from "./leaderboard";
@@ -34,6 +36,8 @@ export function createApi(env: Env) {
   );
 
   app.route("/api", healthRoutes(env));
+  app.route("/api", openApiRoutes());
+  app.route("/api", ogRoutes(env));
   app.route("/api", providersRoutes(env));
   app.route("/api", modelsRoutes(env));
   app.route("/api", leaderboardRoutes(env));

@@ -91,6 +91,10 @@ export interface BenchmarkResult {
  ttft_ms: number | null;
  generation_ms: number | null;
  tps: number | null;
+ /** Median gap between consecutive streamed chunks (ms); null unless SUCCESS with >=2 chunks. */
+ itl_ms: number | null;
+ /** Number of content-bearing chunks observed (bounded by MAX_CHUNK_SAMPLES). */
+ chunk_count: number | null;
  status: BenchmarkStatus;
  error_type: string | null;
  http_status: number | null;
@@ -152,6 +156,8 @@ export interface LeaderboardRow {
  ttft_1h: number | null;
  ttft_24h: number | null;
  ttft_7d: number | null;
+ itl_now: number | null;
+ itl_7d: number | null;
  uptime_7d: number | null;
  error_rate_7d: number | null;
  success_rate: number | null;
@@ -180,6 +186,8 @@ export interface HistoryPoint {
  median_ttft: number | null;
  p90_ttft: number | null;
  p95_ttft: number | null;
+ median_itl: number | null;
+ p90_itl: number | null;
  success_rate: number | null;
  uptime: number | null;
  request_count: number;
@@ -196,16 +204,16 @@ export interface IncidentRow {
 }
 
 export interface CompareEntry {
- provider: ProviderName;
- model: string;
- tps_24h: number | null;
- tps_7d: number | null;
- ttft_24h: number | null;
- ttft_7d: number | null;
- uptime_7d: number | null;
- error_rate: number | null;
- request_count_7d: number;
- winner?: boolean;
+  provider: ProviderName;
+  model: string;
+  tps_24h: number | null;
+  tps_7d: number | null;
+  ttft_24h: number | null;
+  ttft_7d: number | null;
+  uptime_7d: number | null;
+  error_rate: number | null;
+  request_count_7d: number;
+  winner?: boolean;
 }
 
 export interface ScoringProfile {

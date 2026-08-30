@@ -3,9 +3,10 @@ import Header from "./components/Header";
 import Dashboard from "./pages/Dashboard";
 const Methodology = lazy(() => import("./pages/Methodology"));
 const Admin = lazy(() => import("./pages/Admin"));
+const Docs = lazy(() => import("./pages/Docs"));
 
 export default function App() {
-  const [page, setPage] = useState<"dashboard" | "methodology" | "admin">(
+  const [page, setPage] = useState<"dashboard" | "methodology" | "admin" | "docs">(
     "dashboard",
   );
   return (
@@ -22,6 +23,8 @@ export default function App() {
           <Dashboard />
         ) : page === "admin" ? (
           <Admin />
+        ) : page === "docs" ? (
+          <Docs />
         ) : (
           <Methodology />
         )}

@@ -3,6 +3,8 @@ import { createApi } from "../src/api/routes";
 
 const EXPECTED = [
   "GET /api/health",
+  "GET /api/openapi.json",
+  "GET /api/og.png",
   "GET /api/providers",
   "GET /api/models",
   "GET /api/leaderboard",

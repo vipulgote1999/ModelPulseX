@@ -331,7 +331,7 @@ export async function insertBenchmarkRun(
 ): Promise<number> {
   const ins = await db
     .prepare(
-      `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .bind(
       modelId,
@@ -344,6 +344,8 @@ export async function insertBenchmarkRun(
       r.ttft_ms,
       r.generation_ms,
       r.tps,
+      r.itl_ms,
+      r.chunk_count,
       r.status,
       r.error_type ? r.error_type.slice(0, 500) : null,
       r.http_status,
@@ -412,6 +414,7 @@ export async function computeHourlyAggregates(
       `SELECT model_id, benchmark_type,
         GROUP_CONCAT(tps) as tpss,
         GROUP_CONCAT(ttft_ms) as ttfts,
+        GROUP_CONCAT(itl_ms) as itls,
         COUNT(*) as cnt,
         SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as success
      FROM benchmark_runs
@@ -424,6 +427,7 @@ export async function computeHourlyAggregates(
       benchmark_type: BenchmarkType;
       tpss: string | null;
       ttfts: string | null;
+      itls: string | null;
       cnt: number;
       success: number;
     }>();
@@ -439,6 +443,10 @@ export async function computeHourlyAggregates(
       .split(",")
       .map(Number)
       .filter((n) => !isNaN(n) && n > 0);
+    const itls = (r.itls ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
     const avg_tps = tpss.length
       ? tpss.reduce((a, b) => a + b, 0) / tpss.length
       : null;
@@ -451,12 +459,14 @@ export async function computeHourlyAggregates(
     const median_ttft = percentile(ttfts, 50);
     const p90_ttft = percentile(ttfts, 90);
     const p95_ttft = percentile(ttfts, 95);
+    const median_itl = percentile(itls, 50);
+    const p90_itl = percentile(itls, 90);
     const success_rate = r.cnt ? r.success / r.cnt : 0;
     const uptime = success_rate; // same as success_rate — uptime is success ratio for the hour
     stmts.push(
       db
         .prepare(
-          `INSERT OR REPLACE INTO hourly_model_stats (model_id, hour_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          `INSERT OR REPLACE INTO hourly_model_stats (model_id, hour_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           r.model_id,
@@ -470,6 +480,8 @@ export async function computeHourlyAggregates(
           median_ttft,
           p90_ttft,
           p95_ttft,
+          median_itl,
+          p90_itl,
           success_rate,
           1 - success_rate,
           uptime,
@@ -502,6 +514,7 @@ export async function computeTenminAggregates(
       `SELECT model_id, benchmark_type,
         GROUP_CONCAT(tps) as tpss,
         GROUP_CONCAT(ttft_ms) as ttfts,
+        GROUP_CONCAT(itl_ms) as itls,
         COUNT(*) as cnt,
         SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as success
      FROM benchmark_runs
@@ -514,6 +527,7 @@ export async function computeTenminAggregates(
       benchmark_type: BenchmarkType;
       tpss: string | null;
       ttfts: string | null;
+      itls: string | null;
       cnt: number;
       success: number;
     }>();
@@ -529,6 +543,10 @@ export async function computeTenminAggregates(
       .split(",")
       .map(Number)
       .filter((n) => !isNaN(n) && n > 0);
+    const itls = (r.itls ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => !isNaN(n) && n > 0);
     const avg_tps = tpss.length
       ? tpss.reduce((a, b) => a + b, 0) / tpss.length
       : null;
@@ -541,12 +559,14 @@ export async function computeTenminAggregates(
     const median_ttft = percentile(ttfts, 50);
     const p90_ttft = percentile(ttfts, 90);
     const p95_ttft = percentile(ttfts, 95);
+    const median_itl = percentile(itls, 50);
+    const p90_itl = percentile(itls, 90);
     const success_rate = r.cnt ? r.success / r.cnt : 0;
     const uptime = success_rate;
     stmts.push(
       db
         .prepare(
-          `INSERT OR REPLACE INTO tenmin_model_stats (model_id, bucket_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          `INSERT OR REPLACE INTO tenmin_model_stats (model_id, bucket_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           r.model_id,
@@ -560,6 +580,8 @@ export async function computeTenminAggregates(
           median_ttft,
           p90_ttft,
           p95_ttft,
+          median_itl,
+          p90_itl,
           success_rate,
           1 - success_rate,
           uptime,

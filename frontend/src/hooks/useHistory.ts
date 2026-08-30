@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-type Point = { hour_start: string; median_tps: number | null; median_ttft: number | null; success_rate: number | null; uptime: number | null };
+type Point = { hour_start: string; median_tps: number | null; median_ttft: number | null; median_itl: number | null; success_rate: number | null; uptime: number | null };
 
 export function useHistory(modelIds: number[], range: string, benchmark: string) {
   const [data, setData] = useState<Record<number, Point[]>>({});
