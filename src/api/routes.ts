@@ -13,6 +13,7 @@ import { leaderboardRoutes } from "./leaderboard";
 import { historyRoutes } from "./history";
 import { compareRoutes } from "./compare";
 import { cooldownsRoutes } from "./cooldowns";
+import { timeoutsRoutes } from "./timeouts";
 import { liveRoutes } from "./live";
 import { adminRoutes } from "./admin";
 import { adminModelsRoutes } from "./admin/models";
@@ -108,6 +109,7 @@ export function createApi(env: Env) {
   app.route("/api", historyRoutes(env));
   app.route("/api", compareRoutes(env));
   app.route("/api", cooldownsRoutes(env));
+  app.route("/api", timeoutsRoutes(env));
   app.route("/api", liveRoutes(env));
   app.route("/api", adminRoutes(env));
   app.route("/api", adminModelsRoutes(env));
