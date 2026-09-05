@@ -50,7 +50,7 @@ TPS = output_tokens / generation_time (seconds)</pre>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">Uptime / downtime / incidents</h2>
-        <p className="text-sm">Allowed statuses: SUCCESS/TIMEOUT/RATE_LIMITED/PROVIDER_ERROR/MODEL_UNAVAILABLE/STREAM_ERROR/UNKNOWN_ERROR. Outage starts after 3 consecutive failures, ends on first SUCCESS. Stores started_at, ended_at, duration. We expose uptime_24h/7d, downtime, incident_count, longest_outage. Single transient failure does not count as long outage.</p>
+        <p className="text-sm">Allowed statuses: SUCCESS/TIMEOUT/RATE_LIMITED/PROVIDER_ERROR/MODEL_UNAVAILABLE/STREAM_ERROR/UNKNOWN_ERROR. A 200 response with zero output tokens is classified STREAM_ERROR (<code>empty_completion_no_tokens</code>), never SUCCESS — an empty completion would otherwise store a 0.0 TPS and inflate reliability. Outage starts after 3 consecutive failures, ends on first SUCCESS. Stores started_at, ended_at, duration. We expose uptime_24h/7d, downtime, incident_count, longest_outage. Single transient failure does not count as long outage.</p>
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
@@ -72,6 +72,7 @@ GET /api/leaderboard?range=1h|24h|3d|7d&provider=&benchmark=&sort=&profile=
 GET /api/models/:id/history?range=
 GET /api/models/:id/incidents
 GET /api/compare?models=1,2
+GET /api/timeouts?range=7d  (refusal history by day/provider/status)
 GET /api/live  (SSE via Durable Object)
 GET /api/cooldowns
 GET /api/health?freshness=15   → 503 when data older than N min (uptime-monitor probe)
