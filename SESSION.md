@@ -125,3 +125,7 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - chore(security) aeefd8f: -122 lines dead validators/helpers nobody imports.
 - fix(scheduler) 846f8ec: isFinite guard on fallback inline count; perf(discovery) 8d94807: per-provider upserts concurrent.
 - fix(docs) b85e10d: JSX <pre> newline collapse fixed via template strings; /api/timeouts in OpenAPI + test; README synced.
+
+## 2026-09-05 (later) — groq allowlist cross-checked, left intact
+
+- Audited VERIFIED_FREE (NEVER-rule tension: hardcoded free list). Verdict: keep — Groq models API exposes no pricing, mistral/cerebras adapters are looser (mark-all-FREE), and live discovery returns 6 groq models all inside the set. Pipeline self-heals via Previously Free on churn. Refreshed the verification comment with today's evidence instead of refactoring.
