@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   LineChart,
   Line,
@@ -30,6 +31,14 @@ export default function TpsChart({
   range: string;
 }) {
   const isTenMin = range === "1h";
+  // ponytail: auto-log when an outlier (e.g. diffusion 11k vs LLM ~500) would flatten everything; toggle overrides
+  const [logOverride, setLogOverride] = useState<boolean | null>(null);
+  const allVals = series
+    .flatMap((s) => s.points.map((p) => p.median_tps ?? 0))
+    .filter((v) => v > 0);
+  const autoLog =
+    allVals.length > 0 && Math.max(...allVals) / Math.min(...allVals) > 10;
+  const log = logOverride ?? autoLog;
   // normalize to time-indexed rows — 10m buckets for 1h range, hourly otherwise
   const allTimes = Array.from(
     new Set(series.flatMap((s) => s.points.map((p) => p.hour_start))),
@@ -68,7 +77,18 @@ export default function TpsChart({
             ? "1-hour TPS (median per 10m) — Measured TPS"
             : "7-day TPS (median per hour) — Measured TPS"}
         </span>
-        <span className="text-[11px] text-zinc-500">
+        <span className="text-[11px] text-zinc-500 flex items-center gap-2">
+          <button
+            onClick={() => setLogOverride((v) => !(v ?? autoLog))}
+            className="px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 hover:text-zinc-300"
+            title={
+              log
+                ? "Switch to linear scale"
+                : "Switch to log scale (outlier flattens the rest)"
+            }
+          >
+            {log ? "log" : "linear"}
+          </button>
           {isTenMin
             ? "10m buckets • 6 points per hour"
             : "hourly aggregates • not provider-reported"}
@@ -85,6 +105,8 @@ export default function TpsChart({
             />
             <YAxis
               tick={{ fontSize: 11, fill: "#a1a1aa" }}
+              scale={log ? "log" : "linear"}
+              domain={log ? ["auto", "auto"] : [0, "auto"]}
               label={{
                 value: "TPS",
                 angle: -90,
