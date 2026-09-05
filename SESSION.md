@@ -129,3 +129,8 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 ## 2026-09-05 (later) — groq allowlist cross-checked, left intact
 
 - Audited VERIFIED_FREE (NEVER-rule tension: hardcoded free list). Verdict: keep — Groq models API exposes no pricing, mistral/cerebras adapters are looser (mark-all-FREE), and live discovery returns 6 groq models all inside the set. Pipeline self-heals via Previously Free on churn. Refreshed the verification comment with today's evidence instead of refactoring.
+
+## 2026-09-05 (later) — watchdog alert accounting fix (TDD)
+
+- fix: watchdogCheck stamped last_stale_alert_at and reported alerted:true even with no webhook configured or a failed send — silencing retries for an hour over nothing delivered. Now returns alerted:false unstamped in both cases; stamps only after HTTP 2xx. + explicit https check at the sink.
+- test/watchdog.test.ts: 3 D1-stubbed cases (77 total green). Debugging note: first mock only exposed first()/run() after bind(), but getLastBenchmarkAt calls .first() directly — silent null collapsed every branch; mock now mirrors the D1 statement shape.
