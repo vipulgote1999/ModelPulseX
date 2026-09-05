@@ -28,7 +28,8 @@ export function modelsRoutes(env: Env) {
     const modelHardFilter = freeHardFilterWhere("p", "m");
     if (modelHardFilter) conds.push(modelHardFilter.replace(/^ AND /, ""));
     if (conds.length) sql += " WHERE " + conds.join(" AND ");
-    sql += " ORDER BY m.free_status DESC, m.last_seen DESC";
+    // FREE first: ASC puts FREE before PAID/PREVIOUSLY_FREE/UNKNOWN alphabetically.
+    sql += " ORDER BY m.free_status ASC, m.last_seen DESC";
     const rows = await env.DB.prepare(sql)
       .bind(...binds)
       .all();
