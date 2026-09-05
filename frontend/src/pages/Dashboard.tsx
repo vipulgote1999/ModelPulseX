@@ -23,10 +23,68 @@ function ChartFallback() {
   );
 }
 
+// DRY helper: deduplicates 4 near-identical useMemo blocks for chart series.
+// SAFETY: history Point rows are untyped D1 JSON; primary/fallback coalescing is intentional.
+function buildMetricSeries<K extends string>(
+  chartIds: number[],
+  rows: Array<{ model_id: number; display_name: string; provider: string }>,
+  historyData: Record<number, Array<Record<string, unknown>>>,
+  primaryField: string,
+  fallbackField: string | null,
+  outField: K,
+): Array<{
+  id: number;
+  label: string;
+  points: Array<{ hour_start: string } & Record<K, number | null>>;
+}> {
+  return chartIds
+    .map((id) => {
+      const meta = rows.find((r) => r.model_id === id);
+      const label = meta
+        ? `${meta.display_name.slice(0, 18)} · ${meta.provider}`
+        : String(id);
+      // SAFETY: D1 JSON hour_start is ISO string; D1 rows are untyped but history API guarantees hour_start present
+      const points = (historyData[id] ?? []).map((p) => ({
+        // SAFETY: history Point rows are untyped D1 JSON; primary/fallback coalescing is intentional per-spec
+        hour_start: p["hour_start"] as string,
+        [outField]:
+          // SAFETY: D1 JSON numeric fields may be null; coalescing primary/fallback is intentional
+          (p[primaryField] as number | null) ??
+          (fallbackField
+            ? // SAFETY: fallback D1 JSON numeric field coalescing same as primary
+              ((p[fallbackField] as number | null) ?? null)
+            : null),
+      })) as Array<{ hour_start: string } & Record<K, number | null>>;
+      return { id, label, points };
+    })
+    .filter((s) => s.points.length > 0);
+}
+
+function buildReliabilityModels(
+  chartIds: number[],
+  rows: Array<{ model_id: number; display_name: string; provider: string }>,
+  historyData: Record<number, Array<Record<string, unknown>>>,
+) {
+  return chartIds.map((id) => {
+    const meta = rows.find((r) => r.model_id === id);
+    return {
+      display_name: meta?.display_name ?? String(id),
+      provider: meta?.provider ?? "",
+      points: (historyData[id] ?? []).map((p) => ({
+        hour_start: p["hour_start"] as string,
+        success_rate:
+          (p["success_rate"] as number | null) ??
+          (p["uptime"] as number | null) ??
+          null,
+      })),
+    };
+  });
+}
+
 export default function Dashboard() {
   const [range, setRange] = useState("7d");
   const [benchmark, setBenchmark] = useState("all");
-  const [provider, setProvider] = useState<string | undefined>(undefined);
+  const [provider, setProvider] = useState<string | undefined>();
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
   const [selected, setSelected] = useState<number[]>([]);
@@ -95,90 +153,77 @@ export default function Dashboard() {
   const history = useHistory(historyIds, range, benchmark);
 
   const tpsSeries = useMemo(() => {
-    return chartIds
-      .map((id) => {
-        const meta = rows.find((r) => r.model_id === id);
-        const label = meta
-          ? `${meta.display_name.slice(0, 18)} · ${meta.provider}`
-          : String(id);
-        // SAFETY: history Point comes from D1 JSON with hourly or tenmin columns; untyped rows may have only avg_tps or median_tps, so fallback is safe
-        return {
-          id,
-          label,
-          points: (history.data[id] ?? []).map((p) => ({
-            hour_start: p.hour_start,
-            median_tps:
-              (p as unknown as { median_tps: number | null }).median_tps ??
-              (p as unknown as { avg_tps: number | null }).avg_tps ??
-              null,
-          })),
-        };
-      })
-      .filter((s) => s.points.length > 0);
+    // SAFETY: rows history.data are D1 JSON untyped LeaderboardRow/Point; helper expects minimal subset, coalescing fallback is intentional
+    const r = rows as unknown as Array<{
+      model_id: number;
+      display_name: string;
+      provider: string;
+    }>;
+    // SAFETY: history.data untyped D1 JSON; safe to widen to generic record for helper coalescing
+    const h = history.data as unknown as Record<
+      number,
+      Array<Record<string, unknown>>
+    >;
+    return buildMetricSeries(
+      chartIds,
+      r,
+      h,
+      "median_tps",
+      "avg_tps",
+      "median_tps",
+    );
   }, [history.data, chartIds, rows]);
 
   const ttftSeries = useMemo(() => {
-    return chartIds
-      .map((id) => {
-        const meta = rows.find((r) => r.model_id === id);
-        const label = meta
-          ? `${meta.display_name.slice(0, 18)} · ${meta.provider}`
-          : String(id);
-        // SAFETY: ttft columns may be avg_ttft-only on fallback rows; coalesce to median_ttft safely
-        return {
-          id,
-          label,
-          points: (history.data[id] ?? []).map((p) => ({
-            hour_start: p.hour_start,
-            median_ttft:
-              (p as unknown as { median_ttft: number | null }).median_ttft ??
-              (p as unknown as { avg_ttft: number | null }).avg_ttft ??
-              null,
-          })),
-        };
-      })
-      .filter((s) => s.points.length > 0);
+    // SAFETY: same D1 JSON widening as tpsSeries; median_ttft may fallback to avg_ttft on legacy rows
+    const r = rows as unknown as Array<{
+      model_id: number;
+      display_name: string;
+      provider: string;
+    }>;
+    // SAFETY: history.data untyped D1 JSON; safe to widen to generic record for helper coalescing
+    const h = history.data as unknown as Record<
+      number,
+      Array<Record<string, unknown>>
+    >;
+    return buildMetricSeries(
+      chartIds,
+      r,
+      h,
+      "median_ttft",
+      "avg_ttft",
+      "median_ttft",
+    );
   }, [history.data, chartIds, rows]);
 
   const itlSeries = useMemo(() => {
-    return chartIds
-      .map((id) => {
-        const meta = rows.find((r) => r.model_id === id);
-        const label = meta
-          ? `${meta.display_name.slice(0, 18)} · ${meta.provider}`
-          : String(id);
-        // SAFETY: median_itl may be null for old aggregates; cast is safe for D1 untyped row
-        return {
-          id,
-          label,
-          points: (history.data[id] ?? []).map((p) => ({
-            hour_start: p.hour_start,
-            median_itl:
-              (p as unknown as { median_itl: number | null }).median_itl ??
-              null,
-          })),
-        };
-      })
-      .filter((s) => s.points.length > 0);
+    // SAFETY: itl may be null for old aggregates; helper handles null coalescing safely
+    const r = rows as unknown as Array<{
+      model_id: number;
+      display_name: string;
+      provider: string;
+    }>;
+    // SAFETY: history.data untyped D1 JSON; safe to widen to generic record for helper coalescing
+    const h = history.data as unknown as Record<
+      number,
+      Array<Record<string, unknown>>
+    >;
+    return buildMetricSeries(chartIds, r, h, "median_itl", null, "median_itl");
   }, [history.data, chartIds, rows]);
 
   const reliabilityModels = useMemo(() => {
-    const ids = chartIds;
-    return ids.map((id) => {
-      const meta = rows.find((r) => r.model_id === id);
-      // SAFETY: success_rate/uptime aliasing from raw benchmark_runs fallback vs aggregates
-      return {
-        display_name: meta?.display_name ?? String(id),
-        provider: meta?.provider ?? "",
-        points: (history.data[id] ?? []).map((p) => ({
-          hour_start: p.hour_start,
-          success_rate:
-            (p as unknown as { success_rate: number | null }).success_rate ??
-            (p as unknown as { uptime: number | null }).uptime ??
-            null,
-        })),
-      };
-    });
+    // SAFETY: history points expose success_rate/uptime aliasing; helper coalesces both safely
+    const r = rows as unknown as Array<{
+      model_id: number;
+      display_name: string;
+      provider: string;
+    }>;
+    // SAFETY: history.data untyped D1 JSON; safe to widen to generic record for helper coalescing
+    const h = history.data as unknown as Record<
+      number,
+      Array<Record<string, unknown>>
+    >;
+    return buildReliabilityModels(chartIds, r, h);
   }, [history.data, chartIds, rows]);
 
   if (loading)
@@ -243,9 +288,9 @@ export default function Dashboard() {
         </span>
       </div>
 
-      {/* SAFETY: API responses are untyped JSON; narrow summary/meta/leaderboard shapes safely for display */}
       <SummaryCards
         summary={
+          // SAFETY: API responses untyped JSON; narrow summary shape for display
           data?.summary as unknown as {
             free_models: number;
             online_now: number;
@@ -264,6 +309,7 @@ export default function Dashboard() {
           }
         }
         meta={
+          // SAFETY: API meta untyped JSON; narrow to stale/live shape for display
           data?.meta as unknown as {
             is_stale: boolean;
             live: string | null;
@@ -271,6 +317,7 @@ export default function Dashboard() {
           }
         }
         leaderboard={
+          // SAFETY: rows are LeaderboardRow D1 JSON; safe subset for SummaryCards display
           rows as unknown as Array<{
             uptime_7d: number | null;
             overall_score: number | null;
@@ -365,9 +412,9 @@ export default function Dashboard() {
         </span>
       </div>
 
-      {/* SAFETY: rows are LeaderboardRow[] widened for card props; safe structural subset */}
       <RecommendationCards
         rows={
+          // SAFETY: rows are LeaderboardRow[] widened for card props; safe structural subset
           rows as unknown as Array<{
             display_name: string;
             model: string;
@@ -387,9 +434,9 @@ export default function Dashboard() {
           Live leaderboard — click rows to pin for graph comparison (max 3) ·
           sorted by {String(sort)} · {rows.length} models
         </div>
-        {/* SAFETY: Leaderboard expects Row shape; rows are LeaderboardRow[] narrowed to displayed columns safely */}
         <Leaderboard
           rows={
+            // SAFETY: Leaderboard expects Row shape; rows are LeaderboardRow[] narrowed to displayed columns safely
             rows as unknown as Array<{
               rank: number;
               model_id: number;
@@ -418,9 +465,9 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* SAFETY: ChartModelSelector expects minimal Row subset; safe projection */}
       <ChartModelSelector
         rows={
+          // SAFETY: ChartModelSelector expects minimal Row subset; safe projection
           rows as unknown as Array<{
             model_id: number;
             model: string;

@@ -3,12 +3,15 @@
 /** Constant-time string comparison to mitigate timing attacks on token checks.
  *  Uses WebCrypto subtle timing-safe pattern when available, otherwise manual. */
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  // Manual constant-time: compare all chars without early exit, but still length check prevents length leak
+  // Constant-time length handling: avoid early return leaking length via timing (P2)
   // In JS we can't guarantee JIT won't optimize, but this is best-effort portable.
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const lenA = a.length;
+  const lenB = b.length;
+  const maxLen = Math.max(lenA, lenB);
+  let diff = lenA ^ lenB;
+  for (let i = 0; i < maxLen; i++) {
+    // SAFETY: charCodeAt beyond length yields NaN -> 0 ensures constant-time over maxLen
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
   return diff === 0;
 }
@@ -63,10 +66,15 @@ export function sanitizeSearchQuery(
   let s = q.trim().slice(0, maxLen);
   // strip control chars and null bytes (keep printable + unicode)
   s = s.replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, "");
-  // collapse multiple % and _ to single to limit LIKE wildcard DoS
-  // keep them for user search but bound them
+  // collapse consecutive % and _ wildcards to single to limit LIKE DoS
+  s = s.replace(/([%_])\1+/g, "$1");
   if (s.length < 1) return null;
   return s;
+}
+
+/** Escape SQL LIKE wildcards (% _ \) for safe pattern binding. Caller must add ESCAPE '\\' in SQL. */
+export function escapeLikePattern(s: string): string {
+  return s.replace(/[%_\\]/g, "\\$&");
 }
 
 /** Validate and sanitize comma-separated IDs, max 12, numeric, positive. */

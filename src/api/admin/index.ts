@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { BenchmarkType, Env } from "../../types";
 import { runDiscovery } from "../../benchmark/scheduler";
 import { isAdmin } from "../shared";
+import { isStrongToken, timingSafeEqual } from "../../utils/security";
 
 export function adminRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -24,11 +25,21 @@ export function adminRoutes(env: Env) {
     ).trim();
     const expectedPass = String(env.ADMIN_PASSWORD ?? "").trim();
     const token = String(env.ADMIN_TOKEN ?? "");
-    // If ADMIN_PASSWORD not set, fall back to token-as-password for backwards compat (single-secret setups)
-    const passOk = expectedPass ? pass === expectedPass : pass === token;
-    const idOk = id === expectedId;
-    if (!idOk || !passOk) return c.json({ error: "invalid credentials" }, 401);
-    if (!token) return c.json({ error: "ADMIN_TOKEN not configured" }, 500);
+    // Constant-time checks + no token-as-password fallback; ADMIN_PASSWORD must be configured
+    const idOk = timingSafeEqual(id, expectedId);
+    const passOk = expectedPass
+      ? timingSafeEqual(pass, expectedPass)
+      : false;
+    // Symmetric jitter 80-150ms on both success and failure paths to avoid timing oracle (P1)
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 70));
+    if (!idOk || !passOk) {
+      return c.json({ error: "invalid credentials" }, 401);
+    }
+    if (!token || token.length < 16)
+      return c.json({ error: "ADMIN_TOKEN not configured" }, 500);
+    if (!isStrongToken(token)) {
+      console.warn("ADMIN_TOKEN weak: does not meet strength policy");
+    }
     return c.json({ ok: true, token });
   });
 

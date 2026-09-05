@@ -1,13 +1,16 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
 import { isAdmin } from "../shared";
+import { escapeLikePattern, sanitizeSearchQuery } from "../../utils/security";
 
 export function adminModelsRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/admin/models", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
     const provider = c.req.query("provider");
-    const q = c.req.query("q")?.trim().toLowerCase();
+    const rawQ = c.req.query("q");
+    const safeQ = sanitizeSearchQuery(rawQ, 80);
+    const q = safeQ ? safeQ.toLowerCase() : null;
     const enabledFilter = c.req.query("enabled"); // "1" | "0" | undefined
     // benchmark_enabled column may not exist pre-migration — tolerate missing column
     let rows;
@@ -25,10 +28,12 @@ export function adminModelsRoutes(env: Env) {
       else if (enabledFilter === "0")
         conds.push("COALESCE(m.benchmark_enabled,1)=0");
       if (q) {
+        const escaped = escapeLikePattern(q);
+        const pattern = `%${escaped}%`;
         conds.push(
-          "(lower(m.provider_model_id) LIKE ? OR lower(m.display_name) LIKE ?)",
+          "(lower(m.provider_model_id) LIKE ? ESCAPE '\\' OR lower(m.display_name) LIKE ? ESCAPE '\\')",
         );
-        binds.push(`%${q}%`, `%${q}%`);
+        binds.push(pattern, pattern);
       }
       if (conds.length) sql += " WHERE " + conds.join(" AND ");
       sql += " ORDER BY p.name ASC, m.display_name ASC";
@@ -47,10 +52,12 @@ export function adminModelsRoutes(env: Env) {
           binds2.push(provider);
         }
         if (q) {
+          const escaped2 = escapeLikePattern(q);
+          const pattern2 = `%${escaped2}%`;
           conds2.push(
-            "(lower(m.provider_model_id) LIKE ? OR lower(m.display_name) LIKE ?)",
+            "(lower(m.provider_model_id) LIKE ? ESCAPE '\\' OR lower(m.display_name) LIKE ? ESCAPE '\\')",
           );
-          binds2.push(`%${q}%`, `%${q}%`);
+          binds2.push(pattern2, pattern2);
         }
         if (conds2.length) sql2 += " WHERE " + conds2.join(" AND ");
         sql2 += " ORDER BY p.name ASC, m.display_name ASC";

@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { timingSafeEqual } from "../utils/security";
 
 /** ISO cutoff for time-window SQL — SQLite datetime('now',…) emits space-separated
  *  timestamps that string-compare BELOW ISO-'T' columns, silently widening every window
@@ -14,5 +15,10 @@ export function isAdmin(
   if (!token) return false;
   const auth = c.req.header("authorization") ?? "";
   const x = c.req.header("x-admin-token") ?? "";
-  return auth === `Bearer ${token}` || auth === token || x === token;
+  const expectedBearer = `Bearer ${token}`;
+  return (
+    timingSafeEqual(auth, expectedBearer) ||
+    timingSafeEqual(auth, token) ||
+    timingSafeEqual(x, token)
+  );
 }

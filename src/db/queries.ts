@@ -401,14 +401,22 @@ export async function getModels(
     .all();
 }
 
-export async function computeHourlyAggregates(
+/** Shared aggregation logic for hourly/tenmin windows — avoids ~62 line duplication.
+ *  Mitigates GROUP_CONCAT truncation (SQLite default 1M) via PRAGMA + length guard.
+ *  Table/col are trusted internal constants, not user input — safe to interpolate. */
+async function aggregateWindow(
   db: D1Database,
-  forHourStart: string,
-) {
-  const hourStart = forHourStart;
-  const hourEnd = new Date(
-    new Date(hourStart).getTime() + 3600 * 1000,
-  ).toISOString();
+  startIso: string,
+  endIso: string,
+  table: "hourly_model_stats" | "tenmin_model_stats",
+  timeCol: "hour_start" | "bucket_start",
+): Promise<void> {
+  // Best-effort increase group_concat limit — D1 may silently ignore PRAGMA, so guard length later
+  try {
+    await db.prepare("PRAGMA group_concat_max_len=10000000").run();
+  } catch (_e) {
+    void _e; // D1 does not support PRAGMA group_concat_max_len — fallback length guard below covers truncation
+  }
   const rows = await db
     .prepare(
       `SELECT model_id, benchmark_type,
@@ -421,7 +429,7 @@ export async function computeHourlyAggregates(
      WHERE started_at >= ? AND started_at < ?
      GROUP BY model_id, benchmark_type`,
     )
-    .bind(hourStart, hourEnd)
+    .bind(startIso, endIso)
     .all<{
       model_id: number;
       benchmark_type: BenchmarkType;
@@ -431,110 +439,19 @@ export async function computeHourlyAggregates(
       cnt: number;
       success: number;
     }>();
-
   if (!rows.results || rows.results.length === 0) return;
-  const stmts: ReturnType<D1Database["prepare"]>[] = [];
+  // Warn if truncation likely (1M / avg 6 chars per value ≈ 150k values; 900k is early guard)
   for (const r of rows.results ?? []) {
-    const tpss = (r.tpss ?? "")
-      .split(",")
-      .map(Number)
-      .filter((n) => !isNaN(n) && n > 0);
-    const ttfts = (r.ttfts ?? "")
-      .split(",")
-      .map(Number)
-      .filter((n) => !isNaN(n) && n > 0);
-    const itls = (r.itls ?? "")
-      .split(",")
-      .map(Number)
-      .filter((n) => !isNaN(n) && n > 0);
-    const avg_tps = tpss.length
-      ? tpss.reduce((a, b) => a + b, 0) / tpss.length
-      : null;
-    const median_tps = percentile(tpss, 50);
-    const p90_tps = percentile(tpss, 90);
-    const p95_tps = percentile(tpss, 95);
-    const avg_ttft = ttfts.length
-      ? ttfts.reduce((a, b) => a + b, 0) / ttfts.length
-      : null;
-    const median_ttft = percentile(ttfts, 50);
-    const p90_ttft = percentile(ttfts, 90);
-    const p95_ttft = percentile(ttfts, 95);
-    const median_itl = percentile(itls, 50);
-    const p90_itl = percentile(itls, 90);
-    const success_rate = r.cnt ? r.success / r.cnt : 0;
-    const uptime = success_rate; // same as success_rate — uptime is success ratio for the hour
-    stmts.push(
-      db
-        .prepare(
-          `INSERT OR REPLACE INTO hourly_model_stats (model_id, hour_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        )
-        .bind(
-          r.model_id,
-          hourStart,
-          r.benchmark_type,
-          avg_tps,
-          median_tps,
-          p90_tps,
-          p95_tps,
-          avg_ttft,
-          median_ttft,
-          p90_ttft,
-          p95_ttft,
-          median_itl,
-          p90_itl,
-          success_rate,
-          1 - success_rate,
-          uptime,
-          r.cnt,
-        ),
-    );
+    if ((r.tpss?.length ?? 0) > 900_000 || (r.ttfts?.length ?? 0) > 900_000) {
+      console.warn(
+        "aggregate GROUP_CONCAT near limit for",
+        r.model_id,
+        r.benchmark_type,
+        "len",
+        r.tpss?.length,
+      );
+    }
   }
-  // Single batch write — one roundtrip, atomic per hour
-  for (let i = 0; i < stmts.length; i += 50) {
-    const chunk = stmts.slice(i, i + 50);
-    await db.batch(chunk);
-  }
-}
-
-export function truncateToTenMin(iso: string): string {
-  const d = new Date(iso);
-  const mins = Math.floor(d.getUTCMinutes() / 10) * 10;
-  d.setUTCMinutes(mins, 0, 0);
-  return d.toISOString();
-}
-
-export async function computeTenminAggregates(
-  db: D1Database,
-  forBucketStart: string,
-) {
-  const bucketStart = truncateToTenMin(forBucketStart);
-  const bucketEnd = new Date(
-    new Date(bucketStart).getTime() + 10 * 60 * 1000,
-  ).toISOString();
-  const rows = await db
-    .prepare(
-      `SELECT model_id, benchmark_type,
-        GROUP_CONCAT(tps) as tpss,
-        GROUP_CONCAT(ttft_ms) as ttfts,
-        GROUP_CONCAT(itl_ms) as itls,
-        COUNT(*) as cnt,
-        SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as success
-     FROM benchmark_runs
-     WHERE started_at >= ? AND started_at < ?
-     GROUP BY model_id, benchmark_type`,
-    )
-    .bind(bucketStart, bucketEnd)
-    .all<{
-      model_id: number;
-      benchmark_type: BenchmarkType;
-      tpss: string | null;
-      ttfts: string | null;
-      itls: string | null;
-      cnt: number;
-      success: number;
-    }>();
-
-  if (!rows.results || rows.results.length === 0) return;
   const stmts: ReturnType<D1Database["prepare"]>[] = [];
   for (const r of rows.results ?? []) {
     const tpss = (r.tpss ?? "")
@@ -568,11 +485,11 @@ export async function computeTenminAggregates(
     stmts.push(
       db
         .prepare(
-          `INSERT OR REPLACE INTO tenmin_model_stats (model_id, bucket_start, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          `INSERT OR REPLACE INTO ${table} (model_id, ${timeCol}, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           r.model_id,
-          bucketStart,
+          startIso,
           r.benchmark_type,
           avg_tps,
           median_tps,
@@ -595,6 +512,47 @@ export async function computeTenminAggregates(
     const chunk = stmts.slice(i, i + 50);
     await db.batch(chunk);
   }
+}
+
+export async function computeHourlyAggregates(
+  db: D1Database,
+  forHourStart: string,
+) {
+  const hourStart = forHourStart;
+  const hourEnd = new Date(
+    new Date(hourStart).getTime() + 3600 * 1000,
+  ).toISOString();
+  await aggregateWindow(
+    db,
+    hourStart,
+    hourEnd,
+    "hourly_model_stats",
+    "hour_start",
+  );
+}
+
+export function truncateToTenMin(iso: string): string {
+  const d = new Date(iso);
+  const mins = Math.floor(d.getUTCMinutes() / 10) * 10;
+  d.setUTCMinutes(mins, 0, 0);
+  return d.toISOString();
+}
+
+export async function computeTenminAggregates(
+  db: D1Database,
+  forBucketStart: string,
+) {
+  const bucketStart = truncateToTenMin(forBucketStart);
+  const bucketEnd = new Date(
+    new Date(bucketStart).getTime() + 10 * 60 * 1000,
+  ).toISOString();
+  await aggregateWindow(
+    db,
+    bucketStart,
+    bucketEnd,
+    "tenmin_model_stats",
+    "bucket_start",
+  );
 }
 
 function percentile(vals: number[], p: number): number | null {

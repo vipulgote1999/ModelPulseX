@@ -129,8 +129,11 @@ export default {
       );
     }
 
-    // Size gate — reject huge bodies before they hit Hono/D1 (1MB limit)
+    // Size gate — reject huge bodies before they hit Hono/D1 (1MB limit).
+    // content-length alone bypasses via chunked encoding, so also handle transfer-encoding.
+    // Chunked case is enforced later by Hono bodyLimit middleware (streaming), not here.
     const clen = request.headers.get("content-length");
+    const te = request.headers.get("transfer-encoding") ?? "";
     if (clen) {
       const n = Number(clen);
       if (Number.isFinite(n) && n > 1_048_576) {
@@ -139,6 +142,8 @@ export default {
           request,
         );
       }
+    } else if (te.toLowerCase().includes("chunked")) {
+      // No content-length + chunked: defer to Hono bodyLimit (1MB) for streaming enforcement
     }
 
     // Never leak secrets: strip them from logs; ensure no api key in response
@@ -191,10 +196,16 @@ export default {
       }
       return;
     };
-    // Concise-body arrows keep an implicit meaningful return (the drain promise).
-    await Promise.all(
-      Array.from(groups.values()).map((msgs) => drainProvider(msgs)),
-    );
+    // Cap cross-provider parallelism to 4: groups can be up to 19 (providers) per batch.
+    // Unbounded Promise.all would burst 10-19 concurrent fetch+D1+DO chains, exceeding
+    // wrangler queue max_concurrency 8 and risking per-provider RPM starvation.
+    // Keep drainProvider serial per-provider, but batch groups with limit 4.
+    const entries = Array.from(groups.values());
+    const CONCURRENCY_LIMIT = 4;
+    for (let i = 0; i < entries.length; i += CONCURRENCY_LIMIT) {
+      const batch = entries.slice(i, i + CONCURRENCY_LIMIT);
+      await Promise.all(batch.map((msgs) => drainProvider(msgs)));
+    }
   },
 
   async scheduled(

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { isoHoursAgo } from "./shared";
+import { escapeLikePattern, sanitizeSearchQuery } from "../utils/security";
 
 export function compareRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -10,10 +11,14 @@ export function compareRoutes(env: Env) {
     let ids: number[] = [];
     if (modelsParam) ids = modelsParam.split(",").map(Number).filter(Boolean);
     else if (model) {
+      const safe = sanitizeSearchQuery(model, 80);
+      if (!safe) return c.json({ error: "no models matched" }, 404);
+      const escaped = escapeLikePattern(safe);
+      const pattern = `%${escaped}%`;
       const rows = await env.DB.prepare(
-        "SELECT id FROM models WHERE provider_model_id LIKE ? OR display_name LIKE ?",
+        "SELECT id FROM models WHERE provider_model_id LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\'",
       )
-        .bind(`%${model}%`, `%${model}%`)
+        .bind(pattern, pattern)
         .all<{ id: number }>();
       ids = (rows.results ?? []).map((r) => r.id);
     }

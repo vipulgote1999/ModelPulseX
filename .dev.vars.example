@@ -18,4 +18,7 @@ ORCAROUTER_API_KEY=
 NINEROUTER_API_KEY=
 TOKENROUTER_API_KEY=
 ADMIN_TOKEN=local-admin-token-change-me
+# ADMIN_ID / ADMIN_PASSWORD are required for /api/admin/login (hard-required since 2026-08-30 — token-as-password fallback removed)
+ADMIN_ID=admin
+ADMIN_PASSWORD=change-me-strong-password-32chars
 CORS_ORIGIN=http://localhost:5173

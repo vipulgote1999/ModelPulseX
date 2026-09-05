@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
@@ -11,15 +11,25 @@ export default defineConfig({
     outDir: "../dist/frontend",
     emptyOutDir: true,
     cssCodeSplit: true,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 400,
     minify: "esbuild",
-    // disable eager modulepreload for lazy recharts — was 612ms preload even though lazy
-    modulePreload: false,
+    // Keep default modulePreload for critical chunks (react) — previous `modulePreload:false` disabled preload for ALL including react (hurts LCP).
+    // Recharts remains lazy-loaded via dynamic import; explicit manualChunk avoids duplicate copies across 4 chart chunks.
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          // recharts intentionally NOT manualChunk — let dynamic import split it so it loads only when charts visible
+        manualChunks(id) {
+          if (
+            id.includes("node_modules/react") ||
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/scheduler")
+          )
+            return "react";
+          if (
+            id.includes("node_modules/recharts") ||
+            id.includes("node_modules/recharts-scale") ||
+            id.includes("node_modules/d3-")
+          )
+            return "recharts";
         },
       },
     },

@@ -17,7 +17,7 @@
 
 - **Stack:** Cloudflare Workers + D1 + Durable Objects + Queues + Cron + React Vite
 - **Secrets:** Never in code, bundle, D1, or logs. Use `wrangler secret put` (ADMIN_TOKEN, ADMIN_PASSWORD, OPENCODE_API_KEY, etc.). `.env` and `.dev.vars` are gitignored and contain only local placeholders.
-- **Auth:** Admin endpoints require `Authorization: Bearer <ADMIN_TOKEN>` with constant-time compare. Login (`/api/admin/login`) is rate-limited (5/15m per IP) and audited.
+- **Auth:** Admin endpoints require `Authorization: Bearer <ADMIN_TOKEN>` with constant-time compare. Login (`/api/admin/login`) requires `ADMIN_ID` + `ADMIN_PASSWORD` (both constant-time, symmetric 80-150ms jitter) and returns `ADMIN_TOKEN`; `ADMIN_TOKEN` alone is not accepted as password since 2026-08-30 (breaking change — configure `ADMIN_PASSWORD` via `wrangler secret put ADMIN_PASSWORD`; single-secret deployments must add it). Login is rate-limited (5/15m per IP) and audited.
 - **Rate Limits:** Global 120 req/min per IP, admin 30/min, login 5/15m (in-memory + D1 fallback). Cloudflare Rate Limiting Rules recommended in front.
 - **Headers:** Strict-Transport-Security (preload), Content-Security-Policy, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy, COOP/CORP/COEP.
 - **Input Validation:** All query params validated against allowlists (range, benchmark, sort, profile, provider slug, ids). Free-text search sanitized and length-capped. Payloads limited to 1MB.
