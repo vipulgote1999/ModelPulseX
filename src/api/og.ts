@@ -47,7 +47,7 @@ async function deflateZlib(data: Uint8Array): Promise<Uint8Array> {
     const cs = new CompressionStream("deflate");
     const writer = cs.writable.getWriter();
     const reader = cs.readable.getReader();
-    // cast to any to satisfy BufferSource union (ArrayBuffer vs SharedArrayBuffer)
+    // SAFETY: CompressionStream accepts any Uint8Array at runtime; the generic only narrows buffer identity.
     writer.write(data as unknown as Uint8Array<ArrayBuffer>);
     writer.close();
     const chunks: Uint8Array[] = [];
@@ -212,19 +212,23 @@ export function ogRoutes(env: Env) {
     try {
       let top: Array<{ rank: number; name: string; provider: string; tps: number | null }> = [];
       try {
+        // 7d bound: unscoped ORDER BY tps DESC full-scans + sorts all of benchmark_runs per OG hit (crawlers).
+        const weekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
         const rows = await env.DB.prepare(
-          `SELECT m.display_name as name, p.name as provider, br.tps FROM benchmark_runs br JOIN models m ON m.id=br.model_id JOIN providers p ON p.id=m.provider_id WHERE br.status='SUCCESS' AND m.free_status='FREE' ORDER BY br.tps DESC LIMIT 5`
-        ).all<{ name: string; provider: string; tps: number | null }>();
+          `SELECT m.display_name as name, p.name as provider, br.tps FROM benchmark_runs br JOIN models m ON m.id=br.model_id JOIN providers p ON p.id=m.provider_id WHERE br.status='SUCCESS' AND m.free_status='FREE' AND br.started_at >= ? ORDER BY br.tps DESC LIMIT 5`
+        ).bind(weekAgo).all<{ name: string; provider: string; tps: number | null }>();
         top = (rows.results ?? []).map((r, i) => ({ rank: i + 1, name: r.name, provider: r.provider, tps: r.tps }));
       } catch {
         // pre-migration — ignore
       }
       const png = await renderOgCard(top);
+      // SAFETY: Uint8Array is a valid BodyInit at runtime; DOM lib types lag the Workers runtime.
       return new Response(png as unknown as BodyInit, {
         headers: { "content-type": "image/png", "cache-control": "public, max-age=300", "content-length": String(png.byteLength) },
       });
     } catch {
       const png = await renderOgCard([]);
+      // SAFETY: Uint8Array is a valid BodyInit at runtime; DOM lib types lag the Workers runtime.
       return new Response(png as unknown as BodyInit, {
         headers: { "content-type": "image/png", "cache-control": "public, max-age=300" },
       });

@@ -267,11 +267,15 @@ export default {
       } catch (e) {
         console.error("hourly aggregation failed", e);
       }
-      // cleanup raw 7d, hourly 30d
-      try {
-        await cleanupRetention(env.DB, 7, 30);
-      } catch (e) {
-        console.error("retention cleanup failed", e);
+      // cleanup raw 7d, hourly 30d — once daily (00 UTC tick), not every hour.
+      // Each run full-scans benchmark_runs + both aggregate tables (~22k rows_read);
+      // hourly was burning ~0.5M rows_read/day to delete ~50 already-steady-state rows.
+      if (new Date().getUTCHours() === 0) {
+        try {
+          await cleanupRetention(env.DB, 7, 30);
+        } catch (e) {
+          console.error("retention cleanup failed", e);
+        }
       }
       // Staleness watchdog — alerts via webhook (rate-limited to hourly) when the
       // pipeline stops producing measurements. Never throws.

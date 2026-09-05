@@ -101,21 +101,21 @@ export async function scheduleBenchmarks(
   const chosenType: BenchmarkType = benchTypes[hour % 3]!;
 
   // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
-  // LEFT JOIN gives last_benchmark; ORDER BY ASC NULLS FIRST (never-benchmarked first).
+  // Rows-read fix: LRU comes from maintained models.last_benchmark_at (migration 0011,
+  // stamped by insertBenchmarkRun) — an indexed models-only read (~150 rows) instead of
+  // LEFT JOIN + GROUP BY over all of benchmark_runs every 5 min (~9k rows × 288 ticks/day).
   // Respects admin per-model toggle: benchmark_enabled=1 (keep all models stored, disabled ones skip queue)
   let active: { results?: SelectableModel[] };
   try {
     active = await env.DB.prepare(
-      `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
+      `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, m.last_benchmark_at as last_benchmark
        FROM models m JOIN providers p ON p.id=m.provider_id
-       LEFT JOIN benchmark_runs br ON br.model_id=m.id
        WHERE m.active=1 AND COALESCE(m.benchmark_enabled,1)=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
-       GROUP BY m.id
-       ORDER BY last_benchmark ASC, p.name, m.display_name`,
+       ORDER BY m.last_benchmark_at ASC NULLS FIRST, p.name, m.display_name`,
     ).all<SelectableModel>();
   } catch (e) {
     const msg = String(e);
-    if (msg.includes("benchmark_enabled") || msg.includes("no such column")) {
+    if (msg.includes("benchmark_enabled") || msg.includes("last_benchmark_at") || msg.includes("no such column")) {
       active = await env.DB.prepare(
         `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
          FROM models m JOIN providers p ON p.id=m.provider_id

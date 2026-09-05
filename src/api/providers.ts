@@ -11,7 +11,9 @@ export function providersRoutes(env: Env) {
       env.DB.prepare("SELECT * FROM providers ORDER BY name").all(),
       getProviderDailyUsage(env.DB),
     ]);
+    // SAFETY: rpm/concurrency helpers only read string env vars and ignore D1/Queue/DO bindings.
     const rpmCfg = getRPMConfig(env as unknown as Record<string, unknown>);
+    // SAFETY: same as above — string-key reads only, bindings untouched.
     const concCfg = getConcurrency(env as unknown as Record<string, unknown>);
     const enriched = (rows.results ?? []).map((r: unknown) => {
       const row = r as Record<string, unknown>;
@@ -44,7 +46,13 @@ export function providersRoutes(env: Env) {
       configuredConcurrency: capFor(d.name, concCfg),
       usage24h: dailyUsage.get(d.name) ?? 0,
     }));
-    return c.json({ providers: enriched, registry: registryEndpoints });
+    // 24h usage GROUP BY runs per request (~1k rows_read); provider list barely changes.
+    const resp = c.json({ providers: enriched, registry: registryEndpoints });
+    resp.headers.set(
+      "Cache-Control",
+      "public, max-age=120, stale-while-revalidate=120",
+    );
+    return resp;
   });
   return r;
 }

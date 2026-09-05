@@ -341,32 +341,71 @@ export async function insertBenchmarkRun(
   modelId: number,
   r: BenchmarkResult,
 ): Promise<number> {
-  const ins = await db
-    .prepare(
-      `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    )
-    .bind(
-      modelId,
-      r.benchmark_type,
-      r.request_started_at,
-      r.first_token_at,
-      r.request_completed_at,
-      r.input_tokens,
-      r.output_tokens,
-      r.ttft_ms,
-      r.generation_ms,
-      r.tps,
-      r.itl_ms,
-      r.chunk_count,
-      r.status,
-      r.error_type ? r.error_type.slice(0, 500) : null,
-      r.http_status,
-      r.provider,
-      r.model,
-      r.token_estimation_method,
-    )
-    .run();
-  return ins.meta.last_row_id as number;
+  // Batch insert + LRU stamp in one roundtrip: models.last_benchmark_at lets the
+  // */5 scheduler order by recency from the models table instead of scanning
+  // all of benchmark_runs every tick (~9k rows_read × 288 ticks/day). Best-effort
+  // on pre-0011 DBs — the second statement failing must not lose the run.
+  const stmts: ReturnType<D1Database["prepare"]>[] = [
+    db
+      .prepare(
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        modelId,
+        r.benchmark_type,
+        r.request_started_at,
+        r.first_token_at,
+        r.request_completed_at,
+        r.input_tokens,
+        r.output_tokens,
+        r.ttft_ms,
+        r.generation_ms,
+        r.tps,
+        r.itl_ms,
+        r.chunk_count,
+        r.status,
+        r.error_type ? r.error_type.slice(0, 500) : null,
+        r.http_status,
+        r.provider,
+        r.model,
+        r.token_estimation_method,
+      ),
+    db
+      .prepare(`UPDATE models SET last_benchmark_at=? WHERE id=?`)
+      .bind(r.request_started_at, modelId),
+  ];
+  try {
+    const res = await db.batch(stmts);
+    return res[0]?.meta.last_row_id as number;
+  } catch {
+    // Pre-0011 column missing: fall back to insert-only so the run is never lost
+    const ins = await db
+      .prepare(
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        modelId,
+        r.benchmark_type,
+        r.request_started_at,
+        r.first_token_at,
+        r.request_completed_at,
+        r.input_tokens,
+        r.output_tokens,
+        r.ttft_ms,
+        r.generation_ms,
+        r.tps,
+        r.itl_ms,
+        r.chunk_count,
+        r.status,
+        r.error_type ? r.error_type.slice(0, 500) : null,
+        r.http_status,
+        r.provider,
+        r.model,
+        r.token_estimation_method,
+      )
+      .run();
+    return ins.meta.last_row_id as number;
+  }
 }
 
 export function parseRange(
@@ -602,7 +641,9 @@ export async function cleanupRetention(
     db
       .prepare("DELETE FROM provider_cooldowns WHERE cooldown_until < ?")
       .bind(now),
-    db.prepare("DELETE FROM model_cooldowns WHERE cooldown_until < ?").bind(now),
+    db
+      .prepare("DELETE FROM model_cooldowns WHERE cooldown_until < ?")
+      .bind(now),
     db
       .prepare(
         "DELETE FROM login_attempts WHERE blocked_until IS NOT NULL AND blocked_until < ?",

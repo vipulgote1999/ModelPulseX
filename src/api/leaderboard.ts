@@ -10,6 +10,18 @@ import { isoHoursAgo } from "./shared";
 export function leaderboardRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/leaderboard", async (c) => {
+    // Edge-cache shared across visitors (30s TTL below): each leaderboard hit costs
+    // ~9k+ rows_read and SSE refetch storms multiply it by connected clients.
+    // Cache key is the full URL, so every range/benchmark/sort/profile combo caches separately.
+    // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
+    const cache: Cache = (caches as unknown as { default: Cache }).default;
+    const cacheKey = new Request(c.req.url, { method: "GET" });
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
+    } catch {
+      // Cache API unavailable (local dev) — fall through to D1
+    }
     const range = c.req.query("range") ?? "7d";
     const provider = c.req.query("provider");
     const benchmark = c.req.query("benchmark") ?? "all";
@@ -102,8 +114,13 @@ export function leaderboardRoutes(env: Env) {
       });
       resp.headers.set(
         "Cache-Control",
-        "public, max-age=10, stale-while-revalidate=30",
+        "public, max-age=30, stale-while-revalidate=60",
       );
+      try {
+        c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+      } catch {
+        // cache put best-effort
+      }
       return resp;
     }
 
@@ -123,14 +140,31 @@ export function leaderboardRoutes(env: Env) {
       : `model_id IN (SELECT m2.id FROM models m2 JOIN providers p2 ON p2.id=m2.provider_id WHERE (m2.free_status='FREE' OR m2.free_status='PREVIOUSLY_FREE')${subHardFilter})`;
     const providerBind: unknown[] = provider ? [provider] : [];
 
-    // Optimized: 6 parallel queries instead of 9 — meta combined into 1, rawWindow covers 1h/24h/7d in single scan
+    // Optimized: 5 parallel queries — rawLatest merges the old lastRun window scan and the
+    // rawWindow GROUP_CONCAT scan into ONE GROUP BY pass over benchmark_runs plus an indexed
+    // self-join for the latest row's values (cuts ~18k rows_read to ~9k per leaderboard hit).
     // Uses covering indexes: idx_benchmark_runs_model_started_type, idx_hourly_model_hour_type
-    const lastRunSql = `SELECT model_id, tps, ttft_ms, itl_ms, started_at, status FROM (
-        SELECT model_id, tps, ttft_ms, itl_ms, started_at, status,
-               ROW_NUMBER() OVER (PARTITION BY model_id ORDER BY started_at DESC) as rn
+    const lastRunSql = `SELECT g.*, br.tps AS now_tps, br.ttft_ms AS now_ttft, br.itl_ms AS now_itl, br.status AS now_status FROM (
+        SELECT model_id,
+          MAX(started_at) as max_ts,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_1h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_1h,
+          SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_24h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_24h,
+          AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_24h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_7d,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_7d,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN itl_ms END) as gc_itl_7d,
+          AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_7d,
+          AVG(CASE WHEN started_at >= ? THEN CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END END) as er_7d,
+          SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
+          SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt24,
+          count(*) as cnt_all
         FROM benchmark_runs
         WHERE ${providerSubquery} ${benchmarkFilter}
-      ) WHERE rn=1`;
+        GROUP BY model_id
+      ) g JOIN benchmark_runs br ON br.model_id = g.model_id AND br.started_at = g.max_ts`;
 
     const hourlySql = `SELECT model_id,
         SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt_1h,
@@ -150,26 +184,8 @@ export function leaderboardRoutes(env: Env) {
       WHERE ${providerSubquery} ${benchmarkFilterHourly} AND hour_start >= ?
       GROUP BY model_id`;
 
-    // Raw window fallback: single scan covers 1h/24h/7d when hourly aggregates are missing.
+    // Raw window fallback columns ride along in rawLatest above (same GROUP BY pass).
     // GROUP_CONCAT feeds JS-side MEDIANS (industry practice) instead of spike-prone averages.
-    const rawWindowSql = `SELECT model_id,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_1h,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_1h,
-        SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_24h,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_24h,
-        AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_24h,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_7d,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_7d,
-        GROUP_CONCAT(CASE WHEN started_at >= ? THEN itl_ms END) as gc_itl_7d,
-        AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_7d,
-        AVG(CASE WHEN started_at >= ? THEN CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END END) as er_7d,
-        SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
-        SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt24,
-        count(*) as cnt_all
-      FROM benchmark_runs
-      WHERE ${providerSubquery} ${benchmarkFilter}
-      GROUP BY model_id`;
 
     // For sparkline: when benchmark=all we average across types per hour for correctness
     const sparkSql =
@@ -182,7 +198,23 @@ export function leaderboardRoutes(env: Env) {
                             (SELECT max(last_seen) FROM models) as last_discovery,
                             (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`;
 
+    // rawLatest binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
+    //                  | gc_tps_7d, gc_ttft_7d, gc_itl_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
+    //                  then provider subquery + benchmark filter (WHERE-clause order)
     const lastRunBinds: unknown[] = [
+      since1h,
+      since1h,
+      since1h,
+      since24h,
+      since24h,
+      since24h,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since7dIso,
+      since24h,
       ...providerBind,
       ...(benchmarkVal ? [benchmarkVal] : []),
     ];
@@ -205,25 +237,7 @@ export function leaderboardRoutes(env: Env) {
       ...(benchmarkVal ? ([benchmarkVal] as unknown[]) : []),
       since7dIso,
     ];
-    // rawWindow binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
-    //                  | gc_tps_7d, gc_ttft_7d, gc_itl_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
-    const rawWindowBinds: unknown[] = [
-      since1h,
-      since1h,
-      since1h,
-      since24h,
-      since24h,
-      since24h,
-      since7dIso,
-      since7dIso,
-      since7dIso,
-      since7dIso,
-      since7dIso,
-      since7dIso,
-      since24h,
-      ...providerBind,
-      ...(benchmarkVal ? [benchmarkVal] : []),
-    ];
+
     const sparkBinds: unknown[] = [
       ...providerBind,
       since24h,
@@ -270,30 +284,35 @@ export function leaderboardRoutes(env: Env) {
       benchmarks_24h: number;
     };
 
-    const [
-      lastRunsRes,
-      hourlyRes,
-      rawWindowRes,
-      sparkRes,
-      metaRes,
-      schedHealth,
-    ] = await Promise.all([
-      env.DB.prepare(lastRunSql)
-        .bind(...lastRunBinds)
-        .all<{
-          model_id: number;
-          tps: number | null;
-          ttft_ms: number | null;
-          itl_ms: number | null;
-          started_at: string;
-          status: string;
-        }>(),
-      env.DB.prepare(hourlySql)
-        .bind(...hourlyBinds)
-        .all<HourlyRow>(),
-      env.DB.prepare(rawWindowSql)
-        .bind(...rawWindowBinds)
-        .all<RawRow>(),
+    const [lastRunsRes, hourlyRes, sparkRes, metaRes, schedHealth] =
+      await Promise.all([
+        env.DB.prepare(lastRunSql)
+          .bind(...lastRunBinds)
+          .all<{
+            model_id: number;
+            max_ts: string;
+            gc_tps_1h: string | null;
+            gc_ttft_1h: string | null;
+            cnt_1h: number | null;
+            gc_tps_24h: string | null;
+            gc_ttft_24h: string | null;
+            up_24h: number | null;
+            gc_tps_7d: string | null;
+            gc_ttft_7d: string | null;
+            gc_itl_7d: string | null;
+            up_7d: number | null;
+            er_7d: number | null;
+            cnt7: number | null;
+            cnt24: number | null;
+            cnt_all: number | null;
+            now_tps: number | null;
+            now_ttft: number | null;
+            now_itl: number | null;
+            now_status: string;
+          }>(),
+        env.DB.prepare(hourlySql)
+          .bind(...hourlyBinds)
+          .all<HourlyRow>(),
       env.DB.prepare(sparkSql)
         .bind(...sparkBinds)
         .all<{ model_id: number; v: number | null; hour_start: string }>(),
@@ -301,6 +320,8 @@ export function leaderboardRoutes(env: Env) {
       getSchedulerHealth(env.DB),
     ]);
 
+    // Single pass over the merged rawLatest rows feeds both maps. Dedupe guard:
+    // ms-precision started_at ties would self-join duplicate now-rows; first wins.
     const lastMap = new Map<
       number,
       {
@@ -311,13 +332,23 @@ export function leaderboardRoutes(env: Env) {
         status: string;
       }
     >();
-    for (const r of lastRunsRes.results ?? []) lastMap.set(r.model_id, r as never);
+    const rawMap = new Map<number, RawRow>();
+    for (const r of lastRunsRes.results ?? []) {
+      if (rawMap.has(r.model_id)) continue;
+      rawMap.set(r.model_id, r);
+      lastMap.set(r.model_id, {
+        tps: r.now_tps,
+        ttft_ms: r.now_ttft,
+        itl_ms: r.now_itl,
+        started_at: r.max_ts,
+        status: r.now_status,
+      });
+    }
 
     const hourlyMap = new Map<number, HourlyRow>();
     for (const r of hourlyRes.results ?? []) hourlyMap.set(r.model_id, r);
 
-    const rawMap = new Map<number, RawRow>();
-    for (const r of rawWindowRes.results ?? []) rawMap.set(r.model_id, r);
+
 
     const sparkMap = new Map<number, Array<number | null>>();
     for (const r of sparkRes.results ?? []) {
@@ -522,9 +553,14 @@ export function leaderboardRoutes(env: Env) {
     });
     resp.headers.set(
       "Cache-Control",
-      "public, max-age=10, stale-while-revalidate=30",
+      "public, max-age=30, stale-while-revalidate=60",
     );
     resp.headers.set("Vary", "Accept-Encoding");
+    try {
+      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+    } catch {
+      // cache put best-effort
+    }
     return resp;
   });
   return r;

@@ -65,16 +65,21 @@ export function useLeaderboard(opts: { range: string; benchmark: string; sort: s
         setLoading(false);
       }
     });
-    // poll as fallback — SSE is primary; lengthen to 30s to reduce load (was 15s)
-    const id = setInterval(() => fetchNow().catch(() => {}), 30000);
-    // SSE live updates bump refresh (debounced)
+    // poll as fallback — SSE is primary; 60s cadence (was 30s) halves D1 rows_read per visitor.
+    // Each leaderboard hit scans ~9k+ rows; the 5M/day free cap allows only ~200 uncached hits/day.
+    const id = setInterval(() => fetchNow().catch(() => {}), 60000);
+    // SSE live updates bump refresh (debounced hard: every completed bench job broadcasts,
+    // so per-event refetch becomes a refetch storm × connected clients — 10s + hidden-tab skip)
     let es: EventSource | null = null;
     let debounce: number | null = null;
     try {
       es = new EventSource("/api/live");
       es.addEventListener("benchmark", () => {
         if (debounce) window.clearTimeout(debounce);
-        debounce = window.setTimeout(() => fetchNow().catch(() => {}), 800);
+        debounce = window.setTimeout(() => {
+          if (document.hidden) return;
+          fetchNow().catch(() => {});
+        }, 10000);
       });
       // SSE hiccups are tolerated — periodic polling refetch keeps data fresh regardless
       es.onerror = () => { /* no-op */ };
