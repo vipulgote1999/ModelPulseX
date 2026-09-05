@@ -55,19 +55,28 @@ export async function runDiscovery(
   const existingSet = new Set<string>();
   for (const r of existingRows.results ?? [])
     existingSet.add(`${r.provider_id}:${r.provider_model_id}`);
-  for (const [pname, metas] of byProvider) {
-    const pid = providerMap.get(pname)!;
-    const seen = new Set<string>();
-    for (const meta of metas) seen.add(meta.provider_model_id);
-    // Batch upsert — N models in ceil(N/50) roundtrips instead of N*2
-    await upsertModelsBatch(env.DB, pid, metas, now);
-    for (const meta of metas) {
-      const key = `${pid}:${meta.provider_model_id}`;
-      if (!existingSet.has(key))
-        added.push(`${pname}:${meta.provider_model_id}`);
-      total++;
-    }
-    await markMissingInactive(env.DB, pid, seen, now);
+  // Per-provider partitions are independent (all writes scope to pid) — run
+  // providers concurrently instead of sequentially (19 providers × RTTs).
+  const perProvider = await Promise.all(
+    Array.from(byProvider.entries()).map(async ([pname, metas]) => {
+      const pid = providerMap.get(pname)!;
+      const seen = new Set<string>();
+      for (const meta of metas) seen.add(meta.provider_model_id);
+      // Batch upsert — N models in ceil(N/50) roundtrips instead of N*2
+      await upsertModelsBatch(env.DB, pid, metas, now);
+      const addedHere: string[] = [];
+      for (const meta of metas) {
+        const key = `${pid}:${meta.provider_model_id}`;
+        if (!existingSet.has(key))
+          addedHere.push(`${pname}:${meta.provider_model_id}`);
+      }
+      await markMissingInactive(env.DB, pid, seen, now);
+      return { added: addedHere, count: metas.length };
+    }),
+  );
+  for (const r of perProvider) {
+    total += r.count;
+    added.push(...r.added);
   }
   // One-shot guarded data fixes (tokenrouter paid purge, ollama allowlist) — replaces the
   // hardcoded cleanups that previously ran on EVERY discovery cycle.
