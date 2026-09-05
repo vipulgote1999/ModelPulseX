@@ -67,7 +67,10 @@ export default function TimeoutChart({ range }: { range: string }) {
 
   useEffect(() => {
     let dead = false;
-    fetch(`/api/timeouts?range=${encodeURIComponent(range)}`)
+    const ctl = new AbortController();
+    fetch(`/api/timeouts?range=${encodeURIComponent(range)}`, {
+      signal: ctl.signal,
+    })
       .then((r) => r.json())
       .then((j: unknown) => {
         if (!dead) {
@@ -96,9 +99,13 @@ export default function TimeoutChart({ range }: { range: string }) {
           });
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        // Abort on range switch is normal — anything else keeps last data.
+        if ((e as Error)?.name === "AbortError") return;
+      });
     return () => {
       dead = true;
+      ctl.abort();
     };
   }, [range]);
 
