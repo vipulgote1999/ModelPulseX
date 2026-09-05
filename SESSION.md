@@ -149,3 +149,11 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - fix(quota): onError maps quota errors to 503 {error: d1_quota_exceeded}; useLeaderboard propagates the code; Dashboard shows a midnight-UTC-resume banner (verified live).
 - Burn reduction for post-reset: edge TTLs up (leaderboard 30→120s, timeouts/compare 60→300s, cooldowns 5→15s).
 - Lesson: halt prod Playwright verification while quota is exhausted; it burns the same capped rows.
+
+## 2026-09-05 (later) — leaderboard snapshot refactor (user chose over paid D1)
+
+- Migration 0012 (leaderboard_snapshot + models.last_now_json) + insertBenchmarkRun json_patch stamp (same UPDATE, zero new round trips). Replaces a dead 5-column overlay whose UPDATE failed silently on prod (no such columns → every job ran a wasted failing batch + insert fallback).
+- Writer refreshLeaderboardSnapshot on the hourly cron: ONE raw GROUP_CONCAT pass + hourly spark read → exact raw medians per (benchmark, model), ~1700-row batch upsert, never throws. Fixed ~20k/tick vs unbounded per-hit scans.
+- Reader serves snapshot (~600 rows/hit, 25-50x cut) with live-query fallback when empty/missing; scoring/sort/summary shared via finish(). now_* overlay from last_now_json keeps per-run freshness.
+- Established: leaderboard numbers are range-independent (range only affects charts) → snapshot key is benchmark only (4 sets, not 16).
+- 8 snapshot unit tests (85 total green). Deployed; migration apply blocked by the active quota breach (also blocks DDL) — will apply after midnight UTC reset, then verify population. Fallback verified live (graceful 503, no crash on missing table).
