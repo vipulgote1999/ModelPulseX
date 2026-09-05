@@ -142,3 +142,10 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - fix(watchdog): stamp alerts only on delivered sends (TDD, +3 tests).
 - fix(admin): bulk requires explicit enabled; login hint corrected.
 - 77 tests green, tree clean, all deployed.
+
+## 2026-09-05 (later) — D1 5M/day cap breached again, quota UX shipped
+
+- Prod down with leaderboard 500s: wrangler tail proved D1 free-tier daily row-read limit (second breach today; benchmark jobs + reads all failing). Not code-caused — organic growth + verification traffic against a hard cap.
+- fix(quota): onError maps quota errors to 503 {error: d1_quota_exceeded}; useLeaderboard propagates the code; Dashboard shows a midnight-UTC-resume banner (verified live).
+- Burn reduction for post-reset: edge TTLs up (leaderboard 30→120s, timeouts/compare 60→300s, cooldowns 5→15s).
+- Lesson: halt prod Playwright verification while quota is exhausted; it burns the same capped rows.
