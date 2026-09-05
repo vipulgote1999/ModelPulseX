@@ -31,7 +31,7 @@ export function cooldownsRoutes(env: Env) {
     });
     resp.headers.set(
       "Cache-Control",
-      "public, max-age=5, stale-while-revalidate=10",
+      "public, max-age=15, stale-while-revalidate=30",
     );
     try {
       c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));

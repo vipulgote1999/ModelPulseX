@@ -74,7 +74,18 @@ export function useLeaderboard(opts: {
       signal: ctl.signal,
       headers: { accept: "application/json" },
     });
-    if (!res.ok) throw new Error(`leaderboard ${res.status}`);
+    if (!res.ok) {
+      // Surface machine-readable API error codes (e.g. d1_quota_exceeded)
+      // so the UI can show a specific message instead of a bare status.
+      let code = "";
+      try {
+        const b = (await res.json()) as { error?: string };
+        if (b?.error) code = ` ${b.error}`;
+      } catch {
+        // non-JSON error body — status alone will have to do
+      }
+      throw new Error(`leaderboard ${res.status}${code}`);
+    }
     const j = (await res.json()) as LeaderboardResp;
     setData(j);
     setLoading(false);

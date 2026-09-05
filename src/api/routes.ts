@@ -115,9 +115,23 @@ export function createApi(env: Env) {
   app.route("/api", adminModelsRoutes(env));
   app.route("/api", adminMaintenanceRoutes(env));
 
-  // Global error handler — never leak internals (security hardening)
+  // Global error handler — never leak internals (security hardening).
+  // D1 quota breach gets a distinct 503 so clients (and the dashboard) can
+  // show "back at midnight UTC" instead of a generic 500: the message match
+  // needs no D1 access, which is exactly what's down in that situation.
   app.onError((err, c) => {
     console.error("unhandled api error", err);
+    const msg = String((err as Error)?.message ?? err ?? "");
+    if (/row read limit|exceeded.*free tier/i.test(msg)) {
+      return c.json(
+        {
+          error: "d1_quota_exceeded",
+          message:
+            "Database daily read quota reached — public data resumes after midnight UTC.",
+        },
+        503,
+      );
+    }
     return c.json({ error: sanitizeErrorMessage(err) }, 500);
   });
   app.notFound((c) => c.json({ error: "not found" }, 404));

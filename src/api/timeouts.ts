@@ -84,7 +84,7 @@ export function timeoutsRoutes(env: Env) {
     });
     resp.headers.set(
       "Cache-Control",
-      "public, max-age=60, stale-while-revalidate=120",
+      "public, max-age=300, stale-while-revalidate=300",
     );
     try {
       c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));

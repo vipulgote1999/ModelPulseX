@@ -114,7 +114,7 @@ export function leaderboardRoutes(env: Env) {
       });
       resp.headers.set(
         "Cache-Control",
-        "public, max-age=30, stale-while-revalidate=60",
+        "public, max-age=120, stale-while-revalidate=120",
       );
       try {
         c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
@@ -551,7 +551,7 @@ export function leaderboardRoutes(env: Env) {
     });
     resp.headers.set(
       "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60",
+      "public, max-age=120, stale-while-revalidate=120",
     );
     resp.headers.set("Vary", "Accept-Encoding");
     try {

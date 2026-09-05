@@ -134,7 +134,7 @@ export function compareRoutes(env: Env) {
     const resp = c.json({ compare: out, recommended_provider: recommended });
     resp.headers.set(
       "Cache-Control",
-      "public, max-age=60, stale-while-revalidate=120",
+      "public, max-age=300, stale-while-revalidate=300",
     );
     try {
       c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));

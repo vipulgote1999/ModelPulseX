@@ -243,16 +243,21 @@ export default function Dashboard() {
         </p>
       </div>
     );
-  if (error)
+  if (error) {
+    const msg = String(error);
+    const quota = /quota_exceeded|row read limit/i.test(msg);
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">
-        Failed to load: {String(error)} — try refresh. Discovery runs hourly;
-        queue may be catching up. API:{" "}
+        {quota
+          ? "Database daily read limit reached — the free tier resets at midnight UTC, data resumes automatically. Nothing is lost; benchmarks queue until then."
+          : <>Failed to load: {msg} — try refresh. Discovery runs hourly; queue may be catching up.</>}{" "}
+        API:{" "}
         <a className="underline" href="/api/health">
           /api/health
         </a>
       </div>
     );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
