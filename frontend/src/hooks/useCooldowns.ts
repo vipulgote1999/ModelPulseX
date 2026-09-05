@@ -7,16 +7,47 @@ export interface CooldownsResp {
   meta: { providerCooldowns: number; modelCooldowns: number };
 }
 
-export function useCooldowns(pollMs = 15000) {
-  const [data, setData] = useState<CooldownsResp | null>(null);
-  const [loading, setLoading] = useState(true);
+// Shared across all hook instances: CooldownPanel polls every 10s and the
+// Leaderboard every 12s for the same endpoint. Module-level dedup collapses
+// that into ~1 request per window per visitor; hidden tabs skip entirely.
+const SHARE_MS = 5000;
+let shared: {
+  at: number;
+  data: CooldownsResp | null;
+  inflight: Promise<CooldownsResp | null> | null;
+} = { at: 0, data: null, inflight: null };
 
-  const fetchNow = useCallback(async () => {
+async function fetchShared(): Promise<CooldownsResp | null> {
+  const now = Date.now();
+  if (shared.data && now - shared.at < SHARE_MS) return shared.data;
+  if (shared.inflight) return shared.inflight;
+  const p = (async (): Promise<CooldownsResp | null> => {
     try {
       const r = await fetch("/api/cooldowns");
       if (!r.ok) throw new Error(String(r.status));
       const j = (await r.json()) as CooldownsResp;
-      setData(j);
+      shared = { at: Date.now(), data: j, inflight: null };
+      return j;
+    } catch {
+      shared = { ...shared, inflight: null };
+      return shared.data;
+    }
+  })();
+  shared = { ...shared, inflight: p };
+  return p;
+}
+
+export function useCooldowns(pollMs = 15000) {
+  const [data, setData] = useState<CooldownsResp | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchNow = useCallback(async (force = false) => {
+    // Background tabs don't need fresh cooldowns — skip, keep last data.
+    if (!force && typeof document !== "undefined" && document.hidden) return;
+    if (force) shared = { at: 0, data: shared.data, inflight: null };
+    try {
+      const j = await fetchShared();
+      if (j) setData(j);
     } catch {
       // ignore
     } finally {
@@ -30,7 +61,7 @@ export function useCooldowns(pollMs = 15000) {
     return () => clearInterval(id);
   }, [fetchNow, pollMs]);
 
-  return { data, loading, refresh: fetchNow };
+  return { data, loading, refresh: () => fetchNow(true) };
 }
 
 export function remainingStr(until: string): string {
