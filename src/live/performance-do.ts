@@ -9,7 +9,9 @@ function safeParseUrl(raw: string): URL | null {
 /** Durable Object live broadcast — SSE fan-out, not history store. Minimal SQLite state via ctx.storage. Hardened for max security. */
 
 export class PerformanceDO implements DurableObject {
-  private sessions: Set<ReadableStreamDefaultController> = new Set();
+  // controller → ip: eviction must decrement the per-IP count too, otherwise
+  // dead connections inflate ipCounts and legit users eventually get 429s.
+  private sessions: Map<ReadableStreamDefaultController, string> = new Map();
   private ipCounts: Map<string, number> = new Map();
   private readonly MAX_TOTAL_CLIENTS = 200;
   private readonly MAX_PER_IP = 5;
@@ -141,28 +143,31 @@ export class PerformanceDO implements DurableObject {
       });
     }
 
-    // Origin check — SSE is same-origin from dashboard; reject cross-origin without allowlist
+    // Origin check — SSE is same-origin from dashboard; reject cross-origin without allowlist.
+    // One shared allow-set drives BOTH the 403 gate and the ACAO echo below:
+    // previously the echo used a smaller hardcoded list, so allowed origins like
+    // 127.0.0.1:8787 or a custom CORS_ORIGIN passed the gate but got no ACAO header.
     const origin = _request.headers.get("origin");
+    const allowedOrigins = [
+      "https://modelpulsex.vipulgote5.workers.dev",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:8787",
+      "http://127.0.0.1:8787",
+    ];
+    // Also allow dynamic from env if set (read lazily)
+    const envOrigin = (this.env as Record<string, unknown>)?.[
+      "CORS_ORIGIN"
+    ] as string | undefined;
+    const extra = envOrigin
+      ? envOrigin
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const allAllowed = new Set([...allowedOrigins, ...extra]);
     if (origin) {
       // Allow only our own origin + localhost for dev
-      const allowedOrigins = [
-        "https://modelpulsex.vipulgote5.workers.dev",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8787",
-        "http://127.0.0.1:8787",
-      ];
-      // Also allow dynamic from env if set (read lazily)
-      const envOrigin = (this.env as Record<string, unknown>)?.[
-        "CORS_ORIGIN"
-      ] as string | undefined;
-      const extra = envOrigin
-        ? envOrigin
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
-      const allAllowed = new Set([...allowedOrigins, ...extra]);
       if (!allAllowed.has(origin)) {
         return new Response("origin not allowed", {
           status: 403,
@@ -176,16 +181,13 @@ export class PerformanceDO implements DurableObject {
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
-      this.sessions.delete(controller);
-      const cur = (this.ipCounts.get(ip) ?? 1) - 1;
-      if (cur <= 0) this.ipCounts.delete(ip);
-      else this.ipCounts.set(ip, cur);
+      this.drop(controller);
     };
 
     const stream = new ReadableStream({
       start: (c) => {
         controller = c;
-        this.sessions.add(controller);
+        this.sessions.set(controller, ip);
         this.ipCounts.set(ip, perIp + 1);
         c.enqueue(encode(`: connected\n\n`));
         // Set alarm for pings if not already set
@@ -202,12 +204,7 @@ export class PerformanceDO implements DurableObject {
       connection: "keep-alive",
       ...secHeaders,
       // If origin was allowed, echo it back with credentials
-      ...(origin &&
-      ([
-        "https://modelpulsex.vipulgote5.workers.dev",
-        "http://localhost:5173",
-      ].includes(origin) ||
-        origin.includes("localhost"))
+      ...(origin && allAllowed.has(origin)
         ? {
             "access-control-allow-origin": origin,
             "access-control-allow-credentials": "true",
@@ -219,26 +216,38 @@ export class PerformanceDO implements DurableObject {
     return new Response(stream, { headers });
   }
 
+  private drop(c: ReadableStreamDefaultController): void {
+    const ip = this.sessions.get(c);
+    this.sessions.delete(c);
+    if (ip == null) return;
+    const cur = (this.ipCounts.get(ip) ?? 1) - 1;
+    if (cur <= 0) this.ipCounts.delete(ip);
+    else this.ipCounts.set(ip, cur);
+  }
+
   private broadcast(event: string, data: string) {
     const payload = encode(`event: ${event}\ndata: ${data}\n\n`);
-    for (const c of [...this.sessions]) {
+    for (const c of [...this.sessions.keys()]) {
       try {
         c.enqueue(payload);
       } catch {
-        this.sessions.delete(c);
+        this.drop(c);
       }
     }
   }
 
   async alarm(): Promise<void> {
-    for (const c of [...this.sessions]) {
+    for (const c of [...this.sessions.keys()]) {
       try {
         c.enqueue(encode(`: ping\n\n`));
       } catch {
-        this.sessions.delete(c);
+        this.drop(c);
       }
     }
-    await this.state.storage.setAlarm(Date.now() + 30000);
+    // No sessions left → stop rescheduling so the DO can go idle instead of
+    // waking every 30s forever. A new connection's start() schedules the alarm.
+    if (this.sessions.size > 0)
+      await this.state.storage.setAlarm(Date.now() + 30000);
   }
 }
 
