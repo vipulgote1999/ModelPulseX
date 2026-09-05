@@ -18,6 +18,13 @@ export default function Docs() {
   if (!spec) return <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-8 text-zinc-400 animate-pulse">Loading API docs…</div>;
 
   const base = "https://modelpulsex.vipulgote5.workers.dev";
+  // JSX condenses literal newlines in <pre> to spaces — build code blocks as
+  // template strings so each command renders on its own line.
+  const quickstart =
+    `curl ${base}/api/leaderboard?range=7d | jq .leaderboard[0]\n` +
+    `curl ${base}/api/history?ids=1,2,3&range=7d | jq .history\n` +
+    `curl ${base}/api/health?freshness=15\n` +
+    `# share card\nopen ${base}/api/og.png`;
 
   return (
     <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-8 space-y-8 text-zinc-300 leading-relaxed">
@@ -29,11 +36,7 @@ export default function Docs() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">Quick start</h2>
-        <pre className="mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3 overflow-auto">curl {base}/api/leaderboard?range=7d | jq .leaderboard[0]
-curl {base}/api/history?ids=1,2,3&amp;range=7d | jq .history
-curl {base}/api/health?freshness=15
-# share card
-open {base}/api/og.png</pre>
+        <pre className="mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3 overflow-auto">{quickstart}</pre>
         <p className="text-sm text-zinc-500">All public GET endpoints are unauthenticated. Admin endpoints require <code className="mono text-xs bg-zinc-800 px-1 py-0.5 rounded">Authorization: Bearer $ADMIN_TOKEN</code>.</p>
       </section>
 

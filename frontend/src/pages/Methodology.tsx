@@ -1,4 +1,23 @@
 export default function Methodology() {
+  // JSX condenses literal newlines in <pre> to spaces — build code blocks as
+  // template strings so each line renders on its own line.
+  const tpsFormula =
+    "generation_time = completed_at - first_token_at\n" +
+    "TPS = output_tokens / generation_time (seconds)";
+  const apiList =
+    "GET /api/providers\n" +
+    "GET /api/models?provider=&includeInactive=\n" +
+    "GET /api/leaderboard?range=1h|24h|3d|7d&provider=&benchmark=&sort=&profile=\n" +
+    "GET /api/models/:id/history?range=\n" +
+    "GET /api/models/:id/incidents\n" +
+    "GET /api/compare?models=1,2\n" +
+    "GET /api/timeouts?range=7d  (refusal history by day/provider/status)\n" +
+    "GET /api/live  (SSE via Durable Object)\n" +
+    "GET /api/cooldowns\n" +
+    "GET /api/health?freshness=15   → 503 when data older than N min (uptime-monitor probe)\n" +
+    "POST /api/admin/{discover|benchmark|reaggregate|cleanup|migrate|cooldown/reset}  (ADMIN_TOKEN)\n" +
+    "wrangler d1 migrations apply DB --local / --remote\n" +
+    "wrangler secret put OPENCODE_API_KEY OPENROUTER_API_KEY ADMIN_TOKEN";
   return (
     <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-8 space-y-8 text-zinc-300 leading-relaxed">
       <h1 className="text-2xl font-bold text-white">Methodology — ModelPulseX Transparency</h1>
@@ -6,8 +25,7 @@ export default function Methodology() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">How TPS is measured — Measured TPS</h2>
-        <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 mono text-xs">generation_time = completed_at - first_token_at
-TPS = output_tokens / generation_time (seconds)</pre>
+        <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 mono text-xs">{tpsFormula}</pre>
         <p className="text-sm">We do NOT use total request duration. We record <b>request_started_at</b>, <b>first_token_at</b> (first SSE <code>data:</code> with content), <b>completed_at</b>. If provider supplies <code>usage.completion_tokens</code> we use it and mark <code>Measured TPS</code> with <code>token_estimation_method=provider</code>; otherwise we estimate via char/4 heuristic flagged <code>heuristic</code> and clearly indicate estimation.</p>
         <p className="text-sm">Windowed values (1h/24h/7d) are <b>medians (P50)</b> over the window — matching how sustained provider performance is reported in the industry — not averages, which a single 2-sample spike can distort. “TPS Now” is the single latest measurement and is labeled accordingly. Windows need at least <b>2 samples (1h)</b>, <b>3 samples (24h)</b> or <b>5 samples (7d)</b> before a figure is displayed; below that you get “insufficient data” instead of noise. Hourly aggregates also retain p50/p90/p95 for both TPS and TTFT.</p>
       </section>
@@ -66,19 +84,7 @@ TPS = output_tokens / generation_time (seconds)</pre>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">API & deployment</h2>
-        <pre className="mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3">GET /api/providers
-GET /api/models?provider=&includeInactive=
-GET /api/leaderboard?range=1h|24h|3d|7d&provider=&benchmark=&sort=&profile=
-GET /api/models/:id/history?range=
-GET /api/models/:id/incidents
-GET /api/compare?models=1,2
-GET /api/timeouts?range=7d  (refusal history by day/provider/status)
-GET /api/live  (SSE via Durable Object)
-GET /api/cooldowns
-GET /api/health?freshness=15   → 503 when data older than N min (uptime-monitor probe)
-POST /api/admin/{`discover|benchmark|reaggregate|cleanup|migrate|cooldown/reset`}  (ADMIN_TOKEN)
-wrangler d1 migrations apply DB --local / --remote
-wrangler secret put OPENCODE_API_KEY OPENROUTER_API_KEY ADMIN_TOKEN</pre>
+        <pre className="mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3 overflow-auto">{apiList}</pre>
         <p className="text-sm">See README + wrangler.jsonc for D1/Queue/DO/Cron binding docs.</p>
       </section>
     </div>

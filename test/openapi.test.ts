@@ -15,6 +15,7 @@ describe("openapi spec", () => {
       "/api/history",
       "/api/compare",
       "/api/cooldowns",
+      "/api/timeouts",
       "/api/live",
       "/api/openapi.json",
       "/api/og.png",

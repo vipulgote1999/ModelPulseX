@@ -106,6 +106,15 @@ export function buildOpenApiSpec() {
           responses: { "200": { description: "Cooldowns" } },
         },
       },
+      "/api/timeouts": {
+        get: {
+          summary: "Refusal history by day/provider/status + per-provider limits",
+          parameters: [
+            { name: "range", in: "query", required: false, schema: { type: "string", enum: ["1h", "24h", "3d", "7d"], default: "7d" } },
+          ],
+          responses: { "200": { description: "Timeout history" }, "400": { description: "Invalid range" } },
+        },
+      },
       "/api/live": {
         get: {
           summary: "SSE live stream via Durable Object",
