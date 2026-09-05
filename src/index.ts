@@ -20,6 +20,7 @@ import {
   truncateToTenMin,
 } from "./db/queries";
 import { recordHourlyJob, watchdogCheck } from "./db/health";
+import { refreshLeaderboardSnapshot } from "./db/snapshot";
 import type { Env } from "./types";
 
 export { PerformanceDO };
@@ -263,6 +264,9 @@ export default {
         await computeHourlyAggregates(env.DB, hour.toISOString());
         const prev = new Date(hour.getTime() - 3600 * 1000).toISOString();
         await computeHourlyAggregates(env.DB, prev);
+        // Refresh the precomputed leaderboard snapshot (fixed cost/tick replaces
+        // unbounded per-hit raw scans); never throws, skips pre-migration.
+        await refreshLeaderboardSnapshot(env.DB, Date.now());
         await recordHourlyJob(env.DB, "aggregate");
       } catch (e) {
         console.error("hourly aggregation failed", e);

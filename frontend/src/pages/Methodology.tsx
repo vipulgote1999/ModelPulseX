@@ -55,7 +55,9 @@ export default function Methodology() {
           “TPS Now” is the single latest measurement and is labeled accordingly.
           Windows need at least <b>2 samples (1h)</b>, <b>3 samples (24h)</b> or{" "}
           <b>5 samples (7d)</b> before a figure is displayed; below that you get
-          “insufficient data” instead of noise. Hourly aggregates also retain
+          “insufficient data” instead of noise. The leaderboard serves these medians
+          from an hourly-refreshed precomputed snapshot (exact raw medians, same
+          gates); live per-hit queries remain as fallback. Hourly aggregates also retain
           p50/p90/p95 for both TPS and TTFT.
         </p>
       </section>
