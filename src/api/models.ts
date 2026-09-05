@@ -127,29 +127,35 @@ export function modelsRoutes(env: Env) {
 
   r.get("/models/:id/incidents", async (c) => {
     const id = Number(c.req.param("id"));
-    // Parallelize 4 independent queries — reduces I/O from 4 sequential roundtrips to 1
-    const [incidentsRes, total7, total24, longest] = await Promise.all([
+    // Single db.batch round-trip (4 independent queries, no data deps).
+    // NOTE: batch takes bound (unexecuted) statements; single-row reads come
+    // from results[0], not .first().
+    const [incidentsRes, total7Res, total24Res, longestRes] = await env.DB.batch([
       env.DB.prepare(
         "SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100",
-      )
-        .bind(id)
-        .all(),
+      ).bind(id),
       env.DB.prepare(
         "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
-      )
-        .bind(id, isoHoursAgo(168))
-        .first<{ tot: number; ok: number | null }>(),
+      ).bind(id, isoHoursAgo(168)),
       env.DB.prepare(
         "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
-      )
-        .bind(id, isoHoursAgo(24))
-        .first<{ tot: number; ok: number | null }>(),
+      ).bind(id, isoHoursAgo(24)),
       env.DB.prepare(
         "SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?",
-      )
-        .bind(id)
-        .first<{ m: number | null }>(),
+      ).bind(id),
     ]);
+    // SAFETY: D1 batch returns untyped rows; SELECT aliases match the shapes below.
+    const total7 = (total7Res?.results?.[0] ?? null) as {
+      tot: number;
+      ok: number | null;
+    } | null;
+    const total24 = (total24Res?.results?.[0] ?? null) as {
+      tot: number;
+      ok: number | null;
+    } | null;
+    const longest = (longestRes?.results?.[0] ?? null) as {
+      m: number | null;
+    } | null;
     return c.json({
       incidents: incidentsRes.results,
       uptime_7d: total7?.tot ? (total7.ok ?? 0) / total7.tot : null,

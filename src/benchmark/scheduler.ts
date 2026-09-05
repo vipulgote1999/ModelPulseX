@@ -115,7 +115,11 @@ export async function scheduleBenchmarks(
     ).all<SelectableModel>();
   } catch (e) {
     const msg = String(e);
-    if (msg.includes("benchmark_enabled") || msg.includes("last_benchmark_at") || msg.includes("no such column")) {
+    if (
+      msg.includes("benchmark_enabled") ||
+      msg.includes("last_benchmark_at") ||
+      msg.includes("no such column")
+    ) {
       active = await env.DB.prepare(
         `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
          FROM models m JOIN providers p ON p.id=m.provider_id
@@ -225,8 +229,9 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
   const workload = WORKLOADS[job.benchmark_type as BenchmarkType];
   const prov = providerFor(job.provider, env);
   if (!prov) return;
-  // fetch model row for benchmark
-  const mrow = await env.DB.prepare("SELECT * FROM models WHERE id=?")
+  // Existence check only — the job already carries every field the benchmark needs,
+  // so read the narrow id column instead of SELECT * (saves rows_read × jobs/day).
+  const mrow = await env.DB.prepare("SELECT id FROM models WHERE id=?")
     .bind(job.model_id)
     .first();
   if (!mrow) return;
@@ -249,9 +254,8 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
   // provider_id is an unused placeholder (0) here.
   let result: import("../types").BenchmarkResult;
   try {
-    // SAFETY: object satisfies Model structurally — provider_id is an unused placeholder (0)
-    // because jobs identify providers by name.
     result = await prov.benchmarkModel(
+      // SAFETY: model object satisfies Model structurally; provider_id=0 unused (jobs key providers by name)
       model as unknown as import("../types").Model,
       workload,
     );
@@ -419,21 +423,23 @@ async function updateIncidents(
   },
 ) {
   const threshold = Number(env.INCIDENT_THRESHOLD) || 3;
-  // fetch recent statuses
-  const recent = await env.DB.prepare(
-    "SELECT status FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
-  )
-    .bind(modelId, threshold)
-    .all<{ status: string }>();
+  // The two reads are independent — run together instead of sequentially.
+  const [recent, open] = await Promise.all([
+    env.DB.prepare(
+      "SELECT status FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
+    )
+      .bind(modelId, threshold)
+      .all<{ status: string }>(),
+    env.DB.prepare(
+      "SELECT id FROM availability_incidents WHERE model_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+    )
+      .bind(modelId)
+      .first<{ id: number }>(),
+  ]);
   const vals = (recent.results ?? []).map((r) => r.status);
   const isFail = result.status !== "SUCCESS";
   // check if we have streak
   const failStreak = vals.filter((s) => s !== "SUCCESS").length;
-  const open = await env.DB.prepare(
-    "SELECT id FROM availability_incidents WHERE model_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
-  )
-    .bind(modelId)
-    .first<{ id: number }>();
   if (isFail && failStreak >= threshold && !open) {
     await env.DB.prepare(
       "INSERT INTO availability_incidents (model_id, started_at, reason, failure_count) VALUES (?,?,?,?)",

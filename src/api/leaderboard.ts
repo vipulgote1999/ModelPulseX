@@ -313,12 +313,12 @@ export function leaderboardRoutes(env: Env) {
         env.DB.prepare(hourlySql)
           .bind(...hourlyBinds)
           .all<HourlyRow>(),
-      env.DB.prepare(sparkSql)
-        .bind(...sparkBinds)
-        .all<{ model_id: number; v: number | null; hour_start: string }>(),
-      env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
-      getSchedulerHealth(env.DB),
-    ]);
+        env.DB.prepare(sparkSql)
+          .bind(...sparkBinds)
+          .all<{ model_id: number; v: number | null; hour_start: string }>(),
+        env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
+        getSchedulerHealth(env.DB),
+      ]);
 
     // Single pass over the merged rawLatest rows feeds both maps. Dedupe guard:
     // ms-precision started_at ties would self-join duplicate now-rows; first wins.
@@ -347,8 +347,6 @@ export function leaderboardRoutes(env: Env) {
 
     const hourlyMap = new Map<number, HourlyRow>();
     for (const r of hourlyRes.results ?? []) hourlyMap.set(r.model_id, r);
-
-
 
     const sparkMap = new Map<number, Array<number | null>>();
     for (const r of sparkRes.results ?? []) {
