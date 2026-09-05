@@ -287,8 +287,9 @@ export default {
       }
     } else {
       // fallback: run both if unknown
+      const fbTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
       await scheduleBenchmarks(env, {
-        inlineTake: Number(env.BENCH_INLINE_FALLBACK ?? "6"),
+        inlineTake: Number.isFinite(fbTake) ? fbTake : 6,
       });
     }
   },
