@@ -118,3 +118,10 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 ## 2026-09-05 (later) — docs code-block newlines + openapi timeouts
 
 - JSX condenses literal <pre> newlines into spaces: Docs quickstart and Methodology formula/API blocks rendered as horizontal blobs. Rebuilt as template strings (verified 5/2/13 lines live) + /api/timeouts added to OpenAPI spec and its route-coverage test.
+
+## 2026-09-05 (later) — continuous loop: DO fixes, dead-code purge, docs sync
+
+- fix(live) c6b44b6: DO sessions Set→Map with drop() (ipCounts no longer leak on dead connections); idle alarm stops rescheduling; ACAO echo uses the same allow-set as the gate (127.0.0.1:8787 + CORS_ORIGIN were gated-OK but stream-blocked). +5 DO tests (72 total).
+- chore(security) aeefd8f: -122 lines dead validators/helpers nobody imports.
+- fix(scheduler) 846f8ec: isFinite guard on fallback inline count; perf(discovery) 8d94807: per-provider upserts concurrent.
+- fix(docs) b85e10d: JSX <pre> newline collapse fixed via template strings; /api/timeouts in OpenAPI + test; README synced.
