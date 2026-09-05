@@ -2,11 +2,27 @@ import { useEffect, useState } from "react";
 
 export default function ComparePanel({ selected }: { selected: number[] }) {
   const [data, setData] = useState<{ compare: Array<{ display_name: string; provider: string; tps_24h: number | null; tps_7d: number | null; ttft_24h: number | null; ttft_7d: number | null; uptime_7d: number | null; error_rate: number | null }>; recommended_provider: string | null } | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (selected.length === 0) { setData(null); return; }
-    fetch(`/api/compare?models=${selected.join(",")}`).then((r) => r.json()).then((j) => setData(j as unknown as typeof data)).catch(() => setData(null));
+    if (selected.length === 0) { setData(null); setFailed(false); return; }
+    // Abort + staleness guard: rapid pin changes must not let an older slow
+    // response overwrite newer data (or crash on a 404 error body, which has
+    // no .compare array).
+    const ctl = new AbortController();
+    setFailed(false);
+    fetch(`/api/compare?models=${selected.join(",")}`, { signal: ctl.signal }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    }).then((j) => {
+      // SAFETY: /api/compare response shape is owned by src/api/compare.ts; narrowed to displayed fields
+      if (!ctl.signal.aborted) setData(j as unknown as typeof data);
+    }).catch(() => {
+      if (!ctl.signal.aborted) { setData(null); setFailed(true); }
+    });
+    return () => ctl.abort();
   }, [selected.join(",")]);
   if (!selected.length) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-sm text-zinc-500">Select 2–4 models from the leaderboard to compare. When the same underlying model exists on both providers (e.g., laguna family) you will see a per-provider table with the winner highlighted.</div>;
+  if (failed) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-sm text-zinc-500">Couldn&apos;t load the comparison — the selected models may no longer be benchmarked. Try re-selecting.</div>;
   if (!data) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-sm text-zinc-500">Loading comparison…</div>;
   const rows = data.compare;
   const best = (k: "tps_7d" | "tps_24h") => rows.reduce((b, r) => (r[k] ?? -1) > (b?.[k] ?? -1) ? r : b, rows[0] as typeof rows[number]);
