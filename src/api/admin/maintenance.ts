@@ -113,15 +113,18 @@ export function adminMaintenanceRoutes(env: Env) {
 
   r.post("/admin/fix-tps", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
-    const upd = await env.DB.prepare(
-      `UPDATE benchmark_runs SET tps = CASE WHEN output_tokens IS NOT NULL AND generation_ms IS NOT NULL THEN output_tokens / (MAX(generation_ms, 20) / 1000.0) ELSE tps END WHERE tps > 2000 OR generation_ms < 5`,
-    ).run();
-    const upd2 = await env.DB.prepare(
-      `UPDATE benchmark_runs SET tps = output_tokens / ((ttft_ms + generation_ms) / 1000.0) WHERE ttft_ms > 5000 AND generation_ms < 20 AND output_tokens IS NOT NULL AND (ttft_ms + generation_ms) > 0 AND tps > 1000`,
-    ).run();
-    const delHourly = await env.DB.prepare(
-      `DELETE FROM hourly_model_stats WHERE median_tps > 2000 OR avg_tps > 2000`,
-    ).run();
+    // The three repairs are independent — one batch round-trip instead of three.
+    const [upd, upd2, delHourly] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE benchmark_runs SET tps = CASE WHEN output_tokens IS NOT NULL AND generation_ms IS NOT NULL THEN output_tokens / (MAX(generation_ms, 20) / 1000.0) ELSE tps END WHERE tps > 2000 OR generation_ms < 5`,
+      ),
+      env.DB.prepare(
+        `UPDATE benchmark_runs SET tps = output_tokens / ((ttft_ms + generation_ms) / 1000.0) WHERE ttft_ms > 5000 AND generation_ms < 20 AND output_tokens IS NOT NULL AND (ttft_ms + generation_ms) > 0 AND tps > 1000`,
+      ),
+      env.DB.prepare(
+        `DELETE FROM hourly_model_stats WHERE median_tps > 2000 OR avg_tps > 2000`,
+      ),
+    ]);
     return c.json({
       ok: true,
       updated_benchmark_runs: upd.meta.changes ?? 0,
