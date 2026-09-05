@@ -14,7 +14,9 @@ const EMPTY: SchedulerHealth = {
   last_stale_alert_at: null,
 };
 
-export async function getSchedulerHealth(db: D1Database): Promise<SchedulerHealth> {
+export async function getSchedulerHealth(
+  db: D1Database,
+): Promise<SchedulerHealth> {
   try {
     const row = await db
       .prepare(`SELECT * FROM scheduler_health WHERE id=1`)
@@ -33,7 +35,10 @@ export interface ScheduleTick {
 }
 
 /** Persist the result of one 5-minute benchmark-scheduler tick (upsert singleton). */
-export async function recordScheduleTick(db: D1Database, t: ScheduleTick): Promise<void> {
+export async function recordScheduleTick(
+  db: D1Database,
+  t: ScheduleTick,
+): Promise<void> {
   try {
     const now = new Date().toISOString();
     await db
@@ -48,7 +53,14 @@ export async function recordScheduleTick(db: D1Database, t: ScheduleTick): Promi
            last_skipped_rpm=excluded.last_skipped_rpm,
            updated_at=excluded.updated_at`,
       )
-      .bind(now, t.enqueueCount, t.inlineCount, t.skippedCooldown, t.skippedRpm, now)
+      .bind(
+        now,
+        t.enqueueCount,
+        t.inlineCount,
+        t.skippedCooldown,
+        t.skippedRpm,
+        now,
+      )
       .run();
   } catch (e) {
     console.warn("recordScheduleTick", e);
@@ -78,7 +90,9 @@ export async function recordHourlyJob(
   }
 }
 
-export async function getLastBenchmarkAt(db: D1Database): Promise<string | null> {
+export async function getLastBenchmarkAt(
+  db: D1Database,
+): Promise<string | null> {
   try {
     const row = await db
       .prepare(`SELECT MAX(started_at) as m FROM benchmark_runs`)
@@ -102,8 +116,11 @@ export function shouldAlertStale(
   thresholdMinutes: number,
   nowMs: number,
 ): { stale: boolean; ageMinutes: number | null; alertDue: boolean } {
-  if (!lastBenchmarkAt) return { stale: true, ageMinutes: null, alertDue: false };
-  const ageMinutes = Math.round((nowMs - new Date(lastBenchmarkAt).getTime()) / 60000);
+  if (!lastBenchmarkAt)
+    return { stale: true, ageMinutes: null, alertDue: false };
+  const ageMinutes = Math.round(
+    (nowMs - new Date(lastBenchmarkAt).getTime()) / 60000,
+  );
   const stale = ageMinutes > thresholdMinutes;
   const alertDue = stale && nowMs - lastAlertAtMs >= 60 * 60 * 1000;
   return { stale, ageMinutes, alertDue };
@@ -118,9 +135,21 @@ export async function watchdogCheck(
 ): Promise<{ stale: boolean; ageMinutes: number | null; alerted: boolean }> {
   const last = await getLastBenchmarkAt(db);
   const health = await getSchedulerHealth(db);
-  const lastAlertAtMs = health.last_stale_alert_at ? new Date(health.last_stale_alert_at).getTime() : 0;
-  const decision = shouldAlertStale(last, lastAlertAtMs, staleMinutes(env), nowMs);
-  if (!decision.alertDue) return { stale: decision.stale, ageMinutes: decision.ageMinutes, alerted: false };
+  const lastAlertAtMs = health.last_stale_alert_at
+    ? new Date(health.last_stale_alert_at).getTime()
+    : 0;
+  const decision = shouldAlertStale(
+    last,
+    lastAlertAtMs,
+    staleMinutes(env),
+    nowMs,
+  );
+  if (!decision.alertDue)
+    return {
+      stale: decision.stale,
+      ageMinutes: decision.ageMinutes,
+      alerted: false,
+    };
 
   if (env.ALERT_WEBHOOK_URL) {
     try {
@@ -136,14 +165,17 @@ export async function watchdogCheck(
         signal: AbortSignal.timeout(10_000),
       });
     } catch (e) {
-      if (e instanceof BlockedApiUrlError) console.warn("watchdog webhook blocked:", e.message);
+      if (e instanceof BlockedApiUrlError)
+        console.warn("watchdog webhook blocked:", e.message);
       else console.warn("watchdog webhook", e);
     }
   }
   try {
     const now = new Date(nowMs).toISOString();
     await db
-      .prepare(`UPDATE scheduler_health SET last_stale_alert_at=?, updated_at=? WHERE id=1`)
+      .prepare(
+        `UPDATE scheduler_health SET last_stale_alert_at=?, updated_at=? WHERE id=1`,
+      )
       .bind(now, now)
       .run();
   } catch (e) {
