@@ -157,3 +157,10 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - Reader serves snapshot (~600 rows/hit, 25-50x cut) with live-query fallback when empty/missing; scoring/sort/summary shared via finish(). now_* overlay from last_now_json keeps per-run freshness.
 - Established: leaderboard numbers are range-independent (range only affects charts) → snapshot key is benchmark only (4 sets, not 16).
 - 8 snapshot unit tests (85 total green). Deployed; migration apply blocked by the active quota breach (also blocks DDL) — will apply after midnight UTC reset, then verify population. Fallback verified live (graceful 503, no crash on missing table).
+
+## 2026-09-05 (later) — snapshot reader verified end-to-end on local D1
+
+- Seeded local D1 (3 models, 16 runs, hourly rows); migration 0012 applies cleanly.
+- Live path after finish() extraction: correct medians/gating/scores (200).
+- Snapshot path: manually inserted snapshot rows + last_now_json overlay → serves snapshot values with fresh now_* overlay (200). Fallback intact.
+- Gotcha: wrangler dev served a stale bundle on first hits (looked like snapshot fallthrough); hot-reload + retest proved the code correct. A temporary catch-log found nothing because nothing was wrong.
