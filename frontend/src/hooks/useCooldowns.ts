@@ -10,7 +10,7 @@ export interface CooldownsResp {
 // Shared across all hook instances: CooldownPanel polls every 10s and the
 // Leaderboard every 12s for the same endpoint. Module-level dedup collapses
 // that into ~1 request per window per visitor; hidden tabs skip entirely.
-const SHARE_MS = 5000;
+const SHARE_MS = 10000;
 let shared: {
   at: number;
   data: CooldownsResp | null;
