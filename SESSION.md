@@ -79,3 +79,32 @@
 ## 2026-08-26 (later) — migration 0006 applied remotely after token perms granted
 
 `wrangler d1 migrations apply DB --remote` → all 6 migrations ✅. Heartbeat verified live on next */5 tick: last_enqueue_count=10 (queue delivery fine — it was only ever starved by the RPM-window bug), inline=6, skipped_cooldown=34, skipped_rpm=0, pipeline fresh. Observability loop complete.
+
+## 2026-09-05 — landing video review + timeout-history graph
+
+Playwright video/screenshot tour of prod landing found the 7-day TPS chart rendering empty (defaults were top-3 by static Intelligence score — models with no TPS history). Fixed + deployed:
+
+- Dashboard defaults to top-3 by measured overall_score; new "BEST MODEL RIGHT NOW" hero strip; rec cards 6→4 (dropped mislabeled BEST CODING + dup CONSISTENCY); CooldownPanel collapsed by default with reason truncation.
+- New `GET /api/timeouts?range=` (no migration — aggregates raw benchmark_runs): stacked daily/hourly refusal bars by provider + per-provider refusal cards (limited/timeouts/other + % of its runs) + most-refused models. Lazy-loaded `TimeoutChart` after ReliabilityChart. Live: 3058 refusals / 8982 runs; nscale 100%, nvidia 60.7% stand out.
+- Wired context-mode MCP (`ctx` server in ~/.pi/agent/mcp.json, verified handshake) — needs pi restart to load ctx_* tools.
+
+**Verification:** 68/68 vitest (+2 timeouts foldProviders, +parity entry), tsc/eslint clean, Playwright re-capture confirms hero + populated TPS + timeout graphs, no page errors.
+
+**Files:** src/api/timeouts.ts (new), src/api/routes.ts, test/timeouts.test.ts (new), test/routes-parity.test.ts, frontend/src/charts/TimeoutChart.tsx (new), frontend/src/pages/Dashboard.tsx, ChartModelSelector.tsx, CooldownPanel.tsx, RecommendationCards.tsx, scripts/capture-landing.mjs + capture-sections.mjs (new), package.json (playwright devDep).
+
+## 2026-09-05 (later) — record→review→fix loop round 3
+
+Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all other lines on the TPS chart; (2) "unknown" free-tier pill under nearly every leaderboard row (only 5/19 providers have limit data); (3) Intelligence column "—" for ~85% of rows (16 AA-mapped IDs of 106 models). Fixed + deployed:
+
+- TpsChart log/linear toggle, auto-log when max/min > 10x (Y-axis now 50–10k readable, all 3 lines comparable).
+- Limit badge renders only with real data (limits or 24h usage), no "unknown" noise.
+- Intelligence column conditionally renders only when a row has an AA score; also removed two redundant `as unknown` casts (Row type already optional) + SAFETY comments on remaining sort assertions.
+- lens-gate: 5-blocker finding set reviewed — markdown-spacer items skipped with rationale (cosmetic, stable); SAFETY-comment items fixed.
+
+**Verification:** 68/68 vitest, tsc/eslint clean, deployed, screenshots confirm log-scale TPS + clean provider cells, no page errors.
+
+## 2026-09-05 (later) — continuous improvement: table fit, backend batching, commits secured
+
+- Leaderboard overflow measured per-column per-width (Playwright JS): hid Trend/Last-Test below 2xl/xl, 1h/24h/Intelligence below xl, truncated model names, shortened usage pill, relative timestamps, wrapped status badges. Overflow: 1440/1280/1024 = 0px (was 162/282/~100).
+- Backend: db.batch single round-trips for /api/compare (4 queries) and /api/models/:id/incidents (4); edge-cache on providers/cooldowns/compare/timeouts; scheduler SELECT id existence check; parallel incident streak/open reads; dropped dead foldProviders helper + test.
+- Secured 4 conventional commits on master (feat timeouts, feat dashboard, fix table, perf backend). Gate green throughout (66 tests, tsc, eslint, secret-scan).
