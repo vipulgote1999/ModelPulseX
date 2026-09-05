@@ -81,6 +81,40 @@ describe("benchmark engine — classification and TPS/TTFT", () => {
     expect(res.ttft_ms).not.toBeNull();
   });
 
+  it("empty completion (200, zero tokens) maps to STREAM_ERROR, not SUCCESS", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        // Stream completes cleanly but carries zero content chunks.
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "openrouter",
+      providerModelId: "test:free",
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+    } as never);
+    // A 0-token "success" poisons TPS (0.0) and inflates reliability — must fail loudly.
+    expect(res.status).toBe("STREAM_ERROR");
+    expect(res.tps).toBeNull();
+    expect(res.error_type).toMatch(/empty_completion/);
+    vi.restoreAllMocks();
+  });
+
   it("timeout maps to TIMEOUT status", async () => {
     const { measureBenchmark } = await import("../src/benchmark/engine");
     vi.stubGlobal(

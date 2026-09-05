@@ -293,9 +293,15 @@ export default function Dashboard() {
             display_name: string;
             provider: string;
             tps_now: number | null;
+            tps_7d: number | null;
             ttft_now: number | null;
+            ttft_7d: number | null;
             uptime_7d: number | null;
           };
+          // Fall back to 7d medians when the live window has no samples yet
+          // (same rule as the BEST TPS card) — a leader must never show dashes.
+          const tps = r.tps_now ?? r.tps_7d;
+          const ttft = r.ttft_now ?? r.ttft_7d;
           return (
             <div className="rounded-xl border border-violet-800/60 bg-gradient-to-r from-violet-950/50 to-zinc-900/40 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="text-sm">🏆</span>
@@ -311,21 +317,25 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex gap-4 text-sm ml-auto">
-                <span title="Measured tokens/sec">
-                  {r.tps_now != null ? (
+                <span title="Measured tokens/sec (live now, else 7d median)">
+                  {tps != null ? (
                     <>
-                      <b className="mono">{r.tps_now.toFixed(1)}</b>{" "}
-                      <span className="text-zinc-400 text-xs">TPS</span>
+                      <b className="mono">{tps.toFixed(1)}</b>{" "}
+                      <span className="text-zinc-400 text-xs">
+                        TPS{r.tps_now == null ? " ·7d" : ""}
+                      </span>
                     </>
                   ) : (
                     "— TPS"
                   )}
                 </span>
-                <span title="Time to first token">
-                  {r.ttft_now != null ? (
+                <span title="Time to first token (live now, else 7d median)">
+                  {ttft != null ? (
                     <>
-                      <b className="mono">{Math.round(r.ttft_now)}</b>{" "}
-                      <span className="text-zinc-400 text-xs">ms TTFT</span>
+                      <b className="mono">{Math.round(ttft)}</b>{" "}
+                      <span className="text-zinc-400 text-xs">
+                        ms TTFT{r.ttft_now == null ? " ·7d" : ""}
+                      </span>
                     </>
                   ) : (
                     "— TTFT"

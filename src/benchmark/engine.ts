@@ -354,6 +354,17 @@ function finalize(
   chunkTimesMs?: number[],
   isReasoning?: boolean,
 ): BenchmarkResult {
+  // Empty completion is not a success: HTTP 200 with zero output tokens poisons
+  // TPS (stored 0.0) and inflates reliability. Downgrade before metrics finalize
+  // so tps/ttft null out and incident+cooldown paths treat it as a model failure.
+  if (
+    status === "SUCCESS" &&
+    (outputTokens ?? 0) === 0 &&
+    (chunkTimesMs?.length ?? 0) === 0
+  ) {
+    status = "STREAM_ERROR";
+    errorType = "empty_completion_no_tokens";
+  }
   const startedMs = new Date(startedAtIso).getTime();
   const firstMs = firstTokenAtIso ? new Date(firstTokenAtIso).getTime() : null;
   const completedMs = completedAtIso
