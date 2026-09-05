@@ -9,19 +9,22 @@ type Props = {
     benchmarks_24h: number;
   };
   meta?: { is_stale: boolean; live: string | null; stale_message: string | null };
-  leaderboard?: Array<{ uptime_7d: number | null; overall_score: number | null }>;
+  leaderboard?: Array<{ display_name?: string; uptime_7d: number | null; overall_score: number | null }>;
 };
 
 export default function SummaryCards({ summary, meta, leaderboard }: Props) {
+  // Most reliable model in one pass (also names it, like the TPS/TTFT cards do).
+  let mostReliable: { display_name?: string; uptime_7d: number | null } | null = null;
+  for (const r of leaderboard ?? []) {
+    if (r.uptime_7d != null && (mostReliable == null || r.uptime_7d > (mostReliable.uptime_7d ?? 0)))
+      mostReliable = r;
+  }
   const cards = [
     { label: "FREE MODELS", value: summary?.free_models ?? "—", hint: "discovered" },
     { label: "ONLINE NOW", value: summary?.online_now ?? "—", hint: "last 10m" },
     { label: "BEST TPS", value: fmtTps(summary?.best_tps?.tps_now ?? summary?.best_tps?.tps_7d ?? null), hint: summary?.best_tps?.display_name ?? summary?.best_tps?.model ?? "" },
     { label: "BEST TTFT", value: fmtMs(summary?.best_ttft?.ttft_now ?? summary?.best_ttft?.ttft_7d ?? null), hint: summary?.best_ttft?.display_name ?? "" },
-    { label: "BEST RELIABILITY", value: (() => {
-      const best = leaderboard?.filter((r) => r.uptime_7d != null).sort((a, b) => (b.uptime_7d ?? 0) - (a.uptime_7d ?? 0))[0];
-      return best?.uptime_7d != null ? `${(best.uptime_7d * 100).toFixed(1)}%` : "—";
-    })(), hint: "7d uptime" },
+    { label: "BEST RELIABILITY", value: mostReliable?.uptime_7d != null ? `${(mostReliable.uptime_7d * 100).toFixed(1)}%` : "—", hint: mostReliable?.display_name ?? "7d uptime" },
     { label: "BENCHMARKS / 24H", value: summary?.benchmarks_24h ?? "—", hint: meta?.is_stale ? (meta.stale_message ?? "STALE") : (meta?.live ?? "● LIVE") },
   ];
   return (
