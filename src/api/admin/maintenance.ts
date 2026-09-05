@@ -1,9 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../types";
-import {
-  computeHourlyAggregates,
-  cleanupRetention,
-} from "../../db/queries";
+import { computeHourlyAggregates, cleanupRetention } from "../../db/queries";
 import {
   getActiveCooldowns,
   clearProviderCooldown,

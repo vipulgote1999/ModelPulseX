@@ -106,7 +106,12 @@ describe("benchmark engine — classification and TPS/TTFT", () => {
       providerModelId: "test:free",
       apiUrl: "https://openrouter.ai/api/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 8,
+        timeout_ms: 5000,
+      },
     } as never);
     // A 0-token "success" poisons TPS (0.0) and inflates reliability — must fail loudly.
     expect(res.status).toBe("STREAM_ERROR");

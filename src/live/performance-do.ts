@@ -156,9 +156,9 @@ export class PerformanceDO implements DurableObject {
       "http://127.0.0.1:8787",
     ];
     // Also allow dynamic from env if set (read lazily)
-    const envOrigin = (this.env as Record<string, unknown>)?.[
-      "CORS_ORIGIN"
-    ] as string | undefined;
+    const envOrigin = (this.env as Record<string, unknown>)?.["CORS_ORIGIN"] as
+      | string
+      | undefined;
     const extra = envOrigin
       ? envOrigin
           .split(",")

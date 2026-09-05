@@ -226,10 +226,16 @@ export default function Leaderboard({
               >
                 <td className="px-3 py-2 text-zinc-400">{r.rank}</td>
                 <td className="px-3 py-2">
-                  <div className="font-medium text-zinc-100 leading-tight truncate max-w-[140px] xl:max-w-[200px]" title={r.display_name}>
+                  <div
+                    className="font-medium text-zinc-100 leading-tight truncate max-w-[140px] xl:max-w-[200px]"
+                    title={r.display_name}
+                  >
                     {r.display_name}
                   </div>
-                  <div className="text-[11px] text-zinc-500 mono truncate max-w-[140px] xl:max-w-[200px]" title={r.model}>
+                  <div
+                    className="text-[11px] text-zinc-500 mono truncate max-w-[140px] xl:max-w-[200px]"
+                    title={r.model}
+                  >
                     {r.model}
                   </div>
                   {!r.active && (
@@ -264,8 +270,7 @@ export default function Leaderboard({
                       parts.push(`${lim.tokensPerDay} tok/d`);
                     // ponytail: no "unknown" noise — badge only renders when we actually know a limit or usage
                     if (parts.length === 0 && lim.usage24h == null) return null;
-                    const label =
-                      parts.join(" · ") || `24h:${lim.usage24h}`;
+                    const label = parts.join(" · ") || `24h:${lim.usage24h}`;
                     const title = [
                       lim.notes,
                       lim.usage24h != null
@@ -391,7 +396,9 @@ export default function Leaderboard({
                 </td>
                 <td
                   className="px-3 py-2 hidden 2xl:table-cell text-xs text-zinc-500 whitespace-nowrap"
-                  title={r.last_test ? new Date(r.last_test).toLocaleString() : ""}
+                  title={
+                    r.last_test ? new Date(r.last_test).toLocaleString() : ""
+                  }
                 >
                   {timeAgo(r.last_test)}
                 </td>

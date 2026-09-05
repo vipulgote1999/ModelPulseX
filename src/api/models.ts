@@ -52,7 +52,8 @@ export function modelsRoutes(env: Env) {
     const id = Number(c.req.param("id"));
     const range = c.req.query("range") ?? "7d";
     const benchmark = c.req.query("benchmark") ?? "all";
-    const granularity = c.req.query("granularity") ?? (range === "1h" ? "10m" : "hourly");
+    const granularity =
+      c.req.query("granularity") ?? (range === "1h" ? "10m" : "hourly");
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
@@ -61,7 +62,8 @@ export function modelsRoutes(env: Env) {
     // eslint-disable-next-line no-useless-assignment
     let points: unknown[] = [];
     if (useTenmin) {
-      let sql = "SELECT bucket_start as hour_start, * FROM tenmin_model_stats WHERE model_id=? AND bucket_start >= ?";
+      let sql =
+        "SELECT bucket_start as hour_start, * FROM tenmin_model_stats WHERE model_id=? AND bucket_start >= ?";
       const binds: unknown[] = [id, since];
       if (benchmark !== "all") {
         sql += " AND benchmark_type=?";
@@ -69,28 +71,40 @@ export function modelsRoutes(env: Env) {
       }
       sql += " ORDER BY bucket_start ASC";
       try {
-        const r = await env.DB.prepare(sql).bind(...binds).all();
+        const r = await env.DB.prepare(sql)
+          .bind(...binds)
+          .all();
         points = r.results ?? [];
       } catch (e) {
         const msg = String(e);
-        if (msg.includes("tenmin_model_stats") || msg.includes("no such table")) {
+        if (
+          msg.includes("tenmin_model_stats") ||
+          msg.includes("no such table")
+        ) {
           rows = await env.DB.prepare(
-            "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?" + (benchmark !== "all" ? " AND benchmark_type=?" : "") + " ORDER BY hour_start ASC",
+            "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?" +
+              (benchmark !== "all" ? " AND benchmark_type=?" : "") +
+              " ORDER BY hour_start ASC",
           )
-            .bind(...(benchmark !== "all" ? [id, since, benchmark] : [id, since]))
+            .bind(
+              ...(benchmark !== "all" ? [id, since, benchmark] : [id, since]),
+            )
             .all();
           points = rows.results ?? [];
         } else throw e;
       }
     } else {
-      let sql = "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?";
+      let sql =
+        "SELECT * FROM hourly_model_stats WHERE model_id=? AND hour_start >= ?";
       const binds: unknown[] = [id, since];
       if (benchmark !== "all") {
         sql += " AND benchmark_type=?";
         binds.push(benchmark);
       }
       sql += " ORDER BY hour_start ASC";
-      rows = await env.DB.prepare(sql).bind(...binds).all();
+      rows = await env.DB.prepare(sql)
+        .bind(...binds)
+        .all();
       points = rows.results ?? [];
     }
     if (points.length === 0) {
@@ -131,20 +145,21 @@ export function modelsRoutes(env: Env) {
     // Single db.batch round-trip (4 independent queries, no data deps).
     // NOTE: batch takes bound (unexecuted) statements; single-row reads come
     // from results[0], not .first().
-    const [incidentsRes, total7Res, total24Res, longestRes] = await env.DB.batch([
-      env.DB.prepare(
-        "SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100",
-      ).bind(id),
-      env.DB.prepare(
-        "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
-      ).bind(id, isoHoursAgo(168)),
-      env.DB.prepare(
-        "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
-      ).bind(id, isoHoursAgo(24)),
-      env.DB.prepare(
-        "SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?",
-      ).bind(id),
-    ]);
+    const [incidentsRes, total7Res, total24Res, longestRes] =
+      await env.DB.batch([
+        env.DB.prepare(
+          "SELECT * FROM availability_incidents WHERE model_id=? ORDER BY started_at DESC LIMIT 100",
+        ).bind(id),
+        env.DB.prepare(
+          "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
+        ).bind(id, isoHoursAgo(168)),
+        env.DB.prepare(
+          "SELECT count(*) as tot, sum(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok FROM benchmark_runs WHERE model_id=? AND started_at >= ?",
+        ).bind(id, isoHoursAgo(24)),
+        env.DB.prepare(
+          "SELECT max(duration_seconds) as m FROM availability_incidents WHERE model_id=?",
+        ).bind(id),
+      ]);
     // SAFETY: D1 batch returns untyped rows; SELECT aliases match the shapes below.
     const total7 = (total7Res?.results?.[0] ?? null) as {
       tot: number;

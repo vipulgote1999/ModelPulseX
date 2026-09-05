@@ -10,17 +10,32 @@ export function buildOpenApiSpec() {
     info: {
       title: "ModelPulseX API",
       version: "0.1.0",
-      description: "Live streaming throughput, latency and reliability benchmarks for free LLM models. All benchmark state lives in D1; public read-only endpoints are unauthenticated.",
+      description:
+        "Live streaming throughput, latency and reliability benchmarks for free LLM models. All benchmark state lives in D1; public read-only endpoints are unauthenticated.",
     },
-    servers: [{ url: "https://modelpulsex.vipulgote5.workers.dev", description: "Production" }],
+    servers: [
+      {
+        url: "https://modelpulsex.vipulgote5.workers.dev",
+        description: "Production",
+      },
+    ],
     paths: {
       "/api/health": {
         get: {
           summary: "Health + freshness probe",
           parameters: [
-            { name: "freshness", in: "query", required: false, schema: { type: "integer", default: 15 }, description: "Minutes threshold; returns 503 if stale" },
+            {
+              name: "freshness",
+              in: "query",
+              required: false,
+              schema: { type: "integer", default: 15 },
+              description: "Minutes threshold; returns 503 if stale",
+            },
           ],
-          responses: { "200": { description: "Healthy" }, "503": { description: "Stale" } },
+          responses: {
+            "200": { description: "Healthy" },
+            "503": { description: "Stale" },
+          },
         },
       },
       "/api/providers": {
@@ -33,8 +48,18 @@ export function buildOpenApiSpec() {
         get: {
           summary: "List models (free + previously free)",
           parameters: [
-            { name: "provider", in: "query", required: false, schema: { type: "string" } },
-            { name: "includeInactive", in: "query", required: false, schema: { type: "string", enum: ["1"] } },
+            {
+              name: "provider",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+            },
+            {
+              name: "includeInactive",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["1"] },
+            },
           ],
           responses: { "200": { description: "Models" } },
         },
@@ -42,18 +67,60 @@ export function buildOpenApiSpec() {
       "/api/models/{id}": {
         get: {
           summary: "Get model by id",
-          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
-          responses: { "200": { description: "Model" }, "404": { description: "Not found" } },
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer" },
+            },
+          ],
+          responses: {
+            "200": { description: "Model" },
+            "404": { description: "Not found" },
+          },
         },
       },
       "/api/models/{id}/history": {
         get: {
           summary: "Hourly / 10m history for one model",
           parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "integer" } },
-            { name: "range", in: "query", required: false, schema: { type: "string", enum: ["1h", "24h", "3d", "7d"], default: "7d" } },
-            { name: "benchmark", in: "query", required: false, schema: { type: "string", enum: ["all", "short", "medium", "coding"], default: "all" } },
-            { name: "granularity", in: "query", required: false, schema: { type: "string", enum: ["hourly", "10m"], default: "hourly" } },
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer" },
+            },
+            {
+              name: "range",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["1h", "24h", "3d", "7d"],
+                default: "7d",
+              },
+            },
+            {
+              name: "benchmark",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["all", "short", "medium", "coding"],
+                default: "all",
+              },
+            },
+            {
+              name: "granularity",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["hourly", "10m"],
+                default: "hourly",
+              },
+            },
           ],
           responses: { "200": { description: "History points" } },
         },
@@ -61,7 +128,14 @@ export function buildOpenApiSpec() {
       "/api/models/{id}/incidents": {
         get: {
           summary: "Incidents for one model",
-          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer" },
+            },
+          ],
           responses: { "200": { description: "Incidents + uptime" } },
         },
       },
@@ -69,11 +143,52 @@ export function buildOpenApiSpec() {
         get: {
           summary: "Leaderboard with medians + gating + sparkline",
           parameters: [
-            { name: "range", in: "query", required: false, schema: { type: "string", enum: ["1h", "24h", "3d", "7d"], default: "7d" } },
-            { name: "provider", in: "query", required: false, schema: { type: "string" } },
-            { name: "benchmark", in: "query", required: false, schema: { type: "string", enum: ["all", "short", "medium", "coding"], default: "all" } },
-            { name: "sort", in: "query", required: false, schema: { type: "string", enum: ["overall", "tps", "ttft", "uptime"], default: "overall" } },
-            { name: "profile", in: "query", required: false, schema: { type: "string", enum: ["balanced", "fastest", "latency", "reliable", "coding"], default: "balanced" } },
+            {
+              name: "range",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["1h", "24h", "3d", "7d"],
+                default: "7d",
+              },
+            },
+            {
+              name: "provider",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+            },
+            {
+              name: "benchmark",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["all", "short", "medium", "coding"],
+                default: "all",
+              },
+            },
+            {
+              name: "sort",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["overall", "tps", "ttft", "uptime"],
+                default: "overall",
+              },
+            },
+            {
+              name: "profile",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["balanced", "fastest", "latency", "reliable", "coding"],
+                default: "balanced",
+              },
+            },
           ],
           responses: { "200": { description: "Leaderboard" } },
         },
@@ -82,22 +197,67 @@ export function buildOpenApiSpec() {
         get: {
           summary: "Batch history for charts (single request for N models)",
           parameters: [
-            { name: "ids", in: "query", required: true, schema: { type: "string" }, description: "Comma-separated model ids, max 12" },
-            { name: "range", in: "query", required: false, schema: { type: "string", enum: ["1h", "24h", "3d", "7d"], default: "7d" } },
-            { name: "benchmark", in: "query", required: false, schema: { type: "string", enum: ["all", "short", "medium", "coding"], default: "all" } },
-            { name: "granularity", in: "query", required: false, schema: { type: "string", enum: ["hourly", "10m"] } },
+            {
+              name: "ids",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "Comma-separated model ids, max 12",
+            },
+            {
+              name: "range",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["1h", "24h", "3d", "7d"],
+                default: "7d",
+              },
+            },
+            {
+              name: "benchmark",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["all", "short", "medium", "coding"],
+                default: "all",
+              },
+            },
+            {
+              name: "granularity",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["hourly", "10m"] },
+            },
           ],
-          responses: { "200": { description: "History map" }, "400": { description: "Missing ids" } },
+          responses: {
+            "200": { description: "History map" },
+            "400": { description: "Missing ids" },
+          },
         },
       },
       "/api/compare": {
         get: {
           summary: "Compare models side-by-side",
           parameters: [
-            { name: "model", in: "query", required: false, schema: { type: "string" } },
-            { name: "models", in: "query", required: false, schema: { type: "string" } },
+            {
+              name: "model",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+            },
+            {
+              name: "models",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+            },
           ],
-          responses: { "200": { description: "Comparison" }, "404": { description: "No models matched" } },
+          responses: {
+            "200": { description: "Comparison" },
+            "404": { description: "No models matched" },
+          },
         },
       },
       "/api/cooldowns": {
@@ -108,11 +268,24 @@ export function buildOpenApiSpec() {
       },
       "/api/timeouts": {
         get: {
-          summary: "Refusal history by day/provider/status + per-provider limits",
+          summary:
+            "Refusal history by day/provider/status + per-provider limits",
           parameters: [
-            { name: "range", in: "query", required: false, schema: { type: "string", enum: ["1h", "24h", "3d", "7d"], default: "7d" } },
+            {
+              name: "range",
+              in: "query",
+              required: false,
+              schema: {
+                type: "string",
+                enum: ["1h", "24h", "3d", "7d"],
+                default: "7d",
+              },
+            },
           ],
-          responses: { "200": { description: "Timeout history" }, "400": { description: "Invalid range" } },
+          responses: {
+            "200": { description: "Timeout history" },
+            "400": { description: "Invalid range" },
+          },
         },
       },
       "/api/live": {
@@ -130,14 +303,19 @@ export function buildOpenApiSpec() {
       "/api/og.png": {
         get: {
           summary: "OG share card PNG (1200x630)",
-          responses: { "200": { description: "PNG image", content: { "image/png": {} } } },
+          responses: {
+            "200": { description: "PNG image", content: { "image/png": {} } },
+          },
         },
       },
       "/api/admin/login": {
         post: {
           summary: "Admin login",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Token" }, "401": { description: "Unauthorized" } },
+          responses: {
+            "200": { description: "Token" },
+            "401": { description: "Unauthorized" },
+          },
         },
       },
       "/api/admin/models": {
@@ -151,7 +329,14 @@ export function buildOpenApiSpec() {
         post: {
           summary: "Toggle model benchmark",
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer" },
+            },
+          ],
           responses: { "200": { description: "Updated" } },
         },
       },

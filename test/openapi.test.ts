@@ -3,7 +3,9 @@ import { buildOpenApiSpec } from "../src/api/openapi";
 
 describe("openapi spec", () => {
   it("lists every public GET route", () => {
-    const spec = buildOpenApiSpec() as unknown as { paths: Record<string, Record<string, unknown>> };
+    const spec = buildOpenApiSpec() as unknown as {
+      paths: Record<string, Record<string, unknown>>;
+    };
     const publicGets = [
       "/api/health",
       "/api/providers",
@@ -27,13 +29,20 @@ describe("openapi spec", () => {
   });
 
   it("declares bearerAuth security for admin paths", () => {
-    const spec = buildOpenApiSpec() as unknown as { paths: Record<string, Record<string, { security?: unknown[] }>> };
-    const adminPaths = Object.keys(spec.paths).filter((p) => p.startsWith("/api/admin"));
+    const spec = buildOpenApiSpec() as unknown as {
+      paths: Record<string, Record<string, { security?: unknown[] }>>;
+    };
+    const adminPaths = Object.keys(spec.paths).filter((p) =>
+      p.startsWith("/api/admin"),
+    );
     expect(adminPaths.length).toBeGreaterThan(0);
     for (const p of adminPaths) {
       const methods = spec.paths[p]!;
       for (const m of Object.values(methods)) {
-        expect((m as { security?: unknown[] }).security, `missing security for ${p}`).toBeDefined();
+        expect(
+          (m as { security?: unknown[] }).security,
+          `missing security for ${p}`,
+        ).toBeDefined();
       }
     }
   });
@@ -42,7 +51,12 @@ describe("openapi spec", () => {
     const spec = buildOpenApiSpec();
     const json = JSON.stringify(spec);
     // Should not contain common secret env names
-    for (const secret of ["OPENCODE_API_KEY", "OPENROUTER_API_KEY", "ADMIN_TOKEN", "GROQ_API_KEY"]) {
+    for (const secret of [
+      "OPENCODE_API_KEY",
+      "OPENROUTER_API_KEY",
+      "ADMIN_TOKEN",
+      "GROQ_API_KEY",
+    ]) {
       expect(json).not.toContain(secret);
     }
     // No serialization of env object keys

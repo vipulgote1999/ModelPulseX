@@ -1,8 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
 
 export interface CooldownsResp {
-  providers: Array<{ provider: string; cooldown_until: string; reason: string | null }>;
-  models: Array<{ model_id: number; provider: string; provider_model_id: string; cooldown_until: string; reason: string | null }>;
+  providers: Array<{
+    provider: string;
+    cooldown_until: string;
+    reason: string | null;
+  }>;
+  models: Array<{
+    model_id: number;
+    provider: string;
+    provider_model_id: string;
+    cooldown_until: string;
+    reason: string | null;
+  }>;
   now: string;
   meta: { providerCooldowns: number; modelCooldowns: number };
 }

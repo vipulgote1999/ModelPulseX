@@ -18,7 +18,9 @@ describe("PerformanceDO", () => {
   it("rejects SSE from disallowed origins", async () => {
     const { do_ } = makeDO();
     const res = await do_.fetch(
-      new Request("https://live/live", { headers: { ...SSE, origin: "https://evil.test" } }),
+      new Request("https://live/live", {
+        headers: { ...SSE, origin: "https://evil.test" },
+      }),
     );
     expect(res.status).toBe(403);
   });
@@ -46,7 +48,10 @@ describe("PerformanceDO", () => {
     const res = await do_.fetch(
       new Request("https://live/publish", {
         method: "POST",
-        headers: { "cf-connecting-ip": "1.2.3.4", "content-type": "application/json" },
+        headers: {
+          "cf-connecting-ip": "1.2.3.4",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ type: "benchmark.completed" }),
       }),
     );
@@ -58,7 +63,10 @@ describe("PerformanceDO", () => {
     const pub = await do_.fetch(
       new Request("https://live/publish", {
         method: "POST",
-        headers: { "x-mpulse-internal": "1", "content-type": "application/json" },
+        headers: {
+          "x-mpulse-internal": "1",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ type: "benchmark.completed" }),
       }),
     );
