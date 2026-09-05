@@ -311,17 +311,29 @@ export async function markMissingInactive(
       .run();
     return;
   }
-  // Single-statement bulk deactivate — no N+1 loop, no per-row fetch
-  const placeholders = Array.from(seenIds)
-    .map(() => "?")
-    .join(",");
-  const ids = Array.from(seenIds);
-  await db
+  // Chunk-safe deactivate: D1 caps bound variables (~100), and large providers
+  // (e.g. kilocode 800+ models) would blow a single NOT IN (...) statement.
+  // Fetch active ids once, diff in JS, delete the missing in chunks of 40.
+  const rows = await db
     .prepare(
-      `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1 AND provider_model_id NOT IN (${placeholders})`,
+      `SELECT provider_model_id FROM models WHERE provider_id=? AND active=1`,
     )
-    .bind(nowIso, providerId, ...ids)
-    .run();
+    .bind(providerId)
+    .all<{ provider_model_id: string }>();
+  const missing = (rows.results ?? [])
+    .map((r) => r.provider_model_id)
+    .filter((id) => !seenIds.has(id));
+  // ponytail: O(n) scan + chunked deletes; single NOT IN when D1 raises variable limits
+  for (let i = 0; i < missing.length; i += 40) {
+    const chunk = missing.slice(i, i + 40);
+    const ph = chunk.map(() => "?").join(",");
+    await db
+      .prepare(
+        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1 AND provider_model_id IN (${ph})`,
+      )
+      .bind(nowIso, providerId, ...chunk)
+      .run();
+  }
 }
 
 export async function insertBenchmarkRun(
@@ -576,6 +588,7 @@ export async function cleanupRetention(
     Date.now() - tenminDays * 86400 * 1000,
   ).toISOString();
   // Batch deletes — tenmin is best-effort if table not yet migrated
+  const now = new Date().toISOString();
   const stmts: ReturnType<D1Database["prepare"]>[] = [
     db.prepare("DELETE FROM benchmark_runs WHERE started_at < ?").bind(rawCut),
     db
@@ -584,6 +597,17 @@ export async function cleanupRetention(
     db
       .prepare("DELETE FROM tenmin_model_stats WHERE bucket_start < ?")
       .bind(tenminCut),
+    // Bounded hygiene: expired cooldowns + stale login blocks never self-clean
+    // (incidents/audit_log stay indefinite per convention — metadata, tiny).
+    db
+      .prepare("DELETE FROM provider_cooldowns WHERE cooldown_until < ?")
+      .bind(now),
+    db.prepare("DELETE FROM model_cooldowns WHERE cooldown_until < ?").bind(now),
+    db
+      .prepare(
+        "DELETE FROM login_attempts WHERE blocked_until IS NOT NULL AND blocked_until < ?",
+      )
+      .bind(now),
   ];
   try {
     await db.batch(stmts);

@@ -85,12 +85,9 @@ export async function clearModelCooldown(db: D1Database, modelId: number): Promi
 export async function clearAllCooldownsForProvider(db: D1Database, provider: string): Promise<number> {
   try {
     const prov = await db.prepare(`DELETE FROM provider_cooldowns WHERE provider=?`).bind(provider).run();
-    const models = await db.prepare(`SELECT id FROM models WHERE provider_id=(SELECT id FROM providers WHERE name=?)`).bind(provider).all<{ id: number }>();
-    const ids = (models.results ?? []).map(r=>r.id);
-    if (ids.length) {
-      const ph = ids.map(()=>'?').join(',');
-      await db.prepare(`DELETE FROM model_cooldowns WHERE model_id IN (${ph})`).bind(...ids).run().catch(()=>{});
-    }
+    // Subquery delete: unbounded per-provider id lists (kilocode 800+) would
+    // exceed D1's ~100 variable limit as an IN (...) bind list.
+    await db.prepare(`DELETE FROM model_cooldowns WHERE model_id IN (SELECT id FROM models WHERE provider_id=(SELECT id FROM providers WHERE name=?))`).bind(provider).run().catch(()=>{});
     return prov.meta.changes ?? 0;
   } catch { return 0; }
 }

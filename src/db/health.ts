@@ -63,9 +63,13 @@ export async function recordHourlyJob(
   const col = job === "discovery" ? "last_discovery_at" : "last_aggregate_at";
   try {
     const now = new Date().toISOString();
+    // Upsert, not UPDATE-only: a missing singleton row (deleted/pre-migration)
+    // would otherwise swallow every timestamp silently. Column is a trusted
+    // internal constant, never user input — safe to interpolate.
     await db
       .prepare(
-        `UPDATE scheduler_health SET ${col}=?, updated_at=? WHERE id=1`,
+        `INSERT INTO scheduler_health (id, ${col}, updated_at) VALUES (1,?,?)
+         ON CONFLICT(id) DO UPDATE SET ${col}=excluded.${col}, updated_at=excluded.updated_at`,
       )
       .bind(now, now)
       .run();
