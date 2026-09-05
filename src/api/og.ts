@@ -283,7 +283,34 @@ export async function renderOgCard(
 
 export function ogRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
-  r.get("/og.png", async (_c) => {
+  r.get("/og.png", async (c) => {
+    // Edge-cache 300s (matches browser TTL): scrapers hit this without cookies
+    // and each render costs a 7d raw scan + PNG encode.
+    // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
+    const cache: Cache = (caches as unknown as { default: Cache }).default;
+    const cacheKey = new Request(c.req.url, { method: "GET" });
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
+    } catch {
+      // Cache API unavailable (local dev) — render fresh
+    }
+    const done = (png: Uint8Array) => {
+      // SAFETY: Uint8Array is a valid BodyInit at runtime; DOM lib types lag the Workers runtime.
+      const resp = new Response(png as unknown as BodyInit, {
+        headers: {
+          "content-type": "image/png",
+          "cache-control": "public, max-age=300",
+          "content-length": String(png.byteLength),
+        },
+      });
+      try {
+        c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+      } catch {
+        // cache put best-effort
+      }
+      return resp;
+    };
     try {
       let top: Array<{
         rank: number;
@@ -293,9 +320,11 @@ export function ogRoutes(env: Env) {
       }> = [];
       try {
         // 7d bound: unscoped ORDER BY tps DESC full-scans + sorts all of benchmark_runs per OG hit (crawlers).
+        // One row per model (peak TPS): without GROUP BY a single spiky model
+        // occupies all 5 slots and the card lies about "top 5 models".
         const weekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
         const rows = await env.DB.prepare(
-          `SELECT m.display_name as name, p.name as provider, br.tps FROM benchmark_runs br JOIN models m ON m.id=br.model_id JOIN providers p ON p.id=m.provider_id WHERE br.status='SUCCESS' AND m.free_status='FREE' AND br.started_at >= ? ORDER BY br.tps DESC LIMIT 5`,
+          `SELECT m.display_name as name, p.name as provider, MAX(br.tps) as tps FROM benchmark_runs br JOIN models m ON m.id=br.model_id JOIN providers p ON p.id=m.provider_id WHERE br.status='SUCCESS' AND m.free_status='FREE' AND br.started_at >= ? GROUP BY m.id ORDER BY tps DESC LIMIT 5`,
         )
           .bind(weekAgo)
           .all<{ name: string; provider: string; tps: number | null }>();
@@ -309,23 +338,10 @@ export function ogRoutes(env: Env) {
         // pre-migration — ignore
       }
       const png = await renderOgCard(top);
-      // SAFETY: Uint8Array is a valid BodyInit at runtime; DOM lib types lag the Workers runtime.
-      return new Response(png as unknown as BodyInit, {
-        headers: {
-          "content-type": "image/png",
-          "cache-control": "public, max-age=300",
-          "content-length": String(png.byteLength),
-        },
-      });
+      return done(png);
     } catch {
       const png = await renderOgCard([]);
-      // SAFETY: Uint8Array is a valid BodyInit at runtime; DOM lib types lag the Workers runtime.
-      return new Response(png as unknown as BodyInit, {
-        headers: {
-          "content-type": "image/png",
-          "cache-control": "public, max-age=300",
-        },
-      });
+      return done(png);
     }
   });
   return r;
