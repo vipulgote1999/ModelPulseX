@@ -108,3 +108,9 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - Leaderboard overflow measured per-column per-width (Playwright JS): hid Trend/Last-Test below 2xl/xl, 1h/24h/Intelligence below xl, truncated model names, shortened usage pill, relative timestamps, wrapped status badges. Overflow: 1440/1280/1024 = 0px (was 162/282/~100).
 - Backend: db.batch single round-trips for /api/compare (4 queries) and /api/models/:id/incidents (4); edge-cache on providers/cooldowns/compare/timeouts; scheduler SELECT id existence check; parallel incident streak/open reads; dropped dead foldProviders helper + test.
 - Secured 4 conventional commits on master (feat timeouts, feat dashboard, fix table, perf backend). Gate green throughout (66 tests, tsc, eslint, secret-scan).
+
+## 2026-09-05 (later) — timeout cards name the dominant reason; empty-completion fix shipped
+
+- TimeoutChart provider cards now show "mostly STATUS (n)" when other-errors dominate (frontend-only, derived from the failures array — no backend change). Live proof: nscale's 100% refusals are PROVIDER_ERROR, not rate limits.
+- fix(bench) 6ff6a80: finalize() downgrades 200/zero-token SUCCESS to STREAM_ERROR; hero 7d fallback.
+- docs(methodology) 5629809: empty-completion rule + /api/timeouts listing.
