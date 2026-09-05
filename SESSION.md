@@ -114,3 +114,7 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - TimeoutChart provider cards now show "mostly STATUS (n)" when other-errors dominate (frontend-only, derived from the failures array — no backend change). Live proof: nscale's 100% refusals are PROVIDER_ERROR, not rate limits.
 - fix(bench) 6ff6a80: finalize() downgrades 200/zero-token SUCCESS to STREAM_ERROR; hero 7d fallback.
 - docs(methodology) 5629809: empty-completion rule + /api/timeouts listing.
+
+## 2026-09-05 (later) — docs code-block newlines + openapi timeouts
+
+- JSX condenses literal <pre> newlines into spaces: Docs quickstart and Methodology formula/API blocks rendered as horizontal blobs. Rebuilt as template strings (verified 5/2/13 lines live) + /api/timeouts added to OpenAPI spec and its route-coverage test.
