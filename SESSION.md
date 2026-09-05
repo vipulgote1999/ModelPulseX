@@ -134,3 +134,11 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 
 - fix: watchdogCheck stamped last_stale_alert_at and reported alerted:true even with no webhook configured or a failed send — silencing retries for an hour over nothing delivered. Now returns alerted:false unstamped in both cases; stamps only after HTTP 2xx. + explicit https check at the sink.
 - test/watchdog.test.ts: 3 D1-stubbed cases (77 total green). Debugging note: first mock only exposed first()/run() after bind(), but getLastBenchmarkAt calls .first() directly — silent null collapsed every branch; mock now mirrors the D1 statement shape.
+
+## 2026-09-05 (later) — cooldown poll dedup + watchdog/DO/admin rounds
+
+- perf(frontend): useCooldowns module-level dedup (10s share window, hidden-tab skip, forced refresh after admin reset). Measured live: 7 → 3 cooldown requests per 26s per visitor.
+- fix(live): DO session Map + drop(), idle alarm stops, ACAO echo allow-set unified; +5 DO tests.
+- fix(watchdog): stamp alerts only on delivered sends (TDD, +3 tests).
+- fix(admin): bulk requires explicit enabled; login hint corrected.
+- 77 tests green, tree clean, all deployed.
