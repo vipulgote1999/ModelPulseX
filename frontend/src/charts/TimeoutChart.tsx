@@ -112,6 +112,32 @@ export default function TimeoutChart({ range }: { range: string }) {
       .sort((a, b) => b.n - a.n);
   }, [data]);
   const keys = useMemo(() => foldTail(totals), [totals]);
+  // Dominant refusal reason beyond rate-limit/timeout, per provider — unhides
+  // the "other" bucket (e.g. nscale's 100% refusals are MODEL_UNAVAILABLE).
+  const topOther = useMemo(() => {
+    const per = new Map<string, Map<string, number>>();
+    for (const f of data?.failures ?? []) {
+      if (f.status === "RATE_LIMITED" || f.status === "TIMEOUT") continue;
+      let m = per.get(f.provider);
+      if (!m) {
+        m = new Map();
+        per.set(f.provider, m);
+      }
+      m.set(f.status, (m.get(f.status) ?? 0) + f.n);
+    }
+    const out = new Map<string, { status: string; n: number }>();
+    for (const [p, m] of per) {
+      let best = "";
+      let bn = 0;
+      for (const [s, n] of m)
+        if (n > bn) {
+          best = s;
+          bn = n;
+        }
+      if (best) out.set(p, { status: best, n: bn });
+    }
+    return out;
+  }, [data]);
 
   const rows = useMemo(() => {
     const byBucket = new Map<string, Record<string, number | string>>();
@@ -206,11 +232,17 @@ export default function TimeoutChart({ range }: { range: string }) {
           {limited.map((p) => {
             const bad = p.rate_limited + p.timeouts + p.other_errors;
             const pct = p.total > 0 ? ((bad / p.total) * 100).toFixed(1) : "—";
+            const dom = topOther.get(p.provider);
+            const showDom =
+              dom != null && p.other_errors > p.rate_limited + p.timeouts;
             return (
               <div
                 key={p.provider}
                 className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-2.5 py-2"
-                title={`${p.provider}: ${p.rate_limited} rate-limited, ${p.timeouts} timeouts, ${p.other_errors} other errors out of ${p.total} runs`}
+                title={
+                  `${p.provider}: ${p.rate_limited} rate-limited, ${p.timeouts} timeouts, ${p.other_errors} other errors out of ${p.total} runs` +
+                  (dom ? ` · dominant: ${dom.status} (${dom.n})` : "")
+                }
               >
                 <div className="text-xs font-mono font-medium text-amber-300 truncate">
                   {p.provider}
@@ -225,6 +257,11 @@ export default function TimeoutChart({ range }: { range: string }) {
                   {p.rate_limited} limited · {p.timeouts} timeouts ·{" "}
                   {p.other_errors} other
                 </div>
+                {showDom && dom && (
+                  <div className="text-[11px] text-zinc-400">
+                    mostly {dom.status} ({dom.n})
+                  </div>
+                )}
               </div>
             );
           })}
