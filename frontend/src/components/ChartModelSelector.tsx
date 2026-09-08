@@ -13,10 +13,14 @@ export default function ChartModelSelector({
   rows,
   selected,
   onChange,
+  providerLabel = "all providers",
+  benchmark = "all",
 }: {
   rows: Row[];
   selected: number[];
   onChange: (ids: number[]) => void;
+  providerLabel?: string;
+  benchmark?: string;
 }) {
   // rank rows by intelligence desc, then overall_score desc for display order in dropdowns
   const sortedByIntel = [...rows].sort((a, b) => {
@@ -69,7 +73,7 @@ export default function ChartModelSelector({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold">Graph comparison — pick up to 3 models</div>
         <div className="text-[11px] text-zinc-500">
-          Default: highest Intelligence (Artificial Analysis) · max 3 · affects all graphs below
+          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs below
         </div>
       </div>
 
@@ -78,6 +82,7 @@ export default function ChartModelSelector({
           <div key={slot} className="flex gap-2 items-center">
             <span className="text-xs font-mono text-zinc-500 w-6">{slot + 1}.</span>
             <select
+              aria-label={`Compare slot ${slot + 1}`}
               value={slots[slot] === "" ? "" : String(slots[slot])}
               onChange={(e) => updateSlot(slot, e.target.value)}
               className="flex-1 rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
@@ -124,12 +129,12 @@ export default function ChartModelSelector({
             onClick={clear}
             className="text-xs px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white"
           >
-            Clear
+            Reset to top 3
           </button>
         )}
         <span className="text-[11px] text-zinc-500 ml-auto">
           {selected.length === 0
-            ? "No models selected → charts show top 3 by Intelligence automatically"
+            ? `No pins → charts show top 3 for ${providerLabel} automatically`
             : `${selected.length}/3 selected · click leaderboard rows also toggles (max 3)`}
         </span>
       </div>
