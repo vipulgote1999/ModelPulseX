@@ -28,6 +28,12 @@ import {
   clearModelCooldown,
   escalateProviderCooldown,
 } from "../db/cooldown";
+import {
+  AUTO_DISABLE_DAILY_MAX_DEFAULT,
+  countDayFailures,
+  escalatedModelCooldownMs,
+  shouldAutoDisable,
+} from "../utils/auto-disable";
 
 // Queue message shape — identical to the pure selector's QueueJob.
 export type BenchJob = QueueJob;
@@ -386,6 +392,66 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
       error_type?: string | null;
     },
   );
+  // Provider-agnostic dead-model guard: failures counted over trailing 24h.
+  // Escalating model cooldown (cap 24h) minimizes timeout burn; proven-gone or
+  // chronically failing models auto-disable (benchmark_enabled=0) until an admin
+  // re-enables them from /admin (re-enable also clears the cooldown).
+  try {
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const dayRows = await env.DB.prepare(
+      `SELECT status, error_type, http_status FROM benchmark_runs WHERE model_id=? AND started_at >= ? ORDER BY started_at DESC LIMIT 300`,
+    )
+      .bind(job.model_id, dayAgo)
+      .all<{
+        status: string;
+        error_type: string | null;
+        http_status: number | null;
+      }>()
+      .catch(() => ({ results: [] as never[] }));
+    const { failures, goneHits } = countDayFailures(
+      (dayRows.results ?? []) as {
+        status: string;
+        error_type?: string | null;
+        http_status?: number | null;
+      }[],
+    );
+    const failed = result.status !== "SUCCESS";
+    const rateLimited =
+      result.status === "RATE_LIMITED" || result.http_status === 429;
+    if (failed && !rateLimited && failures > 0) {
+      // Mirror the per-status base cooldowns above, then back off on the 24h count.
+      const base =
+        result.status === "TIMEOUT"
+          ? 2 * 60 * 1000
+          : result.status === "MODEL_UNAVAILABLE"
+            ? 10 * 60 * 1000
+            : 3 * 60 * 1000;
+      await setModelCooldown(
+        env.DB,
+        job.model_id,
+        escalatedModelCooldownMs(base, failures),
+        `${result.status} x${failures}/24h`,
+      );
+    }
+    const dailyMax =
+      Number(env.AUTO_DISABLE_MAX_DAILY_FAILURES) ||
+      AUTO_DISABLE_DAILY_MAX_DEFAULT;
+    const dec = shouldAutoDisable(failures, goneHits, dailyMax);
+    if (dec.disable) {
+      try {
+        await env.DB.prepare(`UPDATE models SET benchmark_enabled=0 WHERE id=?`)
+          .bind(job.model_id)
+          .run();
+      } catch (e) {
+        const msg = String(e);
+        if (!msg.includes("benchmark_enabled") && !msg.includes("no such column"))
+          throw e;
+      }
+      console.warn(dec.reason, job.provider, job.provider_model_id);
+    }
+  } catch (e) {
+    console.warn("auto-disable guard", e);
+  }
   // broadcast via DO
   try {
     const stub = env.LIVE_DO.get(env.LIVE_DO.idFromName("global"));

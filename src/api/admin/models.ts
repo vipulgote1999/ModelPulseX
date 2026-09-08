@@ -2,6 +2,10 @@ import { Hono } from "hono";
 import type { Env } from "../../types";
 import { isAdmin } from "../shared";
 import { escapeLikePattern, sanitizeSearchQuery } from "../../utils/security";
+import {
+  clearAllCooldownsForProvider,
+  clearModelCooldown,
+} from "../../db/cooldown";
 
 export function adminModelsRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -103,6 +107,15 @@ export function adminModelsRoutes(env: Env) {
       await env.DB.prepare("UPDATE models SET benchmark_enabled=? WHERE id=?")
         .bind(enabled, id)
         .run();
+      // Re-enable is the manual recovery path for auto-disabled dead models —
+      // clear any cooldown so the next scheduler tick probes it immediately.
+      if (enabled === 1) {
+        try {
+          await clearModelCooldown(env.DB, id);
+        } catch {
+          // best-effort; toggle itself succeeded
+        }
+      }
     } catch (e) {
       const msg = String(e);
       if (msg.includes("benchmark_enabled") || msg.includes("no such column")) {
@@ -159,6 +172,23 @@ export function adminModelsRoutes(env: Env) {
         if (msg.includes("benchmark_enabled") || msg.includes("no such column"))
           return c.json({ error: "migration 0007 not applied" }, 500);
         throw e;
+      }
+    }
+    // Manual recovery path (see single toggle): enabling clears cooldowns so
+    // re-enabled models probe on the next tick instead of waiting out backoff.
+    if (enabled === 1) {
+      try {
+        if (body.provider && !((body.ids ?? []).filter((n) => Number.isFinite(n)).length)) {
+          await clearAllCooldownsForProvider(env.DB, body.provider);
+        } else {
+          for (let i = 0; i < ids.length; i += 50) {
+            for (const mid of ids.slice(i, i + 50)) {
+              await clearModelCooldown(env.DB, mid);
+            }
+          }
+        }
+      } catch {
+        // best-effort; bulk toggle itself succeeded
       }
     }
     return c.json({ ok: true, updated, enabled });
