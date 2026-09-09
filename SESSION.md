@@ -172,3 +172,13 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 **Deploy:** preflight green (vitest + `tsc --noEmit` + eslint). First `wrangler deploy` shipped a STALE frontend — `dist/` was built Sep 5 (`wrangler deploy` does not build). Ran `npm run build` (new bundle `index-C1yg_2wh.js`, old subtitle gone) + redeployed. Smoke: `/`, `/api/health`, `/api/leaderboard`, `/api/models` all 200; `freshness=15` probe 200 (pipeline live); prod HTML serves the new bundle.
 
 **Next:** open PR / fast-forward `master` to `chore/sync-origin-master` when ready (holds 40 local + 3 origin commits); working tree has unstaged `src/db/snapshot.ts` (comment + formatter-only rewrap, no logic).
+
+## 2026-09-09 — manual Test button, full merge to master, Zen 429 fix (all deployed)
+
+**Test button (deployed):** per-row play button in Leaderboard Status cell calls existing `POST /api/admin/benchmark` (`short`); reuses CooldownPanel token helpers (now exported); busy→queued(45s)→idle + error+alert; `stopPropagation` preserves row-pinning; no new column (zero-overflow intact). Design per ui-ux-pro-max (emerald-on-zinc, SVG, focus ring). No backend change; backend suite green.
+
+**Merge:** `master` FF'd to `b623718` then fix commit below — holds all 40 local + 3 origin commits + feature. Reviewer subagent verified neither branch was on `master` pre-merge and flagged the regress risk, which drove merging sync in before deploy. Nothing pushed.
+
+**Zen RATE_LIMITED root cause (fixed, deployed):** all Zen rows 429'd with `FreeUsageLimitError` (~2h provider cooldown) while direct Zen calls from here return 200 — our implementation, not Zen. Two bugs: (1) Zen RPM default 20/min vs a free tier that trips on ~6-stream bursts → default 5 (`RPM_OPENCODE_ZEN` overrides); (2) blind 429s (no Retry-After) doubled to the 2h cap, so one burst blacked out the provider for hours — new pure `rateLimitCapMs()` caps blind 429s at 15min, explicit Retry-After still honored fully (OpenRouter midnight path intact) +3 unit tests. Vitest+tsc+eslint green, rebuilt, redeployed, prod smoke 200s (benchmark-without-token correctly 401).
+
+**Note:** stale 2h Zen cooldown row expires alone; `/admin/cooldown/reset` clears it now. Manual Test jobs bypass cooldown skips by design (consumer never gated).

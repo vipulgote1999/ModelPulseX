@@ -47,7 +47,9 @@ export interface RPMConfig {
   default: number;
 }
 
-export function getConcurrency(env: Record<string, unknown>): ConcurrencyConfig {
+export function getConcurrency(
+  env: Record<string, unknown>,
+): ConcurrencyConfig {
   return {
     maxGlobal: Number(env.MAX_GLOBAL_CONCURRENCY) || 16,
     maxOpencode: Number(env.MAX_OPENCODE_CONCURRENCY) || 3,
@@ -75,8 +77,11 @@ export function getConcurrency(env: Record<string, unknown>): ConcurrencyConfig 
 
 export function getRPMConfig(env: Record<string, unknown>): RPMConfig {
   return {
-    opencode_zen: Number(env.RPM_OPENCODE_ZEN) || Number(env.MAX_OPENCODE_RPM) || 20,
-    openrouter: Number(env.RPM_OPENROUTER) || Number(env.MAX_OPENROUTER_RPM) || 20,
+    // ponytail: Zen free tier trips FreeUsageLimitError well below 20/min (live 2026-09-09: bursts of ~6 concurrent streams 429'd); stay at 5, raise via RPM_OPENCODE_ZEN if Zen documents a higher free RPM
+    opencode_zen:
+      Number(env.RPM_OPENCODE_ZEN) || Number(env.MAX_OPENCODE_RPM) || 5,
+    openrouter:
+      Number(env.RPM_OPENROUTER) || Number(env.MAX_OPENROUTER_RPM) || 20,
     groq: Number(env.RPM_GROQ) || Number(env.MAX_GROQ_RPM) || 30,
     cerebras: Number(env.RPM_CEREBRAS) || Number(env.MAX_CEREBRAS_RPM) || 20,
     gemini: Number(env.RPM_GEMINI) || Number(env.MAX_GEMINI_RPM) || 15,
@@ -90,9 +95,12 @@ export function getRPMConfig(env: Record<string, unknown>): RPMConfig {
     nscale: Number(env.RPM_NSCALE) || Number(env.MAX_NSCALE_RPM) || 10,
     speka: Number(env.RPM_SPEKA) || Number(env.MAX_SPEKA_RPM) || 10,
     nexaapi: Number(env.RPM_NEXAAPI) || Number(env.MAX_NEXAAPI_RPM) || 10,
-    orcarouter: Number(env.RPM_ORCAROUTER) || Number(env.MAX_ORCAROUTER_RPM) || 10,
-    ninerouter: Number(env.RPM_NINEROUTER) || Number(env.MAX_NINEROUTER_RPM) || 10,
-    tokenrouter: Number(env.RPM_TOKENROUTER) || Number(env.MAX_TOKENROUTER_RPM) || 10,
+    orcarouter:
+      Number(env.RPM_ORCAROUTER) || Number(env.MAX_ORCAROUTER_RPM) || 10,
+    ninerouter:
+      Number(env.RPM_NINEROUTER) || Number(env.MAX_NINEROUTER_RPM) || 10,
+    tokenrouter:
+      Number(env.RPM_TOKENROUTER) || Number(env.MAX_TOKENROUTER_RPM) || 10,
     ollama: Number(env.RPM_OLLAMA) || Number(env.MAX_OLLAMA_RPM) || 10,
     default: Number(env.RPM_DEFAULT) || 10,
   };
@@ -149,9 +157,12 @@ export function retryAfterSeconds(res: Response): number {
     const secs = Number(ra);
     if (!Number.isNaN(secs)) return Math.max(1, Math.min(3600, secs));
     const d = Date.parse(ra);
-    if (!Number.isNaN(d)) return Math.max(1, Math.min(3600, Math.round((d - Date.now()) / 1000)));
+    if (!Number.isNaN(d))
+      return Math.max(1, Math.min(3600, Math.round((d - Date.now()) / 1000)));
   }
-  const reset = res.headers.get("x-ratelimit-reset") || res.headers.get("x-rate-limit-reset");
+  const reset =
+    res.headers.get("x-ratelimit-reset") ||
+    res.headers.get("x-rate-limit-reset");
   if (reset) {
     const n = Number(reset);
     if (!Number.isNaN(n)) {

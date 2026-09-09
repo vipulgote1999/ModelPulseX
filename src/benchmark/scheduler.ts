@@ -27,6 +27,7 @@ import {
   setModelCooldown,
   clearModelCooldown,
   escalateProviderCooldown,
+  rateLimitCapMs,
 } from "../db/cooldown";
 import {
   AUTO_DISABLE_DAILY_MAX_DEFAULT,
@@ -316,14 +317,16 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
       err.includes("rate limit") ||
       err.includes("too many requests")
     ) {
-      // Provider refusing — escalating provider-wide cooldown honoring Retry-After when present
+      // Provider refusing — escalating provider-wide cooldown honoring Retry-After when present.
+      // Blind 429s (no Retry-After) cap at 15min: per-minute free limits reset in
+      // seconds, and doubling to the 2h max turned one burst into hours of outage.
       const retryMs = result.retry_after_ms ?? 60_000;
       await escalateProviderCooldown(
         env.DB,
         job.provider,
         retryMs,
         `RATE_LIMITED ${result.error_type ?? "429"}`.slice(0, 500),
-        cooldownMaxMs,
+        rateLimitCapMs(result.retry_after_ms, cooldownMaxMs),
       );
       // Also brief model cooldown to avoid immediate retry of same model
       await setModelCooldown(env.DB, job.model_id, 30_000, `RATE_LIMITED`);
@@ -457,7 +460,10 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
           .run();
       } catch (e) {
         const msg = String(e);
-        if (!msg.includes("benchmark_enabled") && !msg.includes("no such column"))
+        if (
+          !msg.includes("benchmark_enabled") &&
+          !msg.includes("no such column")
+        )
           throw e;
       }
       console.warn(dec.reason, job.provider, job.provider_model_id);
