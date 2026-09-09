@@ -144,6 +144,133 @@ describe("benchmark engine — classification and TPS/TTFT", () => {
   });
 });
 
+describe("benchmark engine — reasoning/thinking streams", () => {
+  it("excludes reasoning_content from answer; subtracts reasoning tokens", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        // DeepSeek/Mimo-via-Zen shape: thinking on reasoning_content
+        push({ choices: [{ delta: { reasoning_content: "let me think" } }] });
+        push({ choices: [{ delta: { reasoning_content: " step by step" } }] });
+        push({ choices: [{ delta: { content: "PONG" } }] });
+        push({
+          usage: {
+            prompt_tokens: 5,
+            completion_tokens: 100,
+            completion_tokens_details: { reasoning_tokens: 90 },
+          },
+        });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "opencode_zen",
+      providerModelId: "mimo-v2.5-free",
+      apiUrl: "https://opencode.ai/zen/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 16, timeout_ms: 5000 },
+    } as never);
+    expect(res.status).toBe("SUCCESS");
+    // visible answer is PONG (10 tokens), not 100 completion tokens
+    expect(res.output_tokens).toBe(10);
+    expect(res.token_estimation_method).toBe("provider");
+    expect(res.ttft_ms).not.toBeNull();
+    expect(res.tps).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("handles OpenRouter reasoning + reasoning_details without polluting answer", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        push({ choices: [{ delta: { reasoning: "thinking..." } }] });
+        push({
+          choices: [{ delta: { reasoning_details: [{ type: "reasoning.text", text: "step 1" }] } }],
+        });
+        push({ choices: [{ delta: { content: "hi" } }] });
+        push({
+          usage: { prompt_tokens: 4, completion_tokens: 50, reasoning_tokens: 48 },
+        });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "openrouter",
+      providerModelId: "test:free",
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+    } as never);
+    expect(res.status).toBe("SUCCESS");
+    expect(res.output_tokens).toBe(2);
+    expect(res.token_estimation_method).toBe("provider");
+    vi.restoreAllMocks();
+  });
+
+  it("reasoning-only stream reports reasoning_no_content", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        push({ choices: [{ delta: { reasoning_content: "hmm..." } }] });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "opencode_zen",
+      providerModelId: "mimo-v2.5-free",
+      apiUrl: "https://opencode.ai/zen/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+    } as never);
+    expect(res.status).toBe("STREAM_ERROR");
+    expect(res.error_type).toMatch(/reasoning_no_content/);
+    expect(res.tps).toBeNull();
+    vi.restoreAllMocks();
+  });
+});
+
 describe("benchmark engine — outbound URL SSRF guard", () => {
   const base = { provider: "openrouter", providerModelId: "m:free" };
 
