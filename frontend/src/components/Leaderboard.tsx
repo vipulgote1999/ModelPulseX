@@ -3,6 +3,7 @@ import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA } from "../lib/intelligence";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
+import { getAdminToken, setAdminToken } from "./CooldownPanel";
 
 type Row = {
   rank: number;
@@ -73,6 +74,65 @@ export default function Leaderboard({
       ? cur.filter((x) => x !== id)
       : [...cur, id].slice(0, 3);
     onSelect(next);
+  };
+
+  // Manual per-model benchmark trigger (POST /api/admin/benchmark, short). Result
+  // lands via the existing SSE/poll refresh — button only tracks queued state.
+  const [testState, setTestState] = useState<
+    Record<number, "busy" | "queued" | "error">
+  >({});
+  const clearTestState = (model_id: number, afterMs: number) => {
+    window.setTimeout(() => {
+      setTestState((s) => {
+        const n = { ...s };
+        delete n[model_id];
+        return n;
+      });
+    }, afterMs);
+  };
+  const runTest = async (
+    e: { stopPropagation: () => void },
+    model_id: number,
+  ) => {
+    e.stopPropagation();
+    if (testState[model_id] === "busy") return;
+    let token = getAdminToken();
+    if (!token) {
+      const t = prompt(
+        "Admin token required to run a benchmark (ADMIN_TOKEN):",
+      );
+      if (!t) return;
+      token = t;
+      setAdminToken(t);
+    }
+    setTestState((s) => ({ ...s, [model_id]: "busy" }));
+    try {
+      const r = await fetch("/api/admin/benchmark", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+          "x-admin-token": token,
+        },
+        body: JSON.stringify({ model_id, benchmark_type: "short" }),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        alert(`Benchmark trigger failed ${r.status}: ${txt.slice(0, 300)}`);
+        setTestState((s) => ({ ...s, [model_id]: "error" }));
+        clearTestState(model_id, 10000);
+        return;
+      }
+      setTestState((s) => ({ ...s, [model_id]: "queued" }));
+      clearTestState(model_id, 45000);
+    } catch (err) {
+      alert(`Benchmark trigger failed: ${String(err).slice(0, 300)}`);
+      setTestState((s) => {
+        const n = { ...s };
+        delete n[model_id];
+        return n;
+      });
+    }
   };
 
   const { data: cd } = useCooldowns(12000);
@@ -371,6 +431,71 @@ export default function Leaderboard({
                           );
                         return null;
                       })()}
+                      {(() => {
+                        const st = testState[r.model_id];
+                        return (
+                          <button
+                            onClick={(e) => runTest(e, r.model_id)}
+                            disabled={st === "busy"}
+                            title={
+                              st === "queued"
+                                ? "Benchmark queued — result lands on next refresh"
+                                : st === "error"
+                                  ? "Trigger failed — click to retry"
+                                  : "Run short benchmark now"
+                            }
+                            aria-label={`Run benchmark for ${r.display_name}`}
+                            className={`cursor-pointer rounded border p-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${st === "queued" ? "border-emerald-700 bg-emerald-900/60 text-emerald-200" : st === "error" ? "border-red-800 bg-red-900/40 text-red-300 hover:bg-red-900/60" : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:text-emerald-200 hover:border-emerald-800 hover:bg-emerald-900/40 disabled:opacity-50"}`}
+                          >
+                            {st === "busy" ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                className="w-3 h-3 animate-spin"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  d="M21 12a9 9 0 1 1-6.2-8.56"
+                                />
+                              </svg>
+                            ) : st === "queued" ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                className="w-3 h-3"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            ) : st === "error" ? (
+                              <span
+                                className="block w-3 text-center text-[10px] font-bold leading-3"
+                                aria-hidden="true"
+                              >
+                                !
+                              </span>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                className="w-3 h-3"
+                                aria-hidden="true"
+                              >
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                     {(() => {
                       const mc = modelCdMap.get(r.model_id);
@@ -409,7 +534,8 @@ export default function Leaderboard({
       </div>
       {rows.length > 0 && (
         <div className="px-3 py-2 text-[11px] text-zinc-500">
-          Click rows to pin for graph comparison (max 3). Sorted by{" "}
+          Click rows to pin for graph comparison (max 3). Play button runs a
+          short benchmark now (needs admin token). Sorted by{" "}
           <b className="text-zinc-300">{String(sortKey)}</b> {dir}. Selected up
           to 3 drive the charts below.
         </div>

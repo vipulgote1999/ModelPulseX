@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 
-function getAdminToken(): string | null {
+export function getAdminToken(): string | null {
   try {
     return localStorage.getItem("mpx_admin_token") || null;
   } catch {
@@ -9,7 +9,7 @@ function getAdminToken(): string | null {
   }
 }
 
-function setAdminToken(v: string) {
+export function setAdminToken(v: string) {
   // localStorage may be unavailable (private mode) — token just won't persist
   try {
     localStorage.setItem("mpx_admin_token", v);
