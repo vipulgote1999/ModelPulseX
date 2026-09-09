@@ -53,45 +53,45 @@ describe("buildSnapshotRows", () => {
     // percentile() takes the lower middle on even counts: median(1..6) = 3.
     const rows = buildSnapshotRows({
       models: [models[0]!],
-      raw: [rawRow(1, "short", [1, 2, 3, 4, 5, 6])],
+      raw: [rawRow(1, "coding", [1, 2, 3, 4, 5, 6])],
       spark: [],
       nowIso: new Date().toISOString(),
     });
-    const short = rows.find(
-      (r) => r.model_id === 1 && r.benchmark === "short",
+    const coding = rows.find(
+      (r) => r.model_id === 1 && r.benchmark === "coding",
     )!;
-    expect(short.tps_7d).toBeCloseTo(3);
-    expect(short.tps_24h).toBeCloseTo(3);
-    expect(short.tps_1h).toBeCloseTo(3);
-    expect(short.uptime_7d).toBeCloseTo(1);
-    expect(short.error_rate_7d).toBeCloseTo(0);
-    expect(short.sample_count_24h).toBe(6);
-    expect(short.request_count_7d).toBe(6);
+    expect(coding.tps_7d).toBeCloseTo(3);
+    expect(coding.tps_24h).toBeCloseTo(3);
+    expect(coding.tps_1h).toBeCloseTo(3);
+    expect(coding.uptime_7d).toBeCloseTo(1);
+    expect(coding.error_rate_7d).toBeCloseTo(0);
+    expect(coding.sample_count_24h).toBe(6);
+    expect(coding.request_count_7d).toBe(6);
   });
 
   it("nulls windows below min-sample gates", () => {
     // 3 samples: 1h(2)✓ 24h(3)✓ 7d(5)✗
     const rows = buildSnapshotRows({
       models: [models[0]!],
-      raw: [rawRow(1, "short", [10, 20, 30], 2)],
+      raw: [rawRow(1, "coding", [10, 20, 30], 2)],
       spark: [],
       nowIso: new Date().toISOString(),
     });
-    const short = rows.find(
-      (r) => r.model_id === 1 && r.benchmark === "short",
+    const coding = rows.find(
+      (r) => r.model_id === 1 && r.benchmark === "coding",
     )!;
-    expect(short.tps_1h).toBeCloseTo(20);
-    expect(short.tps_24h).toBeCloseTo(20);
-    expect(short.tps_7d).toBeNull();
-    expect(short.uptime_7d).toBeNull();
+    expect(coding.tps_1h).toBeCloseTo(20);
+    expect(coding.tps_24h).toBeCloseTo(20);
+    expect(coding.tps_7d).toBeNull();
+    expect(coding.uptime_7d).toBeNull();
   });
 
   it("merges benchmark types for the all view", () => {
     const rows = buildSnapshotRows({
       models: [models[0]!],
       raw: [
-        rawRow(1, "short", [100, 100, 100, 100, 100, 100]),
-        rawRow(1, "medium", [200, 200, 200, 200, 200, 200]),
+        rawRow(1, "coding", [100, 100, 100, 100, 100, 100]),
+        rawRow(1, "coding", [200, 200, 200, 200, 200, 200]),
       ],
       spark: [],
       nowIso: new Date().toISOString(),
@@ -105,14 +105,14 @@ describe("buildSnapshotRows", () => {
   it("emits null rows for models with no runs, for every benchmark", () => {
     const rows = buildSnapshotRows({
       models,
-      raw: [rawRow(1, "short", [5, 6, 7, 8, 9, 10])],
+      raw: [rawRow(1, "coding", [5, 6, 7, 8, 9, 10])],
       spark: [],
       nowIso: new Date().toISOString(),
     });
-    // 2 models × 4 benchmarks
-    expect(rows.length).toBe(8);
+    // 2 models × 2 benchmarks (all + coding)
+    expect(rows.length).toBe(4);
     const b = rows.filter((r) => r.model_id === 2);
-    expect(b.length).toBe(4);
+    expect(b.length).toBe(2);
     expect(b.every((r) => r.tps_7d == null && r.uptime_7d == null)).toBe(true);
   });
 
@@ -120,8 +120,7 @@ describe("buildSnapshotRows", () => {
     const spark: SnapshotSpark[] = [];
     for (let h = 0; h < 30; h++) {
       const t = `2026-09-0${h < 10 ? "1" : "2"}T${String(h % 24).padStart(2, "0")}:00:00.000Z`;
-      spark.push({ model_id: 1, benchmark_type: "short", hour_start: t, v: 10 });
-      spark.push({ model_id: 1, benchmark_type: "medium", hour_start: t, v: 30 });
+      spark.push({ model_id: 1, benchmark_type: "coding", hour_start: t, v: 10 });
     }
     const rows = buildSnapshotRows({
       models: [models[0]!],
@@ -129,16 +128,16 @@ describe("buildSnapshotRows", () => {
       spark,
       nowIso: new Date().toISOString(),
     });
-    const short = rows.find(
-      (r) => r.model_id === 1 && r.benchmark === "short",
+    const coding = rows.find(
+      (r) => r.model_id === 1 && r.benchmark === "coding",
     )!;
     const all = rows.find((r) => r.model_id === 1 && r.benchmark === "all")!;
-    expect((JSON.parse(short.sparkline) as number[]).length).toBe(24);
-    expect(JSON.parse(short.sparkline) as number[]).toEqual(
+    expect((JSON.parse(coding.sparkline) as number[]).length).toBe(24);
+    expect(JSON.parse(coding.sparkline) as number[]).toEqual(
       Array(24).fill(10),
     );
-    // averaged across types, last 24
-    expect(JSON.parse(all.sparkline) as number[]).toEqual(Array(24).fill(20));
+    // single prompt: all view mirrors the coding sparkline, last 24
+    expect(JSON.parse(all.sparkline) as number[]).toEqual(Array(24).fill(10));
   });
 });
 

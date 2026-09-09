@@ -2,12 +2,7 @@ import type { Env } from "../types";
 import { freeHardFilterWhere } from "../providers/registry";
 import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
 
-export const SNAPSHOT_BENCHMARKS = [
-  "all",
-  "short",
-  "medium",
-  "coding",
-] as const;
+export const SNAPSHOT_BENCHMARKS = ["all", "coding"] as const;
 
 export interface SnapshotMeta {
   id: number;

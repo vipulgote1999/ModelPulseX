@@ -22,7 +22,9 @@ export type ProviderName =
  | "tokenrouter"
  | "ollama";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
-export type BenchmarkType = "short" | "medium" | "coding";
+// Single-prompt observatory: every benchmark run uses the coding workload.
+// (medium/short retired — one prompt keeps TPS/TTFT comparable across models.)
+export type BenchmarkType = "coding";
 export type BenchmarkStatus =
  | "SUCCESS"
  | "TIMEOUT"

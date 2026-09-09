@@ -57,7 +57,7 @@ export function adminRoutes(env: Env) {
       benchmark_type?: BenchmarkType;
     };
     if (!body.model_id) return c.json({ error: "model_id required" }, 400);
-    const bt = (body.benchmark_type ?? "short") as BenchmarkType;
+    const bt = (body.benchmark_type ?? "coding") as BenchmarkType;
     const job = await env.DB.prepare(
       "SELECT m.provider_model_id, p.name as provider, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?",
     )

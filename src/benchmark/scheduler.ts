@@ -112,9 +112,8 @@ export async function scheduleBenchmarks(
   // SAFETY: rpmConfig reads only string env vars (RPM_*/MAX_*_RPM); bindings are ignored.
   const rpmConfig = getRPMConfig(env as unknown as Record<string, unknown>);
   const nowIso = new Date().toISOString();
-  const hour = new Date().getUTCHours();
-  const benchTypes: BenchmarkType[] = ["short", "medium", "coding"];
-  const chosenType: BenchmarkType = benchTypes[hour % 3]!;
+  // Single-prompt observatory: no rotation — every cycle benchmarks coding.
+  const chosenType: BenchmarkType = "coding";
 
   // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
   // Rows-read fix: LRU comes from maintained models.last_benchmark_at (migration 0011,

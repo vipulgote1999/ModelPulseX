@@ -1,23 +1,9 @@
 import type { BenchmarkDefinition, BenchmarkType } from "../types";
 
-// Deterministic prompts per spec s6 — same prompt for all models per benchmark_type
+// Single deterministic prompt per spec s6 — same prompt for all models.
+// Coding exercises both reasoning (algorithm) and long-form decode, giving
+// the TPS/TTFT signal that short probes and summaries cannot.
 export const WORKLOADS: Record<BenchmarkType, BenchmarkDefinition> = {
-  short: {
-    type: "short",
-    prompt: "Return exactly: PONG",
-    // 64, not 16: thinking models spend output budget on reasoning first —
-    // with 16 tokens mimo-v2.5-free hits finish_reason=length mid-thought and
-    // never emits the answer. Still cheap; answer itself is ~2 tokens.
-    max_tokens: 64,
-    timeout_ms: 15000,
-  },
-  medium: {
-    type: "medium",
-    prompt:
-      "Write a concise 180-220 word summary of why observability matters for LLM APIs. Plain text only.",
-    max_tokens: 300,
-    timeout_ms: 30000,
-  },
   coding: {
     type: "coding",
     prompt:
