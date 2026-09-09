@@ -101,4 +101,15 @@ unchanged).
 
 ## Resolution
 
-<!-- filled in by validate-fix -->
+Fixed 2026-09-09 on `fix/reasoning-stream` (commits `test(bench):
+reasoning-stream RED cases` + `fix(bench): normalize reasoning deltas in
+stream parser`). `measureBenchmark` now extracts `reasoning_content` /
+`reasoning` / `thinking` / `reasoning_details[].text|summary` into a
+separate accumulator, subtracts reported reasoning tokens from
+`output_tokens`, flags `isReasoning` on any reasoning signal, and reports
+`reasoning_no_content` for reasoning-only streams. Preflight green:
+97 tests (94 existing + 3 new), `tsc --noEmit` clean, eslint clean on
+touched files. Note: hidden-reasoning models (Muse Spark keeps thinking
+private — silence then burst) still carry thinking time inside TTFT by
+ design; the 15s short-workload timeout can legitimately fire on slow
+reasoning runs — that is honest measurement, not a parser stall.
