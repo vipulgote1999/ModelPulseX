@@ -101,6 +101,8 @@ export async function measureBenchmark(
   let timedOut = false;
   let streamError = false;
   let isReasoning = false;
+  let seenReasoning = false;
+  let reasoningTokensReported: number | null = null;
   const chunkTimes: number[] = [];
 
   const body = {
@@ -225,22 +227,67 @@ export async function measureBenchmark(
                 // estimate input if not separately given
               }
               // detect reasoning models (OpenRouter reports reasoning_tokens)
-              const rt = (j.usage as Record<string, unknown>)
+              const usageRec = j.usage as Record<string, unknown>;
+              const rt = usageRec
                 .completion_tokens_details as
                 | Record<string, unknown>
                 | undefined;
-              const rt2 = (j.usage as Record<string, unknown>)
-                .reasoning_tokens as unknown;
+              const rt2 = usageRec.reasoning_tokens as unknown;
               if (
                 typeof rt?.reasoning_tokens === "number" &&
                 (rt.reasoning_tokens as number) > 0
-              )
+              ) {
                 isReasoning = true;
-              if (typeof rt2 === "number" && (rt2 as number) > 0)
+                reasoningTokensReported = rt.reasoning_tokens as number;
+              }
+              if (typeof rt2 === "number" && (rt2 as number) > 0) {
                 isReasoning = true;
+                reasoningTokensReported = rt2 as number;
+              }
+            }
+            const choiceDelta = j.choices?.[0]?.delta as
+              | Record<string, unknown>
+              | undefined;
+            // Provider-normalized thinking extractor: reasoning tokens ride
+            // parallel delta fields (DeepSeek/Mimo-via-Zen: reasoning_content;
+            // OpenRouter normalized: reasoning + reasoning_details[]; misc:
+            // thinking). Kept separate from answer text — never counted
+            // toward outputText, chunkTimes, or TPS.
+            const thinking =
+              (typeof choiceDelta?.reasoning_content === "string" &&
+              choiceDelta.reasoning_content.length > 0
+                ? (choiceDelta.reasoning_content as string)
+                : "") +
+              (typeof choiceDelta?.reasoning === "string" &&
+              choiceDelta.reasoning.length > 0
+                ? (choiceDelta.reasoning as string)
+                : "") +
+              (typeof choiceDelta?.thinking === "string" &&
+              choiceDelta.thinking.length > 0
+                ? (choiceDelta.thinking as string)
+                : "") +
+              (Array.isArray(choiceDelta?.reasoning_details)
+                ? (choiceDelta.reasoning_details as Record<string, unknown>[])
+                    .map((r) =>
+                      typeof r?.text === "string"
+                        ? (r.text as string)
+                        : typeof r?.summary === "string"
+                          ? (r.summary as string)
+                          : "",
+                    )
+                    .join("")
+                : "");
+            if (thinking.length > 0) {
+              seenReasoning = true;
+              isReasoning = true;
             }
             const delta =
-              j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.text ?? "";
+              (typeof choiceDelta?.content === "string"
+                ? (choiceDelta.content as string)
+                : "") ||
+              (typeof j.choices?.[0]?.text === "string"
+                ? (j.choices?.[0].text as string)
+                : "");
             if (delta && firstTokenAtMs == null) {
               firstTokenAtMs = Date.now();
               firstPerf =
@@ -269,6 +316,15 @@ export async function measureBenchmark(
       typeof performance !== "undefined" && performance.now
         ? performance.now()
         : completedAtMs;
+    // Reasoning tokens are billed as output but are not visible answer text —
+    // exclude them so TPS measures answer streaming speed, not thinking.
+    if (
+      outputTokens != null &&
+      reasoningTokensReported != null &&
+      reasoningTokensReported > 0
+    ) {
+      outputTokens = Math.max(0, outputTokens - reasoningTokensReported);
+    }
     // fallback token count if provider didn't return usage
     if (outputTokens == null) {
       const est = estimateTokensHeuristic(outputText);
@@ -304,6 +360,7 @@ export async function measureBenchmark(
       completedPerf,
       chunkTimes,
       isReasoning,
+      seenReasoning,
     );
   } catch (e: unknown) {
     clearTimeout(timeout);
@@ -353,6 +410,7 @@ function finalize(
   completedPerf?: number | null,
   chunkTimesMs?: number[],
   isReasoning?: boolean,
+  sawReasoning?: boolean,
 ): BenchmarkResult {
   // Empty completion is not a success: HTTP 200 with zero output tokens poisons
   // TPS (stored 0.0) and inflates reliability. Downgrade before metrics finalize
@@ -363,7 +421,11 @@ function finalize(
     (chunkTimesMs?.length ?? 0) === 0
   ) {
     status = "STREAM_ERROR";
-    errorType = "empty_completion_no_tokens";
+    // Reasoning activity with zero answer tokens is a distinct failure from
+    // a fully silent stream — keeps empty-completion triage honest.
+    errorType = sawReasoning
+      ? "reasoning_no_content"
+      : "empty_completion_no_tokens";
   }
   const startedMs = new Date(startedAtIso).getTime();
   const firstMs = firstTokenAtIso ? new Date(firstTokenAtIso).getTime() : null;
