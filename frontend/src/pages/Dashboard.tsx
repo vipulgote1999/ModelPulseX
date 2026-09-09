@@ -83,7 +83,7 @@ function buildReliabilityModels(
 
 export default function Dashboard() {
   const [range, setRange] = useState("7d");
-  const [benchmark, setBenchmark] = useState("all");
+  const [benchmark, setBenchmark] = useState("coding");
   const [provider, setProvider] = useState<string | undefined>();
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
@@ -441,8 +441,6 @@ export default function Dashboard() {
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
         >
           <option value="all">All benchmarks</option>
-          <option value="short">Short</option>
-          <option value="medium">Medium</option>
           <option value="coding">Coding</option>
         </select>
         <select

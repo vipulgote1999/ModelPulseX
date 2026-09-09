@@ -114,7 +114,7 @@ export default function Leaderboard({
           authorization: `Bearer ${token}`,
           "x-admin-token": token,
         },
-        body: JSON.stringify({ model_id, benchmark_type: "short" }),
+        body: JSON.stringify({ model_id, benchmark_type: "coding" }),
       });
       if (!r.ok) {
         const txt = await r.text();

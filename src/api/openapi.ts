@@ -107,7 +107,7 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: ["all", "short", "medium", "coding"],
+                enum: ["all", "coding"],
                 default: "all",
               },
             },
@@ -165,7 +165,7 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: ["all", "short", "medium", "coding"],
+                enum: ["all", "coding"],
                 default: "all",
               },
             },
@@ -220,7 +220,7 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: ["all", "short", "medium", "coding"],
+                enum: ["all", "coding"],
                 default: "all",
               },
             },

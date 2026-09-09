@@ -1,0 +1,7 @@
+- bug_id: BUG-2026-09-09T000000
+  date: '2026-09-09'
+  severity: medium
+  priority: high
+  scope: src/benchmark/engine.ts
+  summary: Streaming parser ignores reasoning deltas
+  file: specs/bugs/BUG-2026-09-09-reasoning-stream.md
