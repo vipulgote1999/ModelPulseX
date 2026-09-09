@@ -137,11 +137,27 @@ export default function Dashboard() {
     if (rows.length === 0) hasAutoSelected.current = false;
   }, [rows, defaultIds, selected.length]);
 
+  // Provider filter drives charts: clear manual pins when provider changes so graphs
+  // fall back to the new top-3-by-benchmark defaults instead of stale models.
+  // (Leaderboard refetches with loading=true, so the skeleton covers the gap until
+  // fresh rows arrive and the auto-apply below pins the new top 3.)
+  const prevProvider = useRef(provider);
+  useEffect(() => {
+    if (prevProvider.current !== provider) {
+      prevProvider.current = provider;
+      hasAutoSelected.current = false;
+      setSelected([]);
+    }
+  }, [provider]);
+
   // chartIds = explicit selection (max 3) else default top-intelligence (so graphs never empty when data exists)
+  // Stale pins (e.g. resolved before fresh rows arrive) are dropped so graphs stay in sync with the filter.
   const chartIds = useMemo(() => {
-    if (selected.length > 0) return selected.slice(0, 3);
+    const valid = new Set(rows.map((r) => r.model_id));
+    const pinned = selected.filter((id) => valid.has(id)).slice(0, 3);
+    if (pinned.length > 0) return pinned;
     return defaultIds;
-  }, [selected, defaultIds]);
+  }, [selected, defaultIds, rows]);
 
   // Only fetch history when rows ready
   const historyIds = useMemo(() => {
@@ -543,6 +559,8 @@ export default function Dashboard() {
       </div>
 
       <ChartModelSelector
+        providerLabel={provider ?? "all providers"}
+        benchmark={benchmark}
         rows={
           // SAFETY: ChartModelSelector expects minimal Row subset; safe projection
           rows as unknown as Array<{

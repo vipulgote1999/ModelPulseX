@@ -13,10 +13,14 @@ export default function ChartModelSelector({
   rows,
   selected,
   onChange,
+  providerLabel = "all providers",
+  benchmark = "all",
 }: {
   rows: Row[];
   selected: number[];
   onChange: (ids: number[]) => void;
+  providerLabel?: string;
+  benchmark?: string;
 }) {
   // rank rows by measured overall_score desc, then intelligence for display order in dropdowns
   const sortedByIntel = [...rows].sort((a, b) => {
@@ -32,11 +36,11 @@ export default function ChartModelSelector({
     const next = [...selected];
     // ensure length 3 with pads
     // SAFETY: 0 is a sentinel "empty slot" id; real model_ids are positive, filtered on read
-    while (next.length < 3) next.push(0 as unknown as number);
+    while (next.length < 3) next.push(0);
     if (!value || Number.isNaN(v) || v === 0) {
       // clear slot
       // SAFETY: same 0-sentinel as above; onChange consumers treat 0 as empty
-      next[slot] = 0 as unknown as number;
+      next[slot] = 0;
     } else {
       // prevent duplicate: if already selected elsewhere, swap or ignore
       if (next.includes(v) && next[slot] !== v) {
@@ -78,8 +82,7 @@ export default function ChartModelSelector({
           Graph comparison — pick up to 3 models
         </div>
         <div className="text-[11px] text-zinc-500">
-          Default: top 3 overall (measured leaders) · max 3 · affects all graphs
-          below
+          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs below
         </div>
       </div>
 
@@ -90,6 +93,7 @@ export default function ChartModelSelector({
               {slot + 1}.
             </span>
             <select
+              aria-label={`Compare slot ${slot + 1}`}
               value={slots[slot] === "" ? "" : String(slots[slot])}
               onChange={(e) => updateSlot(slot, e.target.value)}
               className="flex-1 rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
@@ -143,12 +147,12 @@ export default function ChartModelSelector({
             onClick={clear}
             className="text-xs px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white"
           >
-            Clear
+            Reset to top 3
           </button>
         )}
         <span className="text-[11px] text-zinc-500 ml-auto">
           {selected.length === 0
-            ? "No models selected → charts show top 3 by Intelligence automatically"
+            ? `No pins → charts show top 3 for ${providerLabel} automatically`
             : `${selected.length}/3 selected · click leaderboard rows also toggles (max 3)`}
         </span>
       </div>
