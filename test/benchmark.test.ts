@@ -182,7 +182,12 @@ describe("benchmark engine — reasoning/thinking streams", () => {
       providerModelId: "mimo-v2.5-free",
       apiUrl: "https://opencode.ai/zen/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 16, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 16,
+        timeout_ms: 5000,
+      },
     } as never);
     expect(res.status).toBe("SUCCESS");
     // visible answer is PONG (10 tokens), not 100 completion tokens
@@ -202,11 +207,21 @@ describe("benchmark engine — reasoning/thinking streams", () => {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
         push({ choices: [{ delta: { reasoning: "thinking..." } }] });
         push({
-          choices: [{ delta: { reasoning_details: [{ type: "reasoning.text", text: "step 1" }] } }],
+          choices: [
+            {
+              delta: {
+                reasoning_details: [{ type: "reasoning.text", text: "step 1" }],
+              },
+            },
+          ],
         });
         push({ choices: [{ delta: { content: "hi" } }] });
         push({
-          usage: { prompt_tokens: 4, completion_tokens: 50, reasoning_tokens: 48 },
+          usage: {
+            prompt_tokens: 4,
+            completion_tokens: 50,
+            reasoning_tokens: 48,
+          },
         });
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
@@ -227,11 +242,63 @@ describe("benchmark engine — reasoning/thinking streams", () => {
       providerModelId: "test:free",
       apiUrl: "https://openrouter.ai/api/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 8,
+        timeout_ms: 5000,
+      },
     } as never);
     expect(res.status).toBe("SUCCESS");
     expect(res.output_tokens).toBe(2);
     expect(res.token_estimation_method).toBe("provider");
+    vi.restoreAllMocks();
+  });
+
+  it("reasoning with provider usage but zero content is reasoning_no_content", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        // mimo-v2.5-free shape: empty content + reasoning, budget spent thinking
+        push({ choices: [{ index: 0, finish_reason: null, delta: { role: "assistant", content: "", reasoning: "First, the user said" } }] });
+        push({ choices: [{ index: 0, finish_reason: "length", delta: { role: "assistant", content: "", reasoning: null } }] });
+        push({
+          choices: [{ index: 0, finish_reason: "length", delta: { role: "assistant", content: "" } }],
+          usage: {
+            prompt_tokens: 252,
+            completion_tokens: 16,
+            total_tokens: 268,
+            completion_tokens_details: { audio_tokens: 0, reasoning_tokens: 0 },
+          },
+        });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "opencode_zen",
+      providerModelId: "mimo-v2.5-free",
+      apiUrl: "https://opencode.ai/zen/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 64, timeout_ms: 5000 },
+    } as never);
+    // 16 provider tokens but zero answer chunks: model thought, never answered
+    expect(res.status).toBe("STREAM_ERROR");
+    expect(res.error_type).toMatch(/reasoning_no_content/);
+    expect(res.tps).toBeNull();
     vi.restoreAllMocks();
   });
 
@@ -262,7 +329,12 @@ describe("benchmark engine — reasoning/thinking streams", () => {
       providerModelId: "mimo-v2.5-free",
       apiUrl: "https://opencode.ai/zen/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 8, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 8,
+        timeout_ms: 5000,
+      },
     } as never);
     expect(res.status).toBe("STREAM_ERROR");
     expect(res.error_type).toMatch(/reasoning_no_content/);
