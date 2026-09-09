@@ -113,3 +113,13 @@ touched files. Note: hidden-reasoning models (Muse Spark keeps thinking
 private — silence then burst) still carry thinking time inside TTFT by
  design; the 15s short-workload timeout can legitimately fire on slow
 reasoning runs — that is honest measurement, not a parser stall.
+
+Live verification 2026-09-09 (local D1 + dashboard on :8788): wiped mock
+`a/b/c:free` seed rows, ran real discovery (148 models incl.
+`mimo-v2.5-free`, `muse-spark-1.3-contributor-free`), queued short
+benchmarks. Raw Zen SSE for mimo shows `reasoning` + `reasoning_details`
+deltas with empty content and `finish_reason:length` at max_tokens=16 —
+confirming both the guard fix and the short-budget raise to 64. Post-fix
+run 18: SUCCESS, TTFT 3009ms (thinking time), TPS 9.9 via total-duration
+fallback, visible in UI as rank #1. muse-spark-1.3 returns HTTP 500
+upstream (provider-side); engine correctly stores PROVIDER_ERROR.
