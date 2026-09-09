@@ -5,7 +5,10 @@ export const WORKLOADS: Record<BenchmarkType, BenchmarkDefinition> = {
   short: {
     type: "short",
     prompt: "Return exactly: PONG",
-    max_tokens: 16,
+    // 64, not 16: thinking models spend output budget on reasoning first —
+    // with 16 tokens mimo-v2.5-free hits finish_reason=length mid-thought and
+    // never emits the answer. Still cheap; answer itself is ~2 tokens.
+    max_tokens: 64,
     timeout_ms: 15000,
   },
   medium: {

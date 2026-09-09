@@ -228,8 +228,7 @@ export async function measureBenchmark(
               }
               // detect reasoning models (OpenRouter reports reasoning_tokens)
               const usageRec = j.usage as Record<string, unknown>;
-              const rt = usageRec
-                .completion_tokens_details as
+              const rt = usageRec.completion_tokens_details as
                 | Record<string, unknown>
                 | undefined;
               const rt2 = usageRec.reasoning_tokens as unknown;
@@ -412,14 +411,12 @@ function finalize(
   isReasoning?: boolean,
   sawReasoning?: boolean,
 ): BenchmarkResult {
-  // Empty completion is not a success: HTTP 200 with zero output tokens poisons
-  // TPS (stored 0.0) and inflates reliability. Downgrade before metrics finalize
+  // Empty completion is not a success: HTTP 200 with zero ANSWER chunks poisons
+  // reliability even when the provider reports completion tokens (thinking
+  // models can spend the whole budget on reasoning and hit finish_reason
+  // length without ever emitting content). Downgrade before metrics finalize
   // so tps/ttft null out and incident+cooldown paths treat it as a model failure.
-  if (
-    status === "SUCCESS" &&
-    (outputTokens ?? 0) === 0 &&
-    (chunkTimesMs?.length ?? 0) === 0
-  ) {
+  if (status === "SUCCESS" && (chunkTimesMs?.length ?? 0) === 0) {
     status = "STREAM_ERROR";
     // Reasoning activity with zero answer tokens is a distinct failure from
     // a fully silent stream — keeps empty-completion triage honest.
