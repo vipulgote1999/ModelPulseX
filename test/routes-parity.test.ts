@@ -14,6 +14,7 @@ const EXPECTED = [
   "GET /api/models/:id/incidents",
   "GET /api/compare",
   "GET /api/cooldowns",
+  "GET /api/timeouts",
   "POST /api/admin/login",
   "GET /api/admin/models",
   "POST /api/admin/models/:id/toggle",
@@ -32,8 +33,10 @@ describe("api route parity", () => {
   it("mounts exactly the expected public surface", () => {
     // Env is only read lazily inside handlers; a stub is enough to build the app.
     const app = createApi({ CORS_ORIGIN: "https://example.test" } as never);
-    const actual = (app as unknown as { routes: Array<{ path: string; method: string }> })
-      .routes.filter((r) => r.method === "GET" || r.method === "POST")
+    const actual = (
+      app as unknown as { routes: Array<{ path: string; method: string }> }
+    ).routes
+      .filter((r) => r.method === "GET" || r.method === "POST")
       .map((r) => `${r.method} ${r.path}`)
       .sort();
     expect(actual).toEqual([...EXPECTED].sort());

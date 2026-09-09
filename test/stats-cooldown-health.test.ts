@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { escalatedDurationMs } from "../src/db/cooldown";
+import { escalatedDurationMs, rateLimitCapMs } from "../src/db/cooldown";
 import { shouldAlertStale } from "../src/db/health";
-import { parseConcatNumbers, percentile, MIN_SAMPLES } from "../src/utils/metrics";
+import {
+  parseConcatNumbers,
+  percentile,
+  MIN_SAMPLES,
+} from "../src/utils/metrics";
 import { retryAfterSeconds } from "../src/utils/concurrency";
 
 describe("cooldown escalation math", () => {
@@ -20,6 +24,20 @@ describe("cooldown escalation math", () => {
 
   it("caps at max", () => {
     expect(escalatedDurationMs(MAX, BASE, MAX)).toBe(MAX);
+  });
+
+  it("caps blind 429s at 15min instead of the 2h default max", () => {
+    expect(rateLimitCapMs(null, MAX)).toBe(15 * 60 * 1000);
+    expect(rateLimitCapMs(undefined, MAX)).toBe(15 * 60 * 1000);
+  });
+
+  it("honors an explicit Retry-After fully, even beyond the default max", () => {
+    expect(rateLimitCapMs(120_000, MAX)).toBe(MAX);
+    expect(rateLimitCapMs(20 * 60 * 60 * 1000, MAX)).toBe(20 * 60 * 60 * 1000);
+  });
+
+  it("respects a tighter configured max for blind 429s", () => {
+    expect(rateLimitCapMs(null, 5 * 60 * 1000)).toBe(5 * 60 * 1000);
   });
 });
 
@@ -83,7 +101,10 @@ describe("GROUP_CONCAT parsing + percentiles", () => {
 
 describe("Retry-After header handling", () => {
   it("parses integer seconds", () => {
-    const res = new Response(null, { status: 429, headers: { "retry-after": "120" } });
+    const res = new Response(null, {
+      status: 429,
+      headers: { "retry-after": "120" },
+    });
     expect(retryAfterSeconds(res)).toBe(120);
   });
 

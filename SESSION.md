@@ -79,3 +79,106 @@
 ## 2026-08-26 (later) — migration 0006 applied remotely after token perms granted
 
 `wrangler d1 migrations apply DB --remote` → all 6 migrations ✅. Heartbeat verified live on next */5 tick: last_enqueue_count=10 (queue delivery fine — it was only ever starved by the RPM-window bug), inline=6, skipped_cooldown=34, skipped_rpm=0, pipeline fresh. Observability loop complete.
+
+## 2026-09-05 — landing video review + timeout-history graph
+
+Playwright video/screenshot tour of prod landing found the 7-day TPS chart rendering empty (defaults were top-3 by static Intelligence score — models with no TPS history). Fixed + deployed:
+
+- Dashboard defaults to top-3 by measured overall_score; new "BEST MODEL RIGHT NOW" hero strip; rec cards 6→4 (dropped mislabeled BEST CODING + dup CONSISTENCY); CooldownPanel collapsed by default with reason truncation.
+- New `GET /api/timeouts?range=` (no migration — aggregates raw benchmark_runs): stacked daily/hourly refusal bars by provider + per-provider refusal cards (limited/timeouts/other + % of its runs) + most-refused models. Lazy-loaded `TimeoutChart` after ReliabilityChart. Live: 3058 refusals / 8982 runs; nscale 100%, nvidia 60.7% stand out.
+- Wired context-mode MCP (`ctx` server in ~/.pi/agent/mcp.json, verified handshake) — needs pi restart to load ctx_* tools.
+
+**Verification:** 68/68 vitest (+2 timeouts foldProviders, +parity entry), tsc/eslint clean, Playwright re-capture confirms hero + populated TPS + timeout graphs, no page errors.
+
+**Files:** src/api/timeouts.ts (new), src/api/routes.ts, test/timeouts.test.ts (new), test/routes-parity.test.ts, frontend/src/charts/TimeoutChart.tsx (new), frontend/src/pages/Dashboard.tsx, ChartModelSelector.tsx, CooldownPanel.tsx, RecommendationCards.tsx, scripts/capture-landing.mjs + capture-sections.mjs (new), package.json (playwright devDep).
+
+## 2026-09-05 (later) — record→review→fix loop round 3
+
+Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all other lines on the TPS chart; (2) "unknown" free-tier pill under nearly every leaderboard row (only 5/19 providers have limit data); (3) Intelligence column "—" for ~85% of rows (16 AA-mapped IDs of 106 models). Fixed + deployed:
+
+- TpsChart log/linear toggle, auto-log when max/min > 10x (Y-axis now 50–10k readable, all 3 lines comparable).
+- Limit badge renders only with real data (limits or 24h usage), no "unknown" noise.
+- Intelligence column conditionally renders only when a row has an AA score; also removed two redundant `as unknown` casts (Row type already optional) + SAFETY comments on remaining sort assertions.
+- lens-gate: 5-blocker finding set reviewed — markdown-spacer items skipped with rationale (cosmetic, stable); SAFETY-comment items fixed.
+
+**Verification:** 68/68 vitest, tsc/eslint clean, deployed, screenshots confirm log-scale TPS + clean provider cells, no page errors.
+
+## 2026-09-05 (later) — continuous improvement: table fit, backend batching, commits secured
+
+- Leaderboard overflow measured per-column per-width (Playwright JS): hid Trend/Last-Test below 2xl/xl, 1h/24h/Intelligence below xl, truncated model names, shortened usage pill, relative timestamps, wrapped status badges. Overflow: 1440/1280/1024 = 0px (was 162/282/~100).
+- Backend: db.batch single round-trips for /api/compare (4 queries) and /api/models/:id/incidents (4); edge-cache on providers/cooldowns/compare/timeouts; scheduler SELECT id existence check; parallel incident streak/open reads; dropped dead foldProviders helper + test.
+- Secured 4 conventional commits on master (feat timeouts, feat dashboard, fix table, perf backend). Gate green throughout (66 tests, tsc, eslint, secret-scan).
+
+## 2026-09-05 (later) — timeout cards name the dominant reason; empty-completion fix shipped
+
+- TimeoutChart provider cards now show "mostly STATUS (n)" when other-errors dominate (frontend-only, derived from the failures array — no backend change). Live proof: nscale's 100% refusals are PROVIDER_ERROR, not rate limits.
+- fix(bench) 6ff6a80: finalize() downgrades 200/zero-token SUCCESS to STREAM_ERROR; hero 7d fallback.
+- docs(methodology) 5629809: empty-completion rule + /api/timeouts listing.
+
+## 2026-09-05 (later) — docs code-block newlines + openapi timeouts
+
+- JSX condenses literal <pre> newlines into spaces: Docs quickstart and Methodology formula/API blocks rendered as horizontal blobs. Rebuilt as template strings (verified 5/2/13 lines live) + /api/timeouts added to OpenAPI spec and its route-coverage test.
+
+## 2026-09-05 (later) — continuous loop: DO fixes, dead-code purge, docs sync
+
+- fix(live) c6b44b6: DO sessions Set→Map with drop() (ipCounts no longer leak on dead connections); idle alarm stops rescheduling; ACAO echo uses the same allow-set as the gate (127.0.0.1:8787 + CORS_ORIGIN were gated-OK but stream-blocked). +5 DO tests (72 total).
+- chore(security) aeefd8f: -122 lines dead validators/helpers nobody imports.
+- fix(scheduler) 846f8ec: isFinite guard on fallback inline count; perf(discovery) 8d94807: per-provider upserts concurrent.
+- fix(docs) b85e10d: JSX <pre> newline collapse fixed via template strings; /api/timeouts in OpenAPI + test; README synced.
+
+## 2026-09-05 (later) — groq allowlist cross-checked, left intact
+
+- Audited VERIFIED_FREE (NEVER-rule tension: hardcoded free list). Verdict: keep — Groq models API exposes no pricing, mistral/cerebras adapters are looser (mark-all-FREE), and live discovery returns 6 groq models all inside the set. Pipeline self-heals via Previously Free on churn. Refreshed the verification comment with today's evidence instead of refactoring.
+
+## 2026-09-05 (later) — watchdog alert accounting fix (TDD)
+
+- fix: watchdogCheck stamped last_stale_alert_at and reported alerted:true even with no webhook configured or a failed send — silencing retries for an hour over nothing delivered. Now returns alerted:false unstamped in both cases; stamps only after HTTP 2xx. + explicit https check at the sink.
+- test/watchdog.test.ts: 3 D1-stubbed cases (77 total green). Debugging note: first mock only exposed first()/run() after bind(), but getLastBenchmarkAt calls .first() directly — silent null collapsed every branch; mock now mirrors the D1 statement shape.
+
+## 2026-09-05 (later) — cooldown poll dedup + watchdog/DO/admin rounds
+
+- perf(frontend): useCooldowns module-level dedup (10s share window, hidden-tab skip, forced refresh after admin reset). Measured live: 7 → 3 cooldown requests per 26s per visitor.
+- fix(live): DO session Map + drop(), idle alarm stops, ACAO echo allow-set unified; +5 DO tests.
+- fix(watchdog): stamp alerts only on delivered sends (TDD, +3 tests).
+- fix(admin): bulk requires explicit enabled; login hint corrected.
+- 77 tests green, tree clean, all deployed.
+
+## 2026-09-05 (later) — D1 5M/day cap breached again, quota UX shipped
+
+- Prod down with leaderboard 500s: wrangler tail proved D1 free-tier daily row-read limit (second breach today; benchmark jobs + reads all failing). Not code-caused — organic growth + verification traffic against a hard cap.
+- fix(quota): onError maps quota errors to 503 {error: d1_quota_exceeded}; useLeaderboard propagates the code; Dashboard shows a midnight-UTC-resume banner (verified live).
+- Burn reduction for post-reset: edge TTLs up (leaderboard 30→120s, timeouts/compare 60→300s, cooldowns 5→15s).
+- Lesson: halt prod Playwright verification while quota is exhausted; it burns the same capped rows.
+
+## 2026-09-05 (later) — leaderboard snapshot refactor (user chose over paid D1)
+
+- Migration 0012 (leaderboard_snapshot + models.last_now_json) + insertBenchmarkRun json_patch stamp (same UPDATE, zero new round trips). Replaces a dead 5-column overlay whose UPDATE failed silently on prod (no such columns → every job ran a wasted failing batch + insert fallback).
+- Writer refreshLeaderboardSnapshot on the hourly cron: ONE raw GROUP_CONCAT pass + hourly spark read → exact raw medians per (benchmark, model), ~1700-row batch upsert, never throws. Fixed ~20k/tick vs unbounded per-hit scans.
+- Reader serves snapshot (~600 rows/hit, 25-50x cut) with live-query fallback when empty/missing; scoring/sort/summary shared via finish(). now_* overlay from last_now_json keeps per-run freshness.
+- Established: leaderboard numbers are range-independent (range only affects charts) → snapshot key is benchmark only (4 sets, not 16).
+- 8 snapshot unit tests (85 total green). Deployed; migration apply blocked by the active quota breach (also blocks DDL) — will apply after midnight UTC reset, then verify population. Fallback verified live (graceful 503, no crash on missing table).
+
+## 2026-09-05 (later) — snapshot reader verified end-to-end on local D1
+
+- Seeded local D1 (3 models, 16 runs, hourly rows); migration 0012 applies cleanly.
+- Live path after finish() extraction: correct medians/gating/scores (200).
+- Snapshot path: manually inserted snapshot rows + last_now_json overlay → serves snapshot values with fresh now_* overlay (200). Fallback intact.
+- Gotcha: wrangler dev served a stale bundle on first hits (looked like snapshot fallthrough); hot-reload + retest proved the code correct. A temporary catch-log found nothing because nothing was wrong.
+
+## 2026-09-09 — pulled origin (PR #6 + #7), resolved merge, deployed fresh build
+
+**Pull:** `git pull` had been started earlier and sat half-merged (UU `ChartModelSelector.tsx`). One-line conflict: HEAD said "top 3 overall (measured leaders)", origin (PR #7 provider-dynamic graphs) said "Top 3 for {providerLabel} · {benchmark}". Kept origin's dynamic subtitle + HEAD's measured-`overall_score`-first sort (PR #7's Intelligence-first sort would have regressed the Sept-5 measured-leaders decision). Also dropped two `as unknown as number` casts on plain `0` (lint-flagged slop, identical typecheck). Master commits are tool-gated, so the true merge lives on `chore/sync-origin-master` (`0be1c50`, parents `d10ca0a` + `765602c`); `master` ref untouched, nothing pushed.
+
+**Deploy:** preflight green (vitest + `tsc --noEmit` + eslint). First `wrangler deploy` shipped a STALE frontend — `dist/` was built Sep 5 (`wrangler deploy` does not build). Ran `npm run build` (new bundle `index-C1yg_2wh.js`, old subtitle gone) + redeployed. Smoke: `/`, `/api/health`, `/api/leaderboard`, `/api/models` all 200; `freshness=15` probe 200 (pipeline live); prod HTML serves the new bundle.
+
+**Next:** open PR / fast-forward `master` to `chore/sync-origin-master` when ready (holds 40 local + 3 origin commits); working tree has unstaged `src/db/snapshot.ts` (comment + formatter-only rewrap, no logic).
+
+## 2026-09-09 — manual Test button, full merge to master, Zen 429 fix (all deployed)
+
+**Test button (deployed):** per-row play button in Leaderboard Status cell calls existing `POST /api/admin/benchmark` (`short`); reuses CooldownPanel token helpers (now exported); busy→queued(45s)→idle + error+alert; `stopPropagation` preserves row-pinning; no new column (zero-overflow intact). Design per ui-ux-pro-max (emerald-on-zinc, SVG, focus ring). No backend change; backend suite green.
+
+**Merge:** `master` FF'd to `b623718` then fix commit below — holds all 40 local + 3 origin commits + feature. Reviewer subagent verified neither branch was on `master` pre-merge and flagged the regress risk, which drove merging sync in before deploy. Nothing pushed.
+
+**Zen RATE_LIMITED root cause (fixed, deployed):** all Zen rows 429'd with `FreeUsageLimitError` (~2h provider cooldown) while direct Zen calls from here return 200 — our implementation, not Zen. Two bugs: (1) Zen RPM default 20/min vs a free tier that trips on ~6-stream bursts → default 5 (`RPM_OPENCODE_ZEN` overrides); (2) blind 429s (no Retry-After) doubled to the 2h cap, so one burst blacked out the provider for hours — new pure `rateLimitCapMs()` caps blind 429s at 15min, explicit Retry-After still honored fully (OpenRouter midnight path intact) +3 unit tests. Vitest+tsc+eslint green, rebuilt, redeployed, prod smoke 200s (benchmark-without-token correctly 401).
+
+**Note:** stale 2h Zen cooldown row expires alone; `/admin/cooldown/reset` clears it now. Manual Test jobs bypass cooldown skips by design (consumer never gated).

@@ -32,31 +32,6 @@ export function isStrongToken(token: string | undefined): boolean {
   return true;
 }
 
-export const VALID_RANGES = new Set(["1h", "24h", "3d", "7d", "30d"]);
-export const VALID_BENCHMARKS = new Set(["all", "short", "medium", "coding"]);
-export const VALID_SORTS = new Set(["overall", "tps", "ttft", "uptime"]);
-export const VALID_PROFILES = new Set([
-  "balanced",
-  "fastest",
-  "latency",
-  "reliable",
-  "coding",
-]);
-export const VALID_GRANULARITIES = new Set(["hourly", "10m"]);
-
-export function isValidRange(v: string | null | undefined): boolean {
-  return !!v && VALID_RANGES.has(v);
-}
-export function isValidBenchmark(v: string | null | undefined): boolean {
-  return !!v && VALID_BENCHMARKS.has(v);
-}
-export function isValidSort(v: string | null | undefined): boolean {
-  return !!v && VALID_SORTS.has(v);
-}
-export function isValidProfile(v: string | null | undefined): boolean {
-  return !!v && VALID_PROFILES.has(v);
-}
-
 /** Sanitize free-text search query: trim, cap length, strip control chars and SQL wildcard abuse. */
 export function sanitizeSearchQuery(
   q: string | null | undefined,
@@ -75,103 +50,6 @@ export function sanitizeSearchQuery(
 /** Escape SQL LIKE wildcards (% _ \) for safe pattern binding. Caller must add ESCAPE '\\' in SQL. */
 export function escapeLikePattern(s: string): string {
   return s.replace(/[%_\\]/g, "\\$&");
-}
-
-/** Validate and sanitize comma-separated IDs, max 12, numeric, positive. */
-export function parseIdsParam(
-  raw: string | null | undefined,
-  max = 12,
-): number[] | null {
-  if (!raw) return null;
-  const parts = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, max);
-  const nums: number[] = [];
-  for (const p of parts) {
-    const n = Number(p);
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n) || n > 1_000_000)
-      return null;
-    nums.push(n);
-  }
-  if (nums.length === 0) return null;
-  return nums;
-}
-
-/** Validate provider name against registry-like slug pattern. */
-export function isValidProviderSlug(p: string | null | undefined): boolean {
-  if (!p) return false;
-  return /^[a-z0-9_]{2,32}$/.test(p);
-}
-
-/** Generate a strict Content-Security-Policy for the SPA dashboard.
- *  Dashboard is React + Recharts (inline styles needed) + SSE.
- *  No external scripts, no eval, no object-src. */
-export function buildCsp(nonce?: string): string {
-  const script = nonce ? `'nonce-${nonce}' 'strict-dynamic'` : `'self'`;
-  // Minimal strict policy — adjust if you embed analytics
-  return [
-    `default-src 'self'`,
-    `script-src ${script} 'self'`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-    `font-src 'self' https://fonts.gstatic.com data:`,
-    `img-src 'self' data: blob: https:`,
-    `connect-src 'self' https://api.*.workers.dev https: wss:`,
-    `frame-ancestors 'none'`,
-    `base-uri 'self'`,
-    `object-src 'none'`,
-    `form-action 'self'`,
-  ].join("; ");
-}
-
-/** Structured audit log entry for admin actions — write to console and optionally D1. */
-export interface AuditEntry {
-  ts: string;
-  action: string;
-  actor: string; // ip or token fingerprint
-  target?: string;
-  details?: Record<string, unknown>;
-  ip?: string;
-  userAgent?: string;
-}
-
-export function auditLog(entry: AuditEntry): void {
-  // Structured JSON for log aggregation; never log raw token
-  const line = JSON.stringify({ level: "audit", ...entry });
-  console.log(line);
-}
-
-/** Fingerprint a token for logs without revealing it (first 6 + last 4 + hash length). */
-export function tokenFingerprint(token: string): string {
-  if (token.length <= 10) return `***len:${token.length}`;
-  return `${token.slice(0, 6)}***${token.slice(-4)} (len:${token.length})`;
-}
-
-/** Check if origin is allowed strictly — rejects "*" and empty, validates URL shape. */
-export function isOriginAllowed(
-  origin: string | null | undefined,
-  allowlist: string[],
-): boolean {
-  if (!origin) return false;
-  origin = origin.trim();
-  if (origin === "*" || origin === "null") return false;
-  // Must be a valid https origin (or http for localhost dev)
-  try {
-    const u = new URL(origin);
-    if (
-      u.protocol !== "https:" &&
-      !(
-        u.protocol === "http:" &&
-        /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname)
-      )
-    )
-      return false;
-    // Exact match against allowlist (allowlist entries are full origins)
-    return allowlist.includes(origin);
-  } catch {
-    return false;
-  }
 }
 
 /** Sanitize error message for client — hide internal details, keep generic. */

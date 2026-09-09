@@ -26,15 +26,34 @@ export interface LeaderboardResp {
     sampleCount24h?: number;
     rank_?: number;
   }>;
-  meta: { last_benchmark: string | null; last_aggregate: string | null; last_discovery: string | null; is_stale: boolean; live: string | null; stale_message: string | null };
-  summary: { free_models: number; online_now: number; best_tps: unknown; best_ttft: unknown; benchmarks_24h: number };
+  meta: {
+    last_benchmark: string | null;
+    last_aggregate: string | null;
+    last_discovery: string | null;
+    is_stale: boolean;
+    live: string | null;
+    stale_message: string | null;
+  };
+  summary: {
+    free_models: number;
+    online_now: number;
+    best_tps: unknown;
+    best_ttft: unknown;
+    benchmarks_24h: number;
+  };
   range: string;
   benchmark: string;
   sort: string;
   profile: string;
 }
 
-export function useLeaderboard(opts: { range: string; benchmark: string; sort: string; provider?: string; profile: string }) {
+export function useLeaderboard(opts: {
+  range: string;
+  benchmark: string;
+  sort: string;
+  provider?: string;
+  profile: string;
+}) {
   const [data, setData] = useState<LeaderboardResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +63,29 @@ export function useLeaderboard(opts: { range: string; benchmark: string; sort: s
     abortRef.current?.abort();
     const ctl = new AbortController();
     abortRef.current = ctl;
-    const qs = new URLSearchParams({ range: opts.range, benchmark: opts.benchmark, sort: opts.sort, profile: opts.profile });
+    const qs = new URLSearchParams({
+      range: opts.range,
+      benchmark: opts.benchmark,
+      sort: opts.sort,
+      profile: opts.profile,
+    });
     if (opts.provider) qs.set("provider", opts.provider);
-    const res = await fetch(`/api/leaderboard?${qs}`, { signal: ctl.signal, headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`leaderboard ${res.status}`);
+    const res = await fetch(`/api/leaderboard?${qs}`, {
+      signal: ctl.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) {
+      // Surface machine-readable API error codes (e.g. d1_quota_exceeded)
+      // so the UI can show a specific message instead of a bare status.
+      let code = "";
+      try {
+        const b = (await res.json()) as { error?: string };
+        if (b?.error) code = ` ${b.error}`;
+      } catch {
+        // non-JSON error body — status alone will have to do
+      }
+      throw new Error(`leaderboard ${res.status}${code}`);
+    }
     const j = (await res.json()) as LeaderboardResp;
     setData(j);
     setLoading(false);
@@ -82,7 +120,9 @@ export function useLeaderboard(opts: { range: string; benchmark: string; sort: s
         }, 10000);
       });
       // SSE hiccups are tolerated — periodic polling refetch keeps data fresh regardless
-      es.onerror = () => { /* no-op */ };
+      es.onerror = () => {
+        /* no-op */
+      };
     } catch {
       // EventSource unavailable/blocked — polling fallback above still refreshes data.
     }

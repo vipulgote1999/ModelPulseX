@@ -324,8 +324,9 @@ export default function Admin() {
               <code className="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300">
                 ADMIN_TOKEN
               </code>
-              . For local dev, defaults to id <b>admin</b> and password =
-              ADMIN_TOKEN.
+              . All three secrets are required — there are no default
+              credentials (a token-as-password fallback was removed as
+              insecure).
             </p>
           </form>
         </div>

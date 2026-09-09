@@ -107,6 +107,20 @@ export function escalatedDurationMs(
   return Math.min(Math.max(currentRemainingMs * 2, baseMs), maxMs);
 }
 
+/** Cap for 429 backoff when the provider names no reset time. Per-minute limits
+ *  (the common free-tier shape — live Zen FreeUsageLimitError 2026-09-09 carried
+ *  no Retry-After and no rate headers) reset in seconds; blacking out for the
+ *  2h default max turns one burst into hours of dead coverage. An explicit
+ *  Retry-After is honored fully, even beyond the default max. */
+export function rateLimitCapMs(
+  retryAfterMs: number | null | undefined,
+  defaultMaxMs: number,
+): number {
+  if (retryAfterMs != null && retryAfterMs > 0)
+    return Math.max(defaultMaxMs, retryAfterMs);
+  return Math.min(defaultMaxMs, 15 * 60 * 1000);
+}
+
 /** Provider-wide cooldown with exponential escalation for repeat offenders (quota exhaustion,
  *  sustained rate limiting). A provider that keeps failing backs off up to maxMs instead of
  *  re-burning benchmark capacity every few minutes. */
@@ -208,9 +222,7 @@ export async function clearAllCooldownsForProvider(
   }
 }
 
-export async function getActiveCooldowns(
-  db: D1Database,
-): Promise<{
+export async function getActiveCooldowns(db: D1Database): Promise<{
   providers: Array<{
     provider: string;
     cooldown_until: string;

@@ -22,22 +22,25 @@ export default function ChartModelSelector({
   providerLabel?: string;
   benchmark?: string;
 }) {
-  // rank rows by intelligence desc, then overall_score desc for display order in dropdowns
+  // rank rows by measured overall_score desc, then intelligence for display order in dropdowns
   const sortedByIntel = [...rows].sort((a, b) => {
+    const score = (b.overall_score ?? -1) - (a.overall_score ?? -1);
+    if (score !== 0) return score;
     const aa = getAA(a.model)?.score ?? -1;
     const bb = getAA(b.model)?.score ?? -1;
-    if (aa !== bb) return bb - aa;
-    return (b.overall_score ?? -1) - (a.overall_score ?? -1);
+    return bb - aa;
   });
 
   const updateSlot = (slot: number, value: string) => {
     const v = Number(value);
     const next = [...selected];
     // ensure length 3 with pads
-    while (next.length < 3) next.push(0 as unknown as number);
+    // SAFETY: 0 is a sentinel "empty slot" id; real model_ids are positive, filtered on read
+    while (next.length < 3) next.push(0);
     if (!value || Number.isNaN(v) || v === 0) {
       // clear slot
-      next[slot] = 0 as unknown as number;
+      // SAFETY: same 0-sentinel as above; onChange consumers treat 0 as empty
+      next[slot] = 0;
     } else {
       // prevent duplicate: if already selected elsewhere, swap or ignore
       if (next.includes(v) && next[slot] !== v) {
@@ -66,21 +69,30 @@ export default function ChartModelSelector({
   const clear = () => onChange([]);
 
   // pad slots to 3 for UI
-  const slots: Array<number | ""> = [selected[0] ?? "", selected[1] ?? "", selected[2] ?? ""];
+  const slots: Array<number | ""> = [
+    selected[0] ?? "",
+    selected[1] ?? "",
+    selected[2] ?? "",
+  ];
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold">Graph comparison — pick up to 3 models</div>
+        <div className="text-sm font-semibold">
+          Graph comparison — pick up to 3 models
+        </div>
         <div className="text-[11px] text-zinc-500">
-          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs below
+          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs
+          below
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[0, 1, 2].map((slot) => (
           <div key={slot} className="flex gap-2 items-center">
-            <span className="text-xs font-mono text-zinc-500 w-6">{slot + 1}.</span>
+            <span className="text-xs font-mono text-zinc-500 w-6">
+              {slot + 1}.
+            </span>
             <select
               aria-label={`Compare slot ${slot + 1}`}
               value={slots[slot] === "" ? "" : String(slots[slot])}
@@ -91,10 +103,17 @@ export default function ChartModelSelector({
               {sortedByIntel.map((r) => {
                 const aa = getAA(r.model);
                 const scoreTxt = aa ? ` ★${aa.score.toFixed(1)}` : "";
-                const tpsTxt = r.tps_now != null ? ` · ${r.tps_now.toFixed(1)} TPS` : "";
-                const disabled = selected.includes(r.model_id) && selected[slot] !== r.model_id;
+                const tpsTxt =
+                  r.tps_now != null ? ` · ${r.tps_now.toFixed(1)} TPS` : "";
+                const disabled =
+                  selected.includes(r.model_id) &&
+                  selected[slot] !== r.model_id;
                 return (
-                  <option key={r.model_id} value={String(r.model_id)} disabled={disabled}>
+                  <option
+                    key={r.model_id}
+                    value={String(r.model_id)}
+                    disabled={disabled}
+                  >
                     {r.display_name} · {r.provider}
                     {scoreTxt}
                     {tpsTxt}

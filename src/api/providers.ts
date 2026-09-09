@@ -1,12 +1,33 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
-import { PROVIDER_ENDPOINTS, PROVIDER_REGISTRY, freeTierFor } from "../providers/registry";
+import {
+  PROVIDER_ENDPOINTS,
+  PROVIDER_REGISTRY,
+  freeTierFor,
+} from "../providers/registry";
 import { getProviderDailyUsage } from "../db/cooldown";
-import { getConcurrency, capFor, getRPMConfig, rpmForProvider } from "../utils/concurrency";
+import {
+  getConcurrency,
+  capFor,
+  getRPMConfig,
+  rpmForProvider,
+} from "../utils/concurrency";
 
 export function providersRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/providers", async (c) => {
+    // Edge-cache shared across visitors (matches the 120s browser TTL below):
+    // the dashboard fetches this twice per load (filters + limit badges) and the
+    // 24h-usage GROUP BY costs ~1k rows_read per origin hit.
+    // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
+    const cache: Cache = (caches as unknown as { default: Cache }).default;
+    const cacheKey = new Request(c.req.url, { method: "GET" });
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
+    } catch {
+      // Cache API unavailable (local dev) — fall through to D1
+    }
     const [rows, dailyUsage] = await Promise.all([
       env.DB.prepare("SELECT * FROM providers ORDER BY name").all(),
       getProviderDailyUsage(env.DB),
@@ -52,6 +73,11 @@ export function providersRoutes(env: Env) {
       "Cache-Control",
       "public, max-age=120, stale-while-revalidate=120",
     );
+    try {
+      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+    } catch {
+      // cache put best-effort
+    }
     return resp;
   });
   return r;

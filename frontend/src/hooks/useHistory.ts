@@ -23,6 +23,8 @@ export function useHistory(
     }
     const controller = new AbortController();
     setLoading(true);
+    // Batch route HTTP status, captured for fallback policy below.
+    let batchStatus = 0;
     // 5–10m granularity: 1h range uses tenmin buckets (6 points per hour) so graphs show
     // live 10m lines. Longer ranges keep hourly to stay readable. Backend honors
     // granularity=10m (tenmin_model_stats) with hourly fallback if not yet migrated.
@@ -35,6 +37,7 @@ export function useHistory(
     });
     fetch(`/api/history?${qs}`, { signal: controller.signal })
       .then(async (res) => {
+        batchStatus = res.status;
         if (!res.ok) throw new Error(String(res.status));
         const j = (await res.json()) as { history?: Record<string, Point[]> };
         // endpoint returns map {id: points}; keep shape
@@ -47,6 +50,13 @@ export function useHistory(
       })
       .catch((e) => {
         if ((e as Error)?.name === "AbortError") return;
+        // Fall back to per-model endpoints only when the batch route is missing
+        // (old deploy → 404). On server/network errors, fanning out N more failing
+        // requests multiplies outage load — show empty instead.
+        if (batchStatus !== 0 && batchStatus !== 404) {
+          if (!controller.signal.aborted) setData({});
+          return;
+        }
         // fallback to legacy per-model fetch on batch miss (e.g., old deploy)
         Promise.all(
           modelIds.map(async (id) => {

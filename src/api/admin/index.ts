@@ -27,9 +27,7 @@ export function adminRoutes(env: Env) {
     const token = String(env.ADMIN_TOKEN ?? "");
     // Constant-time checks + no token-as-password fallback; ADMIN_PASSWORD must be configured
     const idOk = timingSafeEqual(id, expectedId);
-    const passOk = expectedPass
-      ? timingSafeEqual(pass, expectedPass)
-      : false;
+    const passOk = expectedPass ? timingSafeEqual(pass, expectedPass) : false;
     // Symmetric jitter 80-150ms on both success and failure paths to avoid timing oracle (P1)
     await new Promise((r) => setTimeout(r, 80 + Math.random() * 70));
     if (!idOk || !passOk) {
@@ -57,7 +55,7 @@ export function adminRoutes(env: Env) {
       benchmark_type?: BenchmarkType;
     };
     if (!body.model_id) return c.json({ error: "model_id required" }, 400);
-    const bt = (body.benchmark_type ?? "short") as BenchmarkType;
+    const bt = (body.benchmark_type ?? "coding") as BenchmarkType;
     const job = await env.DB.prepare(
       "SELECT m.provider_model_id, p.name as provider, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?",
     )

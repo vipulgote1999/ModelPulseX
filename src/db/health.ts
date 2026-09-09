@@ -151,24 +151,36 @@ export async function watchdogCheck(
       alerted: false,
     };
 
-  if (env.ALERT_WEBHOOK_URL) {
-    try {
-      // SSRF guard: webhook target must be a clean https URL (same policy as provider calls).
-      assertSafeApiUrl(env.ALERT_WEBHOOK_URL);
-      const content =
-        `🔴 ModelPulseX pipeline STALE — no benchmarks for ${decision.ageMinutes}m ` +
-        `(threshold ${staleMinutes(env)}m). Last: ${last}. Check scheduler_health meta + queue DLQ.`;
-      await fetch(env.ALERT_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content, text: content, message: content }),
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch (e) {
-      if (e instanceof BlockedApiUrlError)
-        console.warn("watchdog webhook blocked:", e.message);
-      else console.warn("watchdog webhook", e);
-    }
+  if (!env.ALERT_WEBHOOK_URL) {
+    // Nothing to deliver to — report stale without stamping, so the next
+    // tick re-evaluates instead of pretending an alert went out.
+    return { stale: true, ageMinutes: decision.ageMinutes, alerted: false };
+  }
+  try {
+    // SSRF guard: webhook target must be a clean https URL (same policy as provider calls).
+    assertSafeApiUrl(env.ALERT_WEBHOOK_URL);
+    // Explicit https-only check at the sink so static analysis sees the
+    // validation adjacent to the fetch (defense in depth with the above).
+    const target = new URL(env.ALERT_WEBHOOK_URL);
+    if (target.protocol !== "https:")
+      throw new BlockedApiUrlError("webhook must be https");
+    const content =
+      `🔴 ModelPulseX pipeline STALE — no benchmarks for ${decision.ageMinutes}m ` +
+      `(threshold ${staleMinutes(env)}m). Last: ${last}. Check scheduler_health meta + queue DLQ.`;
+    const res = await fetch(env.ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content, text: content, message: content }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`webhook ${res.status}`);
+  } catch (e) {
+    // Delivery failed — do NOT stamp, so the next tick retries instead of
+    // silencing alerts for an hour over an undelivered send.
+    if (e instanceof BlockedApiUrlError)
+      console.warn("watchdog webhook blocked:", e.message);
+    else console.warn("watchdog webhook", e);
+    return { stale: true, ageMinutes: decision.ageMinutes, alerted: false };
   }
   try {
     const now = new Date(nowMs).toISOString();

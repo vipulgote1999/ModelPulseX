@@ -382,8 +382,22 @@ export async function insertBenchmarkRun(
         r.token_estimation_method,
       ),
     db
-      .prepare(`UPDATE models SET last_benchmark_at=? WHERE id=?`)
-      .bind(r.request_started_at, modelId),
+      .prepare(
+        `UPDATE models SET last_benchmark_at=?, last_now_json=json_patch(COALESCE(last_now_json,'{}'), ?) WHERE id=?`,
+      )
+      .bind(
+        r.request_started_at,
+        JSON.stringify({
+          [r.benchmark_type]: {
+            tps: r.tps,
+            ttft: r.ttft_ms,
+            itl: r.itl_ms,
+            status: r.status,
+            at: r.request_started_at,
+          },
+        }),
+        modelId,
+      ),
   ];
   try {
     const res = await db.batch(stmts);

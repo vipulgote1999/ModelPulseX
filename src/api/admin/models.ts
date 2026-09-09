@@ -137,8 +137,12 @@ export function adminModelsRoutes(env: Env) {
       provider?: string;
       all?: boolean;
     };
+    // enabled is required and explicit: omitting it must never silently
+    // disable everything (especially combined with all:true).
+    if (body.enabled === undefined)
+      return c.json({ error: "enabled (boolean) required" }, 400);
     const enabled = body.enabled ? 1 : 0;
-    let ids = (body.ids ?? []).filter((n) => Number.isFinite(n));
+    let ids = (body.ids ?? []).filter((n) => Number.isInteger(n) && n > 0);
     if (body.provider && !ids.length) {
       const rows = await env.DB.prepare(
         "SELECT m.id FROM models m JOIN providers p ON p.id=m.provider_id WHERE p.name=?",

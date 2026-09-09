@@ -27,6 +27,7 @@ import {
   setModelCooldown,
   clearModelCooldown,
   escalateProviderCooldown,
+  rateLimitCapMs,
 } from "../db/cooldown";
 import {
   AUTO_DISABLE_DAILY_MAX_DEFAULT,
@@ -61,19 +62,28 @@ export async function runDiscovery(
   const existingSet = new Set<string>();
   for (const r of existingRows.results ?? [])
     existingSet.add(`${r.provider_id}:${r.provider_model_id}`);
-  for (const [pname, metas] of byProvider) {
-    const pid = providerMap.get(pname)!;
-    const seen = new Set<string>();
-    for (const meta of metas) seen.add(meta.provider_model_id);
-    // Batch upsert — N models in ceil(N/50) roundtrips instead of N*2
-    await upsertModelsBatch(env.DB, pid, metas, now);
-    for (const meta of metas) {
-      const key = `${pid}:${meta.provider_model_id}`;
-      if (!existingSet.has(key))
-        added.push(`${pname}:${meta.provider_model_id}`);
-      total++;
-    }
-    await markMissingInactive(env.DB, pid, seen, now);
+  // Per-provider partitions are independent (all writes scope to pid) — run
+  // providers concurrently instead of sequentially (19 providers × RTTs).
+  const perProvider = await Promise.all(
+    Array.from(byProvider.entries()).map(async ([pname, metas]) => {
+      const pid = providerMap.get(pname)!;
+      const seen = new Set<string>();
+      for (const meta of metas) seen.add(meta.provider_model_id);
+      // Batch upsert — N models in ceil(N/50) roundtrips instead of N*2
+      await upsertModelsBatch(env.DB, pid, metas, now);
+      const addedHere: string[] = [];
+      for (const meta of metas) {
+        const key = `${pid}:${meta.provider_model_id}`;
+        if (!existingSet.has(key))
+          addedHere.push(`${pname}:${meta.provider_model_id}`);
+      }
+      await markMissingInactive(env.DB, pid, seen, now);
+      return { added: addedHere, count: metas.length };
+    }),
+  );
+  for (const r of perProvider) {
+    total += r.count;
+    added.push(...r.added);
   }
   // One-shot guarded data fixes (tokenrouter paid purge, ollama allowlist) — replaces the
   // hardcoded cleanups that previously ran on EVERY discovery cycle.
@@ -102,9 +112,8 @@ export async function scheduleBenchmarks(
   // SAFETY: rpmConfig reads only string env vars (RPM_*/MAX_*_RPM); bindings are ignored.
   const rpmConfig = getRPMConfig(env as unknown as Record<string, unknown>);
   const nowIso = new Date().toISOString();
-  const hour = new Date().getUTCHours();
-  const benchTypes: BenchmarkType[] = ["short", "medium", "coding"];
-  const chosenType: BenchmarkType = benchTypes[hour % 3]!;
+  // Single-prompt observatory: no rotation — every cycle benchmarks coding.
+  const chosenType: BenchmarkType = "coding";
 
   // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
   // Rows-read fix: LRU comes from maintained models.last_benchmark_at (migration 0011,
@@ -121,7 +130,11 @@ export async function scheduleBenchmarks(
     ).all<SelectableModel>();
   } catch (e) {
     const msg = String(e);
-    if (msg.includes("benchmark_enabled") || msg.includes("last_benchmark_at") || msg.includes("no such column")) {
+    if (
+      msg.includes("benchmark_enabled") ||
+      msg.includes("last_benchmark_at") ||
+      msg.includes("no such column")
+    ) {
       active = await env.DB.prepare(
         `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
          FROM models m JOIN providers p ON p.id=m.provider_id
@@ -231,8 +244,9 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
   const workload = WORKLOADS[job.benchmark_type as BenchmarkType];
   const prov = providerFor(job.provider, env);
   if (!prov) return;
-  // fetch model row for benchmark
-  const mrow = await env.DB.prepare("SELECT * FROM models WHERE id=?")
+  // Existence check only — the job already carries every field the benchmark needs,
+  // so read the narrow id column instead of SELECT * (saves rows_read × jobs/day).
+  const mrow = await env.DB.prepare("SELECT id FROM models WHERE id=?")
     .bind(job.model_id)
     .first();
   if (!mrow) return;
@@ -255,9 +269,8 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
   // provider_id is an unused placeholder (0) here.
   let result: import("../types").BenchmarkResult;
   try {
-    // SAFETY: object satisfies Model structurally — provider_id is an unused placeholder (0)
-    // because jobs identify providers by name.
     result = await prov.benchmarkModel(
+      // SAFETY: model object satisfies Model structurally; provider_id=0 unused (jobs key providers by name)
       model as unknown as import("../types").Model,
       workload,
     );
@@ -303,14 +316,16 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
       err.includes("rate limit") ||
       err.includes("too many requests")
     ) {
-      // Provider refusing — escalating provider-wide cooldown honoring Retry-After when present
+      // Provider refusing — escalating provider-wide cooldown honoring Retry-After when present.
+      // Blind 429s (no Retry-After) cap at 15min: per-minute free limits reset in
+      // seconds, and doubling to the 2h max turned one burst into hours of outage.
       const retryMs = result.retry_after_ms ?? 60_000;
       await escalateProviderCooldown(
         env.DB,
         job.provider,
         retryMs,
         `RATE_LIMITED ${result.error_type ?? "429"}`.slice(0, 500),
-        cooldownMaxMs,
+        rateLimitCapMs(result.retry_after_ms, cooldownMaxMs),
       );
       // Also brief model cooldown to avoid immediate retry of same model
       await setModelCooldown(env.DB, job.model_id, 30_000, `RATE_LIMITED`);
@@ -444,7 +459,10 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
           .run();
       } catch (e) {
         const msg = String(e);
-        if (!msg.includes("benchmark_enabled") && !msg.includes("no such column"))
+        if (
+          !msg.includes("benchmark_enabled") &&
+          !msg.includes("no such column")
+        )
           throw e;
       }
       console.warn(dec.reason, job.provider, job.provider_model_id);
@@ -485,21 +503,23 @@ async function updateIncidents(
   },
 ) {
   const threshold = Number(env.INCIDENT_THRESHOLD) || 3;
-  // fetch recent statuses
-  const recent = await env.DB.prepare(
-    "SELECT status FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
-  )
-    .bind(modelId, threshold)
-    .all<{ status: string }>();
+  // The two reads are independent — run together instead of sequentially.
+  const [recent, open] = await Promise.all([
+    env.DB.prepare(
+      "SELECT status FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
+    )
+      .bind(modelId, threshold)
+      .all<{ status: string }>(),
+    env.DB.prepare(
+      "SELECT id FROM availability_incidents WHERE model_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+    )
+      .bind(modelId)
+      .first<{ id: number }>(),
+  ]);
   const vals = (recent.results ?? []).map((r) => r.status);
   const isFail = result.status !== "SUCCESS";
   // check if we have streak
   const failStreak = vals.filter((s) => s !== "SUCCESS").length;
-  const open = await env.DB.prepare(
-    "SELECT id FROM availability_incidents WHERE model_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
-  )
-    .bind(modelId)
-    .first<{ id: number }>();
   if (isFail && failStreak >= threshold && !open) {
     await env.DB.prepare(
       "INSERT INTO availability_incidents (model_id, started_at, reason, failure_count) VALUES (?,?,?,?)",

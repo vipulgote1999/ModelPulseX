@@ -6,13 +6,13 @@ import Leaderboard from "../components/Leaderboard";
 import RecommendationCards from "../components/RecommendationCards";
 import ChartModelSelector from "../components/ChartModelSelector";
 import CooldownPanel from "../components/CooldownPanel";
-import { getAA } from "../lib/intelligence";
 
 // Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
 const TpsChart = lazy(() => import("../charts/TpsChart"));
 const TtftChart = lazy(() => import("../charts/TtftChart"));
 const ItlChart = lazy(() => import("../charts/ItlChart"));
 const ReliabilityChart = lazy(() => import("../charts/ReliabilityChart"));
+const TimeoutChart = lazy(() => import("../charts/TimeoutChart"));
 const ComparePanel = lazy(() => import("../components/ComparePanel"));
 
 function ChartFallback() {
@@ -83,7 +83,7 @@ function buildReliabilityModels(
 
 export default function Dashboard() {
   const [range, setRange] = useState("7d");
-  const [benchmark, setBenchmark] = useState("all");
+  const [benchmark, setBenchmark] = useState("coding");
   const [provider, setProvider] = useState<string | undefined>();
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
@@ -111,15 +111,13 @@ export default function Dashboard() {
   });
   const rows = data?.leaderboard ?? [];
 
-  // Default chart selection = top 3 by Intelligence (AA score) then overall_score (user wants best AI first)
+  // Default chart selection = top 3 by measured overall_score (best models first,
+  // so the TPS/TTFT graphs show the leaders out of the box)
   const defaultIds = useMemo(() => {
     if (rows.length === 0) return [];
-    const ranked = [...rows].sort((a, b) => {
-      const aa = getAA(a.model)?.score ?? -1;
-      const bb = getAA(b.model)?.score ?? -1;
-      if (aa !== bb) return bb - aa;
-      return (b.overall_score ?? -1) - (a.overall_score ?? -1);
-    });
+    const ranked = [...rows].sort(
+      (a, b) => (b.overall_score ?? -1) - (a.overall_score ?? -1),
+    );
     return ranked.slice(0, 3).map((r) => r.model_id);
   }, [rows]);
 
@@ -261,16 +259,26 @@ export default function Dashboard() {
         </p>
       </div>
     );
-  if (error)
+  if (error) {
+    const msg = String(error);
+    const quota = /quota_exceeded|row read limit/i.test(msg);
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">
-        Failed to load: {String(error)} — try refresh. Discovery runs hourly;
-        queue may be catching up. API:{" "}
+        {quota ? (
+          "Database daily read limit reached — the free tier resets at midnight UTC, data resumes automatically. Nothing is lost; benchmarks queue until then."
+        ) : (
+          <>
+            Failed to load: {msg} — try refresh. Discovery runs hourly; queue
+            may be catching up.
+          </>
+        )}{" "}
+        API:{" "}
         <a className="underline" href="/api/health">
           /api/health
         </a>
       </div>
     );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -303,6 +311,80 @@ export default function Dashboard() {
             : ""}
         </span>
       </div>
+
+      {rows.length > 0 &&
+        (() => {
+          // SAFETY: rows[0] is the measured leader (API sorts by `sort`, default overall_score desc)
+          const r = rows[0] as unknown as {
+            display_name: string;
+            provider: string;
+            tps_now: number | null;
+            tps_7d: number | null;
+            ttft_now: number | null;
+            ttft_7d: number | null;
+            uptime_7d: number | null;
+          };
+          // Fall back to 7d medians when the live window has no samples yet
+          // (same rule as the BEST TPS card) — a leader must never show dashes.
+          const tps = r.tps_now ?? r.tps_7d;
+          const ttft = r.ttft_now ?? r.ttft_7d;
+          return (
+            <div className="rounded-xl border border-violet-800/60 bg-gradient-to-r from-violet-950/50 to-zinc-900/40 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="text-sm">🏆</span>
+              <div className="min-w-0">
+                <div className="text-[11px] tracking-widest text-violet-300/80 font-semibold">
+                  BEST MODEL RIGHT NOW
+                </div>
+                <div className="font-semibold truncate" title={r.display_name}>
+                  {r.display_name}{" "}
+                  <span className="text-xs font-normal text-zinc-400">
+                    · {r.provider}
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-4 text-sm ml-auto">
+                <span title="Measured tokens/sec (live now, else 7d median)">
+                  {tps != null ? (
+                    <>
+                      <b className="mono">{tps.toFixed(1)}</b>{" "}
+                      <span className="text-zinc-400 text-xs">
+                        TPS{r.tps_now == null ? " ·7d" : ""}
+                      </span>
+                    </>
+                  ) : (
+                    "— TPS"
+                  )}
+                </span>
+                <span title="Time to first token (live now, else 7d median)">
+                  {ttft != null ? (
+                    <>
+                      <b className="mono">{Math.round(ttft)}</b>{" "}
+                      <span className="text-zinc-400 text-xs">
+                        ms TTFT{r.ttft_now == null ? " ·7d" : ""}
+                      </span>
+                    </>
+                  ) : (
+                    "— TTFT"
+                  )}
+                </span>
+                <span title="7-day uptime">
+                  {r.uptime_7d != null ? (
+                    <>
+                      <b className="mono">{(r.uptime_7d * 100).toFixed(1)}%</b>{" "}
+                      <span className="text-zinc-400 text-xs">7d up</span>
+                    </>
+                  ) : (
+                    ""
+                  )}
+                </span>
+              </div>
+              <span className="text-[11px] text-zinc-500 w-full sm:w-auto">
+                Pinned in the TPS graph below — click leaderboard rows to
+                compare others.
+              </span>
+            </div>
+          );
+        })()}
 
       <SummaryCards
         summary={
@@ -359,8 +441,6 @@ export default function Dashboard() {
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
         >
           <option value="all">All benchmarks</option>
-          <option value="short">Short</option>
-          <option value="medium">Medium</option>
           <option value="coding">Coding</option>
         </select>
         <select
@@ -511,6 +591,10 @@ export default function Dashboard() {
 
       <Suspense fallback={<ChartFallback />}>
         <ReliabilityChart models={reliabilityModels} />
+      </Suspense>
+
+      <Suspense fallback={<ChartFallback />}>
+        <TimeoutChart range={range} />
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>

@@ -5,6 +5,8 @@ import { scoreLeaderboard } from "../benchmark/scoring";
 import { getSchedulerHealth } from "../db/health";
 import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
 import { freeHardFilterWhere } from "../providers/registry";
+import { nowFor } from "../db/snapshot";
+import type { SnapshotRow } from "../db/snapshot";
 import { isoHoursAgo } from "./shared";
 
 export function leaderboardRoutes(env: Env) {
@@ -31,6 +33,86 @@ export function leaderboardRoutes(env: Env) {
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
+
+    // Shared response tail: scoring, sorting, staleness, summary, caching.
+    // Serves both the snapshot fast path and the live-query fallback so the
+    // two can never drift apart in shape.
+    const finish = (
+      rows: LeaderboardRow[],
+      meta: MetaRow | null | undefined,
+      sched: unknown,
+    ) => {
+      const scored = scoreLeaderboard(rows, profile);
+      scored.sort((a, b) => {
+        if (sort === "tps")
+          return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
+        if (sort === "ttft")
+          return (
+            (a.ttft_7d ?? a.ttft_now ?? Infinity) -
+            (b.ttft_7d ?? b.ttft_now ?? Infinity)
+          );
+        if (sort === "uptime") return (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1);
+        return (b.overall_score ?? -1) - (a.overall_score ?? -1);
+      });
+      scored.forEach((r, i) => (r.rank = i + 1));
+
+      const isStale = meta?.last_benchmark
+        ? Date.now() - new Date(meta.last_benchmark).getTime() > 18 * 60 * 1000
+        : true;
+
+      const resp = c.json({
+        leaderboard: scored,
+        range,
+        benchmark,
+        sort,
+        profile,
+        meta: {
+          last_benchmark: meta?.last_benchmark ?? null,
+          last_aggregate: meta?.last_aggregate ?? null,
+          last_discovery: meta?.last_discovery ?? null,
+          is_stale: isStale,
+          stale_message: isStale
+            ? `STALE DATA Last measurement: ${meta?.last_benchmark ?? "never"}`
+            : null,
+          live: !isStale
+            ? `● LIVE Data updated ${meta?.last_benchmark ? Math.round((Date.now() - new Date(meta.last_benchmark).getTime()) / 1000) + "s ago" : ""}`
+            : null,
+          observed_window: since,
+          scheduler: sched,
+        },
+        summary: {
+          free_models: scored.filter((r) => r.free_status === "FREE").length,
+          online_now: scored.filter(
+            (r) =>
+              r.status === "SUCCESS" &&
+              r.last_test &&
+              Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000,
+          ).length,
+          best_tps:
+            scored
+              .filter((r) => r.tps_now != null)
+              .sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
+          best_ttft:
+            scored
+              .filter((r) => r.ttft_now != null)
+              .sort(
+                (a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity),
+              )[0] ?? null,
+          benchmarks_24h: meta?.benchmarks_24h ?? 0,
+        },
+      });
+      resp.headers.set(
+        "Cache-Control",
+        "public, max-age=120, stale-while-revalidate=120",
+      );
+      resp.headers.set("Vary", "Accept-Encoding");
+      try {
+        c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+      } catch {
+        // cache put best-effort
+      }
+      return resp;
+    };
 
     // fetch models (free + previously_free for 7d retention) — single query, uses idx_models_free_active_provider
     let modelFilter = "";
@@ -114,7 +196,7 @@ export function leaderboardRoutes(env: Env) {
       });
       resp.headers.set(
         "Cache-Control",
-        "public, max-age=30, stale-while-revalidate=60",
+        "public, max-age=120, stale-while-revalidate=120",
       );
       try {
         c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
@@ -122,6 +204,90 @@ export function leaderboardRoutes(env: Env) {
         // cache put best-effort
       }
       return resp;
+    }
+
+    // Snapshot fast path: precomputed medians (~600 rows/hit instead of
+    // ~9-15k). Falls back to live queries when the snapshot is empty (not yet
+    // backfilled) or the table is missing (pre-migration) — safe to deploy
+    // unconditionally.
+    try {
+      const [snapBatch, snapHealth] = await Promise.all([
+        env.DB.batch([
+          env.DB.prepare(
+            `SELECT benchmark, model_id, display_name, provider, provider_model_id, free_status, active,
+                    tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
+                    uptime_7d, error_rate_7d, sparkline, sample_count_24h, request_count_7d
+             FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}`,
+          ).bind(...(provider ? [benchmark, provider] : [benchmark])),
+          env.DB.prepare(
+            `SELECT m.id, m.last_benchmark_at, m.last_now_json FROM models m JOIN providers p ON p.id=m.provider_id
+             WHERE (m.free_status='FREE' OR m.free_status='PREVIOUSLY_FREE') AND COALESCE(m.benchmark_enabled,1)=1${modelHardFilter} ${modelFilter}`,
+          ).bind(...modelBinds),
+          env.DB.prepare(
+            `SELECT (SELECT max(started_at) FROM benchmark_runs) as last_benchmark,
+                    (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,
+                    (SELECT max(last_seen) FROM models) as last_discovery,
+                    (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`,
+          ).bind(isoHoursAgo(24)),
+        ]),
+        getSchedulerHealth(env.DB),
+      ]);
+      // SAFETY: D1 batch returns untyped rows; SELECT aliases match the shapes below.
+      const snapRows = (snapBatch[0]?.results ?? []) as SnapshotRow[];
+      if (snapRows.length > 0) {
+        const nowRows = (snapBatch[1]?.results ?? []) as Array<{
+          id: number;
+          last_benchmark_at: string | null;
+          last_now_json: string | null;
+        }>;
+        const nowMap = new Map(nowRows.map((m) => [m.id, m]));
+        const meta = (snapBatch[2]?.results?.[0] ?? null) as MetaRow | null;
+        const rows: LeaderboardRow[] = snapRows.map((s) => {
+          const n = nowMap.get(s.model_id);
+          const entry = nowFor(n?.last_now_json ?? null, benchmark);
+          let sparkline: Array<number | null> = [];
+          try {
+            const p: unknown = JSON.parse(s.sparkline ?? "[]");
+            if (Array.isArray(p)) sparkline = p as Array<number | null>;
+          } catch {
+            // corrupt sparkline JSON — show no sparkline rather than failing
+          }
+          return {
+            rank: 0,
+            model_id: s.model_id,
+            model: s.provider_model_id,
+            display_name: s.display_name,
+            provider: s.provider as LeaderboardRow["provider"],
+            free_status: s.free_status as LeaderboardRow["free_status"],
+            active: s.active === 1,
+            tps_now: entry?.tps ?? null,
+            tps_1h: s.tps_1h,
+            tps_24h: s.tps_24h,
+            tps_7d: s.tps_7d,
+            ttft_now: entry?.ttft ?? null,
+            ttft_1h: s.ttft_1h,
+            ttft_24h: s.ttft_24h,
+            ttft_7d: s.ttft_7d,
+            itl_now: entry?.itl ?? null,
+            itl_7d: s.itl_7d,
+            uptime_7d: s.uptime_7d,
+            error_rate_7d: s.error_rate_7d,
+            success_rate: s.uptime_7d,
+            status: (entry?.status ?? "UNKNOWN") as LeaderboardRow["status"],
+            last_test: entry?.at ?? n?.last_benchmark_at ?? null,
+            request_count_7d: s.request_count_7d ?? 0,
+            previously_free: s.free_status === "PREVIOUSLY_FREE",
+            measured_tps_label: "Measured TPS",
+            sparkline,
+            sampleCount24h: s.sample_count_24h ?? 0,
+            overall_score: null,
+          };
+        });
+        return finish(rows, meta, snapHealth);
+      }
+      // else: fall through to live queries below
+    } catch {
+      // Missing table or snapshot error — fall through to live queries below.
     }
 
     const benchmarkFilter = benchmark !== "all" ? "AND benchmark_type=?" : "";
@@ -313,12 +479,12 @@ export function leaderboardRoutes(env: Env) {
         env.DB.prepare(hourlySql)
           .bind(...hourlyBinds)
           .all<HourlyRow>(),
-      env.DB.prepare(sparkSql)
-        .bind(...sparkBinds)
-        .all<{ model_id: number; v: number | null; hour_start: string }>(),
-      env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
-      getSchedulerHealth(env.DB),
-    ]);
+        env.DB.prepare(sparkSql)
+          .bind(...sparkBinds)
+          .all<{ model_id: number; v: number | null; hour_start: string }>(),
+        env.DB.prepare(metaSql).bind(isoHoursAgo(24)).first<MetaRow>(),
+        getSchedulerHealth(env.DB),
+      ]);
 
     // Single pass over the merged rawLatest rows feeds both maps. Dedupe guard:
     // ms-precision started_at ties would self-join duplicate now-rows; first wins.
@@ -347,8 +513,6 @@ export function leaderboardRoutes(env: Env) {
 
     const hourlyMap = new Map<number, HourlyRow>();
     for (const r of hourlyRes.results ?? []) hourlyMap.set(r.model_id, r);
-
-
 
     const sparkMap = new Map<number, Array<number | null>>();
     for (const r of sparkRes.results ?? []) {
@@ -492,76 +656,7 @@ export function leaderboardRoutes(env: Env) {
       });
     }
 
-    const scored = scoreLeaderboard(rows, profile);
-    scored.sort((a, b) => {
-      if (sort === "tps")
-        return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
-      if (sort === "ttft")
-        return (
-          (a.ttft_7d ?? a.ttft_now ?? Infinity) -
-          (b.ttft_7d ?? b.ttft_now ?? Infinity)
-        );
-      if (sort === "uptime") return (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1);
-      return (b.overall_score ?? -1) - (a.overall_score ?? -1);
-    });
-    scored.forEach((r, i) => (r.rank = i + 1));
-
-    const isStale = metaRes?.last_benchmark
-      ? Date.now() - new Date(metaRes.last_benchmark).getTime() > 18 * 60 * 1000
-      : true;
-
-    const resp = c.json({
-      leaderboard: scored,
-      range,
-      benchmark,
-      sort,
-      profile,
-      meta: {
-        last_benchmark: metaRes?.last_benchmark ?? null,
-        last_aggregate: metaRes?.last_aggregate ?? null,
-        last_discovery: metaRes?.last_discovery ?? null,
-        is_stale: isStale,
-        stale_message: isStale
-          ? `STALE DATA Last measurement: ${metaRes?.last_benchmark ?? "never"}`
-          : null,
-        live: !isStale
-          ? `● LIVE Data updated ${metaRes?.last_benchmark ? Math.round((Date.now() - new Date(metaRes.last_benchmark).getTime()) / 1000) + "s ago" : ""}`
-          : null,
-        observed_window: since,
-        scheduler: schedHealth,
-      },
-      summary: {
-        free_models: scored.filter((r) => r.free_status === "FREE").length,
-        online_now: scored.filter(
-          (r) =>
-            r.status === "SUCCESS" &&
-            r.last_test &&
-            Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000,
-        ).length,
-        best_tps:
-          scored
-            .filter((r) => r.tps_now != null)
-            .sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
-        best_ttft:
-          scored
-            .filter((r) => r.ttft_now != null)
-            .sort(
-              (a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity),
-            )[0] ?? null,
-        benchmarks_24h: metaRes?.benchmarks_24h ?? 0,
-      },
-    });
-    resp.headers.set(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60",
-    );
-    resp.headers.set("Vary", "Accept-Encoding");
-    try {
-      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-    } catch {
-      // cache put best-effort
-    }
-    return resp;
+    return finish(rows, metaRes, schedHealth);
   });
   return r;
 }

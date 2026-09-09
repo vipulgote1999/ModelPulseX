@@ -22,7 +22,9 @@ export type ProviderName =
  | "tokenrouter"
  | "ollama";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
-export type BenchmarkType = "short" | "medium" | "coding";
+// Single-prompt observatory: every benchmark run uses the coding workload.
+// (medium/short retired — one prompt keeps TPS/TTFT comparable across models.)
+export type BenchmarkType = "coding";
 export type BenchmarkStatus =
  | "SUCCESS"
  | "TIMEOUT"
@@ -204,16 +206,16 @@ export interface IncidentRow {
 }
 
 export interface CompareEntry {
-  provider: ProviderName;
-  model: string;
-  tps_24h: number | null;
-  tps_7d: number | null;
-  ttft_24h: number | null;
-  ttft_7d: number | null;
-  uptime_7d: number | null;
-  error_rate: number | null;
-  request_count_7d: number;
-  winner?: boolean;
+ provider: ProviderName;
+ model: string;
+ tps_24h: number | null;
+ tps_7d: number | null;
+ ttft_24h: number | null;
+ ttft_7d: number | null;
+ uptime_7d: number | null;
+ error_rate: number | null;
+ request_count_7d: number;
+ winner?: boolean;
 }
 
 export interface ScoringProfile {

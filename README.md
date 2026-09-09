@@ -18,6 +18,7 @@ Every 5 minutes per model (global 10 / Zen 3 / OpenRouter 5 concurrency, per-mod
 - `TPS = output_tokens / generation_ms`  — **measured**, never `provider TPS` (same formula TokenDyno uses: output tokens / server-measured generation time)
 - Tokens from `usage.completion_tokens` if present else heuristic `ceil(chars/4)` flagged `heuristic`
 - Statuses: `SUCCESS | TIMEOUT | RATE_LIMITED | PROVIDER_ERROR | MODEL_UNAVAILABLE | STREAM_ERROR | UNKNOWN_ERROR`
+- HTTP 200 with zero output tokens is `STREAM_ERROR` (`empty_completion_no_tokens`), never `SUCCESS` — an empty completion would store a 0.0 TPS and inflate reliability
 - Outage after **3 consecutive failures** → incident (started_at, ended_at, duration, reason), same as spec
 
 Benchmark prompts (deterministic per `benchmark_type`, never cross-compare):
@@ -103,6 +104,8 @@ GET /api/models/:id
 GET /api/models/:id/history?range=1h|24h|3d|7d&benchmark=
 GET /api/models/:id/incidents
 GET /api/compare?models=1,2  or  ?model=laguna
+GET /api/timeouts?range=7d        (refusal history by day/provider/status)
+GET /api/cooldowns                (active provider + model cooldowns)
 GET /api/live                    (SSE via DO)
 POST /api/admin/discover         (ADMIN_TOKEN)
 POST /api/admin/benchmark        {model_id, benchmark_type}
