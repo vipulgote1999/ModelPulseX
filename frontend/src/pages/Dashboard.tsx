@@ -248,9 +248,14 @@ export default function Dashboard() {
     const quota = /quota_exceeded|row read limit/i.test(msg);
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-10 text-amber-300">
-        {quota
-          ? "Database daily read limit reached — the free tier resets at midnight UTC, data resumes automatically. Nothing is lost; benchmarks queue until then."
-          : <>Failed to load: {msg} — try refresh. Discovery runs hourly; queue may be catching up.</>}{" "}
+        {quota ? (
+          "Database daily read limit reached — the free tier resets at midnight UTC, data resumes automatically. Nothing is lost; benchmarks queue until then."
+        ) : (
+          <>
+            Failed to load: {msg} — try refresh. Discovery runs hourly; queue
+            may be catching up.
+          </>
+        )}{" "}
         API:{" "}
         <a className="underline" href="/api/health">
           /api/health

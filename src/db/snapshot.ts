@@ -2,7 +2,12 @@ import type { Env } from "../types";
 import { freeHardFilterWhere } from "../providers/registry";
 import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
 
-export const SNAPSHOT_BENCHMARKS = ["all", "short", "medium", "coding"] as const;
+export const SNAPSHOT_BENCHMARKS = [
+  "all",
+  "short",
+  "medium",
+  "coding",
+] as const;
 
 export interface SnapshotMeta {
   id: number;
@@ -91,7 +96,10 @@ export function buildSnapshotRows(input: {
     arr.push(r);
     byModelBench.set(k, arr);
   }
-  const sparkByModelBench = new Map<string, Array<{ t: string; v: number | null }>>();
+  const sparkByModelBench = new Map<
+    string,
+    Array<{ t: string; v: number | null }>
+  >();
   for (const s of spark) {
     const k = `${s.model_id}\n${s.benchmark_type}`;
     const arr = sparkByModelBench.get(k) ?? [];
@@ -218,15 +226,15 @@ export async function refreshLeaderboardSnapshot(
   try {
     const hardFilter = freeHardFilterWhere("p", "m");
     const [modelsRes, rawRes, sparkRes] = await db.batch([
-      db
-        .prepare(
-          `SELECT m.id, m.provider_model_id, m.display_name, m.free_status, m.active, p.name as provider
+      db.prepare(
+        `SELECT m.id, m.provider_model_id, m.display_name, m.free_status, m.active, p.name as provider
            FROM models m JOIN providers p ON p.id=m.provider_id
            WHERE (m.free_status='FREE' OR m.free_status='PREVIOUSLY_FREE') AND COALESCE(m.benchmark_enabled,1)=1${hardFilter}
            ORDER BY m.display_name`,
-        ),
-      db.prepare(
-        `SELECT model_id, benchmark_type,
+      ),
+      db
+        .prepare(
+          `SELECT model_id, benchmark_type,
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as g_tps_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as g_ttft_1h,
@@ -241,25 +249,31 @@ export async function refreshLeaderboardSnapshot(
            COUNT(*) as tot_7d
          FROM benchmark_runs WHERE started_at >= ?
          GROUP BY model_id, benchmark_type`,
-      ).bind(
-        new Date(nowMs - 1 * 3600 * 1000).toISOString(),
-        new Date(nowMs - 1 * 3600 * 1000).toISOString(),
-        new Date(nowMs - 1 * 3600 * 1000).toISOString(),
-        new Date(nowMs - 24 * 3600 * 1000).toISOString(),
-        new Date(nowMs - 24 * 3600 * 1000).toISOString(),
-        new Date(nowMs - 24 * 3600 * 1000).toISOString(),
-        since7d,
-      ),
-      db.prepare(
-        `SELECT model_id, benchmark_type, hour_start, AVG(median_tps) as v
+        )
+        .bind(
+          new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
+          since7d,
+        ),
+      db
+        .prepare(
+          `SELECT model_id, benchmark_type, hour_start, AVG(median_tps) as v
          FROM hourly_model_stats WHERE hour_start >= ?
          GROUP BY model_id, benchmark_type, hour_start ORDER BY hour_start ASC`,
-      ).bind(since24h),
+        )
+        .bind(since24h),
     ]);
     const models = (modelsRes?.results ?? []) as SnapshotMeta[];
     const raw = (rawRes?.results ?? []) as SnapshotRaw[];
     const spark = (sparkRes?.results ?? []) as SnapshotSpark[];
     const rows = buildSnapshotRows({ models, raw, spark, nowIso });
+    // Sweep rows for models no longer servable (deactivated/paid) or stale
+    // benchmark sets: anything not refreshed by this tick is deleted by its
+    // snapshot_at instead of tracking churn explicitly.
     // Upsert in chunks (stay under D1 batch variable limits).
     const CHUNK = 50;
     for (let i = 0; i < rows.length; i += CHUNK) {
@@ -325,10 +339,7 @@ export interface NowEntry {
 
 /** Latest-run overlay: pick the per-benchmark entry, or the newest across
  *  types for the 'all' view. Pure + unit-tested. */
-export function nowFor(
-  json: string | null,
-  bench: string,
-): NowEntry | null {
+export function nowFor(json: string | null, bench: string): NowEntry | null {
   if (!json) return null;
   try {
     const o = JSON.parse(json) as Record<string, NowEntry>;

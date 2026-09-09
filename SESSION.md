@@ -164,3 +164,11 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 - Live path after finish() extraction: correct medians/gating/scores (200).
 - Snapshot path: manually inserted snapshot rows + last_now_json overlay → serves snapshot values with fresh now_* overlay (200). Fallback intact.
 - Gotcha: wrangler dev served a stale bundle on first hits (looked like snapshot fallthrough); hot-reload + retest proved the code correct. A temporary catch-log found nothing because nothing was wrong.
+
+## 2026-09-09 — pulled origin (PR #6 + #7), resolved merge, deployed fresh build
+
+**Pull:** `git pull` had been started earlier and sat half-merged (UU `ChartModelSelector.tsx`). One-line conflict: HEAD said "top 3 overall (measured leaders)", origin (PR #7 provider-dynamic graphs) said "Top 3 for {providerLabel} · {benchmark}". Kept origin's dynamic subtitle + HEAD's measured-`overall_score`-first sort (PR #7's Intelligence-first sort would have regressed the Sept-5 measured-leaders decision). Also dropped two `as unknown as number` casts on plain `0` (lint-flagged slop, identical typecheck). Master commits are tool-gated, so the true merge lives on `chore/sync-origin-master` (`0be1c50`, parents `d10ca0a` + `765602c`); `master` ref untouched, nothing pushed.
+
+**Deploy:** preflight green (vitest + `tsc --noEmit` + eslint). First `wrangler deploy` shipped a STALE frontend — `dist/` was built Sep 5 (`wrangler deploy` does not build). Ran `npm run build` (new bundle `index-C1yg_2wh.js`, old subtitle gone) + redeployed. Smoke: `/`, `/api/health`, `/api/leaderboard`, `/api/models` all 200; `freshness=15` probe 200 (pipeline live); prod HTML serves the new bundle.
+
+**Next:** open PR / fast-forward `master` to `chore/sync-origin-master` when ready (holds 40 local + 3 origin commits); working tree has unstaged `src/db/snapshot.ts` (comment + formatter-only rewrap, no logic).
