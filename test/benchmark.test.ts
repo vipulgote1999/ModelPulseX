@@ -342,10 +342,16 @@ describe("benchmark engine — reasoning/thinking streams", () => {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
         // mimo-v2.5-free live shape: thinking on reasoning fields, provider
         // reports reasoning_tokens 0 while completion (30) is ~all thinking
-        push({ choices: [{ delta: { content: "", reasoning: "First, thinking" } }] });
+        push({
+          choices: [{ delta: { content: "", reasoning: "First, thinking" } }],
+        });
         push({ choices: [{ delta: { content: "PONG" } }] });
         push({
-          usage: { prompt_tokens: 252, completion_tokens: 30, total_tokens: 282 },
+          usage: {
+            prompt_tokens: 252,
+            completion_tokens: 30,
+            total_tokens: 282,
+          },
         });
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
@@ -366,7 +372,12 @@ describe("benchmark engine — reasoning/thinking streams", () => {
       providerModelId: "mimo-v2.5-free",
       apiUrl: "https://opencode.ai/zen/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 64, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 64,
+        timeout_ms: 5000,
+      },
     } as never);
     expect(res.status).toBe("SUCCESS");
     // provider 30 is thinking-polluted: visible answer is "PONG" (1 token),

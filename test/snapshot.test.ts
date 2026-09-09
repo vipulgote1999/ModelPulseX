@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { buildSnapshotRows, nowFor } from "../src/db/snapshot";
-import type { SnapshotMeta, SnapshotRaw, SnapshotSpark } from "../src/db/snapshot";
+import type {
+  SnapshotMeta,
+  SnapshotRaw,
+  SnapshotSpark,
+} from "../src/db/snapshot";
 
 const models: SnapshotMeta[] = [
   {
@@ -120,7 +124,12 @@ describe("buildSnapshotRows", () => {
     const spark: SnapshotSpark[] = [];
     for (let h = 0; h < 30; h++) {
       const t = `2026-09-0${h < 10 ? "1" : "2"}T${String(h % 24).padStart(2, "0")}:00:00.000Z`;
-      spark.push({ model_id: 1, benchmark_type: "coding", hour_start: t, v: 10 });
+      spark.push({
+        model_id: 1,
+        benchmark_type: "coding",
+        hour_start: t,
+        v: 10,
+      });
     }
     const rows = buildSnapshotRows({
       models: [models[0]!],
@@ -143,8 +152,20 @@ describe("buildSnapshotRows", () => {
 
 describe("nowFor", () => {
   const json = JSON.stringify({
-    short: { tps: 10, ttft: 5, itl: 1, status: "SUCCESS", at: "2026-09-05T10:00:00.000Z" },
-    medium: { tps: 20, ttft: 6, itl: 2, status: "TIMEOUT", at: "2026-09-05T11:00:00.000Z" },
+    short: {
+      tps: 10,
+      ttft: 5,
+      itl: 1,
+      status: "SUCCESS",
+      at: "2026-09-05T10:00:00.000Z",
+    },
+    medium: {
+      tps: 20,
+      ttft: 6,
+      itl: 2,
+      status: "TIMEOUT",
+      at: "2026-09-05T11:00:00.000Z",
+    },
   });
   it("picks the requested benchmark entry", () => {
     expect(nowFor(json, "short")?.tps).toBe(10);

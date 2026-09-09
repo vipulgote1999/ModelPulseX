@@ -27,9 +27,7 @@ export function adminRoutes(env: Env) {
     const token = String(env.ADMIN_TOKEN ?? "");
     // Constant-time checks + no token-as-password fallback; ADMIN_PASSWORD must be configured
     const idOk = timingSafeEqual(id, expectedId);
-    const passOk = expectedPass
-      ? timingSafeEqual(pass, expectedPass)
-      : false;
+    const passOk = expectedPass ? timingSafeEqual(pass, expectedPass) : false;
     // Symmetric jitter 80-150ms on both success and failure paths to avoid timing oracle (P1)
     await new Promise((r) => setTimeout(r, 80 + Math.random() * 70));
     if (!idOk || !passOk) {
