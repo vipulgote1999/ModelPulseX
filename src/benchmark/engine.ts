@@ -315,14 +315,23 @@ export async function measureBenchmark(
       typeof performance !== "undefined" && performance.now
         ? performance.now()
         : completedAtMs;
-    // Reasoning tokens are billed as output but are not visible answer text —
-    // exclude them so TPS measures answer streaming speed, not thinking.
-    if (
-      outputTokens != null &&
-      reasoningTokensReported != null &&
-      reasoningTokensReported > 0
-    ) {
-      outputTokens = Math.max(0, outputTokens - reasoningTokensReported);
+    // Visible-answer accounting for thinking models (OpenAI/OpenRouter
+    // convention: usage completion INCLUDES reasoning tokens). TPS must be
+    // visible tokens over the answer-phase decode window — never thinking
+    // tokens over end-to-end wall. Subtract the reported split when the
+    // provider is honest; otherwise the provider number provably contains
+    // thinking (reasoning deltas were seen) so derive from streamed answer
+    // text and flag heuristic to keep provenance honest.
+    if (outputTokens != null && isReasoning) {
+      if (reasoningTokensReported != null && reasoningTokensReported > 0) {
+        outputTokens = Math.max(0, outputTokens - reasoningTokensReported);
+      } else if (tokenEstimationMethod === "provider") {
+        const visible = estimateTokensHeuristic(outputText);
+        if (visible != null) {
+          outputTokens = visible;
+          tokenEstimationMethod = "heuristic";
+        }
+      }
     }
     // fallback token count if provider didn't return usage
     if (outputTokens == null) {
@@ -358,7 +367,6 @@ export async function measureBenchmark(
       firstPerf,
       completedPerf,
       chunkTimes,
-      isReasoning,
       seenReasoning,
     );
   } catch (e: unknown) {
@@ -408,7 +416,6 @@ function finalize(
   firstPerf?: number | null,
   completedPerf?: number | null,
   chunkTimesMs?: number[],
-  isReasoning?: boolean,
   sawReasoning?: boolean,
 ): BenchmarkResult {
   // Empty completion is not a success: HTTP 200 with zero ANSWER chunks poisons
@@ -442,14 +449,12 @@ function finalize(
   } else {
     gen = computeGenerationMs(firstMs, completedMs);
   }
-  // For reasoning models where provider buffers all tokens, observed gen is ~1ms — clamp to avoid 10k+ TPS inflation
-  // Use total duration as fallback for reasoning, else min 20ms clamp
+  // Decode-phase TPS for every model type: visible tokens over the
+  // answer window (completed - first answer token). Thinking time lives in
+  // TTFT, never in the TPS denominator — the numerator reaching here is
+  // already visible-only (provider split or text-derived). Floor 20ms
+  // guards single-chunk quantization, not thinking.
   let genForTps = gen;
-  if (isReasoning && gen != null) {
-    // reasoning: server thinks before first token, so total = ttft + gen is true wall time
-    const total = ttft != null && gen != null ? ttft + gen : null;
-    if (total != null && total > 0) genForTps = total;
-  }
   if (genForTps != null && genForTps < 20) genForTps = 20;
   let tps = computeTPS(outputTokens, genForTps);
   // Edge: streaming chunk handled in same tick -> TTFT/generation 0 but status SUCCESS -> clamp to minimal measurable
