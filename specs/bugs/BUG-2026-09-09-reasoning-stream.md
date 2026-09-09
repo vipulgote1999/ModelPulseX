@@ -123,3 +123,13 @@ confirming both the guard fix and the short-budget raise to 64. Post-fix
 run 18: SUCCESS, TTFT 3009ms (thinking time), TPS 9.9 via total-duration
 fallback, visible in UI as rank #1. muse-spark-1.3 returns HTTP 500
 upstream (provider-side); engine correctly stores PROVIDER_ERROR.
+
+TPS re-evaluation 2026-09-09 (AA methodology + vLLM/tutorialQ/
+OpenAI-docs consensus): TPS must be visible tokens over the answer-phase
+decode window for every model type; usage completion INCLUDES reasoning
+(OpenAI/OpenRouter convention); thinking time belongs in latency only.
+Fix: provider split when honest, else heuristic over streamed answer text
+(method flipped to heuristic), total-wall override removed. Live run 20:
+SUCCESS, output 1 (heuristic), TTFT 7177ms, gen 19ms, TPS 50 — fully
+derivable from stored columns. Pre-fix rows 17/18 keep old blended
+semantics and will age out of windows.
