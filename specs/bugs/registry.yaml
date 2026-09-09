@@ -5,3 +5,10 @@
   scope: src/benchmark/engine.ts
   summary: Streaming parser ignores reasoning deltas
   file: specs/bugs/BUG-2026-09-09-reasoning-stream.md
+- bug_id: BUG-2026-09-09T090000
+  date: '2026-09-09'
+  severity: low
+  priority: medium
+  scope: ci-audit-deps
+  summary: CI audit red on transitive dep vulns
+  file: specs/bugs/BUG-2026-09-09-npm-audit.md
