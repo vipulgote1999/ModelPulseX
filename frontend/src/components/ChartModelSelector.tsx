@@ -82,7 +82,8 @@ export default function ChartModelSelector({
           Graph comparison — pick up to 3 models
         </div>
         <div className="text-[11px] text-zinc-500">
-          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs below
+          Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs
+          below
         </div>
       </div>
 
