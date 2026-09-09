@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { OpenCodeZenProvider } from "../src/providers/opencode-zen";
+import { OpenCodeZenProvider, zenClientHeaders } from "../src/providers/opencode-zen";
 import { OpenRouterProvider } from "../src/providers/openrouter";
 
 // Mock fetch globally
@@ -43,22 +43,48 @@ describe("discovery — free filtering", () => {
   });
 
   it("Zen only *-free + big-pickle", async () => {
-    const fake = { data: [{ id: "big-pickle" }, { id: "deepseek-v4-flash-free" }, { id: "gpt-5.5" }, { id: "laguna-s-2.1-free" }] };
+    const fake = { data: [{ id: "big-pickle" }, { id: "mimo-v2.5-free" }, { id: "gpt-5.5" }, { id: "laguna-s-2.1-free" }] };
     vi.stubGlobal("fetch", vi.fn(async () => mockModelsResponse(fake)));
     const p = new OpenCodeZenProvider({} as never);
     const ids = (await p.discoverModels()).map((m) => m.provider_model_id);
     expect(ids).toContain("big-pickle");
-    expect(ids).toContain("deepseek-v4-flash-free");
+    expect(ids).toContain("mimo-v2.5-free");
     expect(ids).toContain("laguna-s-2.1-free");
     expect(ids).not.toContain("gpt-5.5");
   });
 
-  it("Zen fallback when fetch fails returns 9 known free", async () => {
+  it("Zen excludes retired deepseek-v4-flash-free from discovery", async () => {
+    const fake = { data: [{ id: "big-pickle" }, { id: "deepseek-v4-flash-free" }, { id: "mimo-v2.5-free" }] };
+    vi.stubGlobal("fetch", vi.fn(async () => mockModelsResponse(fake)));
+    const p = new OpenCodeZenProvider({} as never);
+    const ids = (await p.discoverModels()).map((m) => m.provider_model_id);
+    expect(ids).toContain("big-pickle");
+    expect(ids).toContain("mimo-v2.5-free");
+    expect(ids).not.toContain("deepseek-v4-flash-free");
+  });
+
+  it("Zen fallback when fetch fails returns 7 live free (dead ids pruned)", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("network"); }));
     const p = new OpenCodeZenProvider({} as never);
     const ids = (await p.discoverModels()).map((m) => m.provider_model_id);
-    expect(ids.length).toBe(9);
+    expect(ids.length).toBe(7);
     expect(ids).toContain("big-pickle");
+    expect(ids).not.toContain("deepseek-v4-flash-free");
+    expect(ids).not.toContain("x-preview-f-free");
+    expect(ids).not.toContain("hy3-free");
+    expect(ids).not.toContain("laguna-s-2.1-free");
+  });
+
+  it("Zen sends official CLI identity headers with per-call session/request ids", () => {
+    const a = zenClientHeaders();
+    const b = zenClientHeaders();
+    expect(a["user-agent"]).toMatch(/^opencode\//);
+    expect(a["x-opencode-client"]).toBe("cli");
+    expect(a["x-opencode-project"]).toBe("global");
+    expect(a["x-opencode-session"]).toMatch(/^ses_[0-9a-f]+$/);
+    expect(a["x-opencode-request"]).toMatch(/^msg_[0-9a-f]+$/);
+    expect(a["x-opencode-session"]).not.toBe(b["x-opencode-session"]);
+    expect(a["x-opencode-request"]).not.toBe(b["x-opencode-request"]);
   });
 
   it("UNKNOWN pricing skipped (no model with pricing missing treated as FREE)", async () => {

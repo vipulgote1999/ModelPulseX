@@ -12,6 +12,42 @@ const ZEN_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
 
 const KNOWN_FREE_EXACT = new Set<string>(["big-pickle"]);
 
+/** Proven retired upstream ("Model is unavailable") yet still listed in /models —
+ *  exclude from discovery so the scheduler stops burning cycles on it. */
+const KNOWN_RETIRED = new Set<string>(["deepseek-v4-flash-free"]);
+
+/** Official OpenCode CLI identity. Zen's free-tier gateway fingerprints these;
+ *  without them free models reject with MissingSessionID / hang server-side.
+ *  (Verified live 2026-09-08: same key 400s without, 200s with.) */
+const ZEN_CLIENT_UA =
+  "opencode/1.15.5 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
+
+function randomHex(bytes = 16): string {
+  try {
+    const c = globalThis.crypto as Crypto | undefined;
+    if (c && "getRandomValues" in c) {
+      const buf = new Uint8Array(bytes);
+      c.getRandomValues(buf);
+      return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch {
+    // fall through to Math.random
+  }
+  let s = "";
+  while (s.length < bytes * 2) s += Math.random().toString(16).slice(2);
+  return s.slice(0, bytes * 2);
+}
+
+export function zenClientHeaders(): Record<string, string> {
+  return {
+    "user-agent": ZEN_CLIENT_UA,
+    "x-opencode-client": "cli",
+    "x-opencode-project": "global",
+    "x-opencode-session": `ses_${randomHex()}`,
+    "x-opencode-request": `msg_${randomHex()}`,
+  };
+}
+
 function isFreeZenModel(id: string): boolean {
   if (KNOWN_FREE_EXACT.has(id)) return true;
   return id.endsWith("-free");
@@ -60,7 +96,7 @@ export class OpenCodeZenProvider implements LLMProvider {
       const data = (await res.json()) as { data?: { id: string }[] };
       const ids = (data.data ?? []).map((m) => m.id);
       // If Zen API someday returns pricing, we would check it; today filter by suffix
-      const free = ids.filter(isFreeZenModel);
+      const free = ids.filter((id) => isFreeZenModel(id) && !KNOWN_RETIRED.has(id));
       if (free.length === 0) return this.fallbackFree();
       return free.map((id) => ({
         provider: "opencode_zen" as const,
@@ -80,17 +116,16 @@ export class OpenCodeZenProvider implements LLMProvider {
   }
 
   private fallbackFree(): ModelMetadata[] {
-    // Keep last-known free set so offline still benchmarks 9
+    // Last-known live free set (verified 2026-09-08). deepseek retired upstream,
+    // x-preview/hy3/laguna removed from the catalog — all excluded.
     const ids = [
       "big-pickle",
-      "deepseek-v4-flash-free",
-      "x-preview-f-free",
       "muse-spark-1.2-contributor-free",
+      "muse-spark-1.3-contributor-free",
       "mimo-v2.5-free",
-      "hy3-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
-      "laguna-s-2.1-free",
+      "ling-3.0-flash-fin-free",
     ];
     return ids.map((id) => ({
       provider: "opencode_zen" as const,
@@ -120,7 +155,8 @@ export class OpenCodeZenProvider implements LLMProvider {
       apiUrl: ZEN_CHAT_URL,
       apiKey: this.env.OPENCODE_API_KEY,
       benchmark,
-      extraHeaders: {},
+      // ponytail: static UA + per-call random session/request ids; rotate UA if gateway starts rejecting it
+      extraHeaders: zenClientHeaders(),
     });
   }
 }
