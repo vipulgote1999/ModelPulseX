@@ -263,10 +263,36 @@ describe("benchmark engine — reasoning/thinking streams", () => {
         const push = (obj: unknown) =>
           controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
         // mimo-v2.5-free shape: empty content + reasoning, budget spent thinking
-        push({ choices: [{ index: 0, finish_reason: null, delta: { role: "assistant", content: "", reasoning: "First, the user said" } }] });
-        push({ choices: [{ index: 0, finish_reason: "length", delta: { role: "assistant", content: "", reasoning: null } }] });
         push({
-          choices: [{ index: 0, finish_reason: "length", delta: { role: "assistant", content: "" } }],
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                role: "assistant",
+                content: "",
+                reasoning: "First, the user said",
+              },
+            },
+          ],
+        });
+        push({
+          choices: [
+            {
+              index: 0,
+              finish_reason: "length",
+              delta: { role: "assistant", content: "", reasoning: null },
+            },
+          ],
+        });
+        push({
+          choices: [
+            {
+              index: 0,
+              finish_reason: "length",
+              delta: { role: "assistant", content: "" },
+            },
+          ],
           usage: {
             prompt_tokens: 252,
             completion_tokens: 16,
@@ -293,12 +319,63 @@ describe("benchmark engine — reasoning/thinking streams", () => {
       providerModelId: "mimo-v2.5-free",
       apiUrl: "https://opencode.ai/zen/v1/chat/completions",
       apiKey: undefined,
-      benchmark: { type: "short", prompt: "hi", max_tokens: 64, timeout_ms: 5000 },
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 64,
+        timeout_ms: 5000,
+      },
     } as never);
     // 16 provider tokens but zero answer chunks: model thought, never answered
     expect(res.status).toBe("STREAM_ERROR");
     expect(res.error_type).toMatch(/reasoning_no_content/);
     expect(res.tps).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("reasoning TPS uses visible tokens over answer-phase decode", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        // mimo-v2.5-free live shape: thinking on reasoning fields, provider
+        // reports reasoning_tokens 0 while completion (30) is ~all thinking
+        push({ choices: [{ delta: { content: "", reasoning: "First, thinking" } }] });
+        push({ choices: [{ delta: { content: "PONG" } }] });
+        push({
+          usage: { prompt_tokens: 252, completion_tokens: 30, total_tokens: 282 },
+        });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "opencode_zen",
+      providerModelId: "mimo-v2.5-free",
+      apiUrl: "https://opencode.ai/zen/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "short", prompt: "hi", max_tokens: 64, timeout_ms: 5000 },
+    } as never);
+    expect(res.status).toBe("SUCCESS");
+    // provider 30 is thinking-polluted: visible answer is "PONG" (1 token),
+    // flagged heuristic so the provenance stays honest
+    expect(res.output_tokens).toBe(1);
+    expect(res.token_estimation_method).toBe("heuristic");
+    // decode window clamps to 20ms floor: 1 token / 0.02s = 50 TPS —
+    // derivable from stored columns, no total-wall blending
+    expect(res.tps).toBeCloseTo(50, 5);
     vi.restoreAllMocks();
   });
 
