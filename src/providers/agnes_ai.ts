@@ -8,7 +8,7 @@ import type {
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://apihub.agnes-ai.com/v1/models";
 const CHAT_URL = "https://apihub.agnes-ai.com/v1/chat/completions";
-const VERIFIED_FREE = new Set<string>([
+export const VERIFIED_FREE = new Set<string>([
     "agnes-2.0-flash",
     "agnes-1.5-flash",
     "agnes-image-2.0-flash",

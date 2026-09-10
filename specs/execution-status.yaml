@@ -1,17 +1,23 @@
+# DERIVED VIEW — do not edit by hand.
+# Source of truth: specs/epics/<id>-<slug>/epic.yaml (epic status + story ids/statuses).
+# Epic ids and order come from specs/release-plan.yaml; an epic without a capsule is pending.
+# Kept in sync by test/spec-status-consistency.test.ts — npm test fails on any disagreement.
 epics:
   e01:
     status: completed
     stories:
-      e01s01-scaffold: completed
-      e01s02-db-and-discovery: completed
-      e01s03-benchmark-engine: completed
-      e01s04-queue-cron-do: completed
-      e01s05-api-and-aggregation: completed
-      e01s06-frontend: completed
-      e01s07-verify-and-deploy: completed
+      e01s01: completed
+      e01s02: completed
+      e01s03: completed
+      e01s04: completed
+      e01s05: completed
+      e01s06: completed
+      e01s07: completed
   e02:
     status: pending
     stories: {}
   e03:
-    status: pending
-    stories: {}
+    status: completed
+    stories:
+      e03s01: completed
+      e03s02: completed

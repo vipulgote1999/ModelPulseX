@@ -35,6 +35,44 @@ export function percentile(values: number[], p: number): number | null {
  *  Artificial Analysis uses sustained medians over trailing windows). */
 export const MIN_SAMPLES = { w1h: 2, w24h: 3, w7d: 5 } as const;
 
+/** Trust label for the primary TPS figure, derived from the gating outcome (#11).
+ *  A constant label on every row tells the reader nothing about the row. */
+export type TpsLabel =
+  | "Measured TPS"
+  | "Insufficient samples"
+  | "No recent data";
+
+export function measuredTpsLabel(
+  samples24h: number | null | undefined,
+  tps24h: number | null,
+): TpsLabel {
+  if ((samples24h ?? 0) <= 0) return "No recent data";
+  if (tps24h == null) return "Insufficient samples";
+  return "Measured TPS";
+}
+
+/** Rank eligibility: a row needs at least MIN_SAMPLES.w24h runs in the last 24h
+ *  before it can hold a rank position (#11). Rank is a claim about comparable
+ *  evidence; a row that measured nothing today cannot support it. */
+export function isRankEligible(samples24h: number | null | undefined): boolean {
+  return (samples24h ?? 0) >= MIN_SAMPLES.w24h;
+}
+
+/** Number the evidence-gated rows 1..n and sink unranked rows (rank = null)
+ *  below them, preserving each group's incoming sort order. Unranked rows stay
+ *  visible — they are listed, just not ordered. */
+export function assignRanks<
+  T extends { rank: number | null; sampleCount24h?: number },
+>(rows: T[]): T[] {
+  const ranked: T[] = [];
+  const unranked: T[] = [];
+  for (const r of rows)
+    (isRankEligible(r.sampleCount24h) ? ranked : unranked).push(r);
+  ranked.forEach((r, i) => (r.rank = i + 1));
+  unranked.forEach((r) => (r.rank = null));
+  return [...ranked, ...unranked];
+}
+
 /** Parse SQLite GROUP_CONCAT numeric output ("12.5,,30,0") into clean positive numbers. */
 export function parseConcatNumbers(gc: string | null | undefined): number[] {
   return (gc ?? "")

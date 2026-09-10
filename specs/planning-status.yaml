@@ -1,7 +1,12 @@
+# Planning checklist. Reconciled 2026-09-10 (issue #14):
+# `slice-tasks` and `plan-work` were still pending after the work
+# shipped across e01-e03. The epic capsules (specs/epics/*/epic.yaml)
+# are the source of truth; test/spec-status-consistency.test.ts fails
+# when this file or execution-status.yaml disagrees with them.
 checklist:
   survey-context: done
   research-first: done
   scope-work: done
   release-plan: done
-  slice-tasks: pending
-  plan-work: pending
+  slice-tasks: done
+  plan-work: done

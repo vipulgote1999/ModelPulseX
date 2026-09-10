@@ -88,6 +88,20 @@ function withSecurityHeaders(res: Response, req?: Request): Response {
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- workers-types vs DOM lib mismatch is intentional, skipLibCheck covers runtime
 // @ts-ignore - workers-types Response/Request mismatch with DOM lib (skipLibCheck covers lib, this suppresses satisfies check)
+/** Staleness watchdog — never throws. Called on the 5-minute tick so a
+ *  30-minute STALE_ALERT_MINUTES threshold is honored within ~5 minutes, not ~60.
+ *  STALE_ALERT_MINUTES threshold is honored within ~5 minutes, not ~60.
+ *  Cost: two single-row reads (MAX(started_at) uses idx_benchmark_runs_started,
+ *  plus the scheduler_health singleton) — ~600 rows/day against the D1 budget. */
+async function runWatchdog(env: Env): Promise<void> {
+  try {
+    const wd = await watchdogCheck(env.DB, env);
+    if (wd.stale) console.warn("watchdog:", JSON.stringify(wd));
+  } catch (e) {
+    console.error("watchdog failed", e);
+  }
+}
+
 export default {
   async fetch(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional for workers-types compatibility
@@ -216,11 +230,15 @@ export default {
   ): Promise<void> {
     // ScheduledController exposes `cron` natively at this compatibility_date.
     const cron = controller.cron;
-    // */5 * * * *   → benchmark scheduler (+ inline fallback)
+    // */5 * * * *   → benchmark scheduler (+ inline fallback) + staleness watchdog
     // */10 * * * *  → 10-minute aggregation (tenmin_model_stats for 5–10m live lines)
     // */30 * * * *  → frequent discovery (free-model refresh, discontinued → inactive)
-    // 0 * * * *     → hourly discovery + aggregation + cleanup + staleness watchdog
+    // 0 * * * *     → hourly discovery + aggregation + cleanup
     if (cron === "*/5 * * * *") {
+      // Watchdog first: if scheduling itself is broken, the stall still has to be
+      // visible. Runs every 5 min so a STALE_ALERT_MINUTES=30 threshold is
+      // honored within ~5 minutes instead of the old ~60 (issue #22).
+      await runWatchdog(env);
       // Inline fallback: run the first N selected jobs inside this invocation. Guarantees
       // baseline coverage even when queue delivery stalls; queue carries the rest.
       const inlineTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");
@@ -281,14 +299,7 @@ export default {
           console.error("retention cleanup failed", e);
         }
       }
-      // Staleness watchdog — alerts via webhook (rate-limited to hourly) when the
-      // pipeline stops producing measurements. Never throws.
-      try {
-        const wd = await watchdogCheck(env.DB, env);
-        if (wd.stale) console.warn("watchdog:", JSON.stringify(wd));
-      } catch (e) {
-        console.error("watchdog failed", e);
-      }
+      // (Staleness watchdog moved to the */5 tick — see runWatchdog.)
     } else {
       // fallback: run both if unknown
       const fbTake = Number(env.BENCH_INLINE_FALLBACK ?? "6");

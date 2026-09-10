@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
-import { getSchedulerHealth, getLastBenchmarkAt } from "../db/health";
+import {
+  getSchedulerHealth,
+  getLastBenchmarkAt,
+  alertChannelState,
+} from "../db/health";
+import { getRowsReadToday, rowsCap, utcDay } from "../db/query-cost";
 
 export function healthRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -12,9 +17,10 @@ export function healthRoutes(env: Env) {
     const freshnessParam = c.req.query("freshness");
     if (freshnessParam === undefined) return c.json(base);
     const minutes = Math.max(1, Number(freshnessParam) || 15);
-    const [lastBench, sched] = await Promise.all([
+    const [lastBench, sched, rowsToday] = await Promise.all([
       getLastBenchmarkAt(env.DB),
       getSchedulerHealth(env.DB),
+      getRowsReadToday(env.DB),
     ]);
     const ageMinutes = lastBench
       ? Math.round((Date.now() - new Date(lastBench).getTime()) / 60000)
@@ -28,7 +34,19 @@ export function healthRoutes(env: Env) {
         freshness_threshold_minutes: minutes,
         last_benchmark: lastBench,
         age_minutes: ageMinutes,
-        scheduler: sched,
+        // Watchdog configuration is part of health: `log-only` means a stall
+        // would only reach Workers Logs, not an operator (issue #22).
+        scheduler: { ...sched, alert_channel: alertChannelState(env) },
+        // D1 budget visibility without the Cloudflare dashboard (issue #12).
+        // `lower_bound: true` because only instrumented query shapes are counted.
+        d1_budget: {
+          day: rowsToday?.day ?? utcDay(),
+          rows_read_measured_today: rowsToday?.rows_read ?? null,
+          top_shape: rowsToday?.top_shape ?? null,
+          top_rows: rowsToday?.top_rows ?? null,
+          cap: rowsCap(env),
+          lower_bound: true,
+        },
       },
       fresh ? 200 : 503,
     );

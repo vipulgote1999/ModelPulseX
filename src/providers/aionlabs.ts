@@ -8,7 +8,7 @@ import type {
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://api.aionlabs.ai/v1/models";
 const CHAT_URL = "https://api.aionlabs.ai/v1/chat/completions";
-const VERIFIED_FREE = new Set<string>([
+export const VERIFIED_FREE = new Set<string>([
     "aion-3-0",
     "aion-3-0-mini",
     "aion-2-0",

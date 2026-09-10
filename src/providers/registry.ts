@@ -5,17 +5,17 @@
 import type { Env, LLMProvider } from "../types";
 import { OpenCodeZenProvider } from "./opencode-zen";
 import { OpenRouterProvider } from "./openrouter";
-import { GroqProvider } from "./groq";
+import { GroqProvider, VERIFIED_FREE as GROQ_FREE } from "./groq";
 import { CerebrasProvider } from "./cerebras";
 import { GeminiProvider } from "./gemini";
 import { NvidiaProvider } from "./nvidia";
 import { SambanovaProvider } from "./sambanova";
 import { MistralProvider } from "./mistral";
-import { AgnesAiProvider } from "./agnes_ai";
-import { AionLabsProvider } from "./aionlabs";
+import { AgnesAiProvider, VERIFIED_FREE as AGNES_FREE } from "./agnes_ai";
+import { AionLabsProvider, VERIFIED_FREE as AION_FREE } from "./aionlabs";
 import { KiloCodeProvider } from "./kilocode";
-import { GlhfProvider } from "./glhf";
-import { NscaleProvider } from "./nscale";
+import { GlhfProvider, VERIFIED_FREE as GLHF_FREE } from "./glhf";
+import { NscaleProvider, VERIFIED_FREE as NSCALE_FREE } from "./nscale";
 import { SpekaProvider } from "./speka";
 import { NexaApiProvider } from "./nexaapi";
 import { OrcaRouterProvider } from "./orcarouter";
@@ -186,6 +186,8 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     name: "groq",
     create: (e) => new GroqProvider(e),
     ...PROVIDER_ENDPOINTS["groq"],
+    hardFreeFilter: (m) =>
+      `${m}.provider_model_id IN (${idInList(GROQ_FREE)})`,
     freeTier: { notes: "free tier available" },
   },
   {
@@ -222,12 +224,16 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     name: "agnes_ai",
     create: (e) => new AgnesAiProvider(e),
     ...PROVIDER_ENDPOINTS["agnes_ai"],
+    hardFreeFilter: (m) =>
+      `${m}.provider_model_id IN (${idInList(AGNES_FREE)})`,
     freeTier: { rpm: 25, notes: "permanently free, no credit card · 20-30 RPM documented" },
   },
   {
     name: "aionlabs",
     create: (e) => new AionLabsProvider(e),
     ...PROVIDER_ENDPOINTS["aionlabs"],
+    hardFreeFilter: (m) =>
+      `${m}.provider_model_id IN (${idInList(AION_FREE)})`,
     freeTier: { rpm: 15, tokensPerDay: 20000, notes: "permanent free tier, no credit card" },
   },
   {
@@ -242,12 +248,17 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     name: "glhf",
     create: (e) => new GlhfProvider(e),
     ...PROVIDER_ENDPOINTS["glhf"],
+    // glhf marks a model free by allowlist OR id substring (see its toMeta).
+    hardFreeFilter: (m) =>
+      `(${m}.provider_model_id IN (${idInList(GLHF_FREE)}) OR ${m}.provider_model_id LIKE '%Llama-3.1-70B%' OR ${m}.provider_model_id LIKE '%Mixtral-8x7B%')`,
     freeTier: { rpm: 30, notes: "unlimited usage on free models" },
   },
   {
     name: "nscale",
     create: (e) => new NscaleProvider(e),
     ...PROVIDER_ENDPOINTS["nscale"],
+    hardFreeFilter: (m) =>
+      `${m}.provider_model_id IN (${idInList(NSCALE_FREE)})`,
     freeTier: { notes: "128K context" },
   },
   {
@@ -293,6 +304,45 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
 
 export function freeTierFor(name: string): ProviderDescriptor["freeTier"] | null {
   return PROVIDER_REGISTRY.find((d) => d.name === name)?.freeTier ?? null;
+}
+
+/** SQL IN-list from a declared free-model allowlist. Entries are internal constants, but
+ *  single quotes are escaped anyway so a future allowlist entry cannot break the query. */
+function idInList(ids: Set<string>): string {
+  return [...ids].map((id) => `'${id.replace(/'/g, "''")}'`).join(",");
+}
+
+const NO_PAYLOAD_SIGNAL =
+  "keyed provider: the models payload carries no price or id-suffix signal, so freeness " +
+  "is a plan property. Discovery pricing checks + verifyFree() are the enforcement.";
+
+/** Providers with NO `hardFreeFilter`, each with the reason the gap is accepted (#16).
+ *  `freeHardFilterWhere()` can only guard filters that are declared, so the coverage gap
+ *  must be deliberate and reviewable: adding a provider means classifying it here on
+ *  purpose, and `test/provider-registry.test.ts` fails if one is neither filtered nor
+ *  listed. A wrong filter is worse than a gap — it would HIDE legitimately free models. */
+export const ACCEPTED_FILTER_GAPS: Record<string, string> = {
+  opencode_zen:
+    "freeness is the discovery pricing payload (pricing 0) plus the -free/big-pickle id " +
+    "rule; a suffix-only SQL filter would hide free ids without the suffix. verifyFree() " +
+    "gates every queued job.",
+  openrouter:
+    "freeness is pricing.prompt == 0 && pricing.completion == 0 in the discovery payload " +
+    "— not expressible over model ids. verifyFree() gates every queued job.",
+  cerebras: NO_PAYLOAD_SIGNAL,
+  gemini: NO_PAYLOAD_SIGNAL,
+  nvidia: NO_PAYLOAD_SIGNAL,
+  sambanova: NO_PAYLOAD_SIGNAL,
+  mistral: NO_PAYLOAD_SIGNAL,
+  speka: NO_PAYLOAD_SIGNAL,
+  nexaapi: NO_PAYLOAD_SIGNAL,
+  orcarouter: NO_PAYLOAD_SIGNAL,
+  ninerouter: NO_PAYLOAD_SIGNAL,
+};
+
+/** Provider names that declare no `hardFreeFilter` (computed, for the guard test). */
+export function providersWithoutHardFilter(): string[] {
+  return PROVIDER_REGISTRY.filter((d) => !d.hardFreeFilter).map((d) => d.name);
 }
 
 /** AND-fragment applying every registered hard filter to a query joining providers+models.

@@ -1,6 +1,6 @@
 # e01s04 — Queue + Cron + Durable Object live + circuit breaker
 
-Status: pending
+Status: completed
 
 ## Objective
 Distribute benchmarks via Queue, schedule via Cron, broadcast completions via DO SSE, enforce concurrency/circuit breaker.

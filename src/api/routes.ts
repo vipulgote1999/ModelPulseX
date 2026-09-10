@@ -16,6 +16,7 @@ import { cooldownsRoutes } from "./cooldowns";
 import { timeoutsRoutes } from "./timeouts";
 import { liveRoutes } from "./live";
 import { adminRoutes } from "./admin";
+import { recordAudit } from "../db/audit";
 import { adminModelsRoutes } from "./admin/models";
 import { adminMaintenanceRoutes } from "./admin/maintenance";
 
@@ -99,6 +100,30 @@ export function createApi(env: Env) {
       maxAge: 600,
     }),
   );
+
+  // Admin audit trail — EVERY /api/admin/* request that reaches the route layer is
+  // recorded, allowed or denied. One seam here so a new admin router cannot silently
+  // skip the trail (issue #20: the security report claimed admin auditing that did not
+  // exist). Denials are the brute-force signal, so they are recorded too; the credential
+  // is fingerprinted inside recordAudit and never stored raw.
+  //
+  // Registered AFTER the rate limiter above on purpose: a request refused with 429 never
+  // reaches this middleware, so an attacker hammering the endpoint cannot turn a capped
+  // login attempt into one D1 write per request. Trade-off: 429s are not audited — the
+  // limiter itself is the record there. Denials that pass the limiter ARE audited.
+  app.use("/api/admin/*", async (c, next) => {
+    if (c.req.method === "OPTIONS") return next(); // CORS preflight is not an action
+    await next();
+    const presented =
+      c.req.header("authorization") ?? c.req.header("x-admin-token") ?? "";
+    await recordAudit(env.DB, {
+      action: `${c.req.method.toLowerCase()} ${c.req.path}`,
+      actor: presented,
+      ip: c.req.header("cf-connecting-ip") ?? null,
+      userAgent: c.req.header("user-agent") ?? null,
+      details: { status: c.res.status },
+    });
+  });
 
   app.route("/api", healthRoutes(env));
   app.route("/api", openApiRoutes());

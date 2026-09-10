@@ -14,7 +14,7 @@ export default function Methodology() {
     "GET /api/timeouts?range=7d  (refusal history by day/provider/status)\n" +
     "GET /api/live  (SSE via Durable Object)\n" +
     "GET /api/cooldowns\n" +
-    "GET /api/health?freshness=15   → 503 when data older than N min (uptime-monitor probe)\n" +
+    "GET /api/health?freshness=15   → 503 when data older than N min; includes scheduler state + alert_channel\n" +
     "POST /api/admin/{discover|benchmark|reaggregate|cleanup|migrate|cooldown/reset}  (ADMIN_TOKEN)\n" +
     "wrangler d1 migrations apply DB --local / --remote\n" +
     "wrangler secret put OPENCODE_API_KEY OPENROUTER_API_KEY ADMIN_TOKEN";
@@ -59,6 +59,16 @@ export default function Methodology() {
           from an hourly-refreshed precomputed snapshot (exact raw medians, same
           gates); live per-hit queries remain as fallback. Hourly aggregates also retain
           p50/p90/p95 for both TPS and TTFT.
+        </p>
+        <p className="text-sm">
+          The TPS figure is labelled per row: <b>Measured TPS</b> (a 24h median
+          from enough samples), <b>Insufficient samples</b> (runs exist but fall
+          below the 3-sample 24h gate) or <b>No recent data</b> (nothing ran in
+          the last 24h). <b>Ranking uses the same evidence rule</b>: a model needs
+          at least <b>3 runs in the last 24h</b> to hold a rank position, so a rank
+          means comparable evidence rather than merely being listed. Models below
+          that threshold stay visible but are listed last and unranked (shown as
+          “—”).
         </p>
       </section>
 
@@ -133,9 +143,12 @@ export default function Methodology() {
           </li>
           <li>
             Cron <code>0 * * * *</code> re-discovers (churn), computes hourly
-            aggregates (avg/median/p90/p95 TPS/TTFT, success_rate, uptime),
-            cleans up, and runs a staleness watchdog that alerts an optional
-            webhook if no measurement lands within the stale threshold.
+            aggregates (avg/median/p90/p95 TPS/TTFT, success_rate, uptime) and
+            cleans up. The staleness watchdog runs on the <code>*/5</code> tick
+            instead, so a 30-minute stale threshold is honoured within ~5
+            minutes; with no webhook configured the channel reports itself as
+            <code> log-only</code> on <code>/api/health</code> and the stall is
+            logged at error level.
           </li>
           <li>
             Providers failing repeatedly on quota/rate-limits back off

@@ -6,7 +6,7 @@ import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 import { getAdminToken, setAdminToken } from "./CooldownPanel";
 
 type Row = {
-  rank: number;
+  rank: number | null;
   model_id: number;
   model: string;
   display_name: string;
@@ -28,6 +28,7 @@ type Row = {
   overall_score: number | null;
   sparkline?: Array<number | null>;
   sampleCount24h?: number;
+  measured_tps_label?: string;
 };
 
 export default function Leaderboard({
@@ -284,7 +285,16 @@ export default function Leaderboard({
                 onClick={() => toggle(r.model_id)}
                 className={`border-b border-zinc-800/60 hover:bg-zinc-800/40 cursor-pointer ${selected?.includes(r.model_id) ? "bg-violet-950/30" : ""}`}
               >
-                <td className="px-3 py-2 text-zinc-400">{r.rank}</td>
+                <td
+                  className="px-3 py-2 text-zinc-400"
+                  title={
+                    r.rank == null
+                      ? "Unranked — fewer than 3 runs in the last 24h"
+                      : `Rank ${r.rank}`
+                  }
+                >
+                  {r.rank ?? "—"}
+                </td>
                 <td className="px-3 py-2">
                   <div
                     className="font-medium text-zinc-100 leading-tight truncate max-w-[140px] xl:max-w-[200px]"
@@ -511,9 +521,17 @@ export default function Leaderboard({
                             {cd2.reason?.slice(0, 30) ?? ""}
                           </span>
                         );
+                      const tpsLabel = r.measured_tps_label ?? "—";
                       return (
-                        <span className="text-[10px] text-zinc-600 hidden xl:block">
-                          Measured TPS
+                        <span
+                          className={`text-[10px] hidden xl:block ${tpsLabel === "Measured TPS" ? "text-zinc-600" : "text-amber-500/80"}`}
+                          title={
+                            tpsLabel === "Measured TPS"
+                              ? "24h median over enough samples to rank"
+                              : tpsLabel
+                          }
+                        >
+                          {tpsLabel}
                         </span>
                       );
                     })()}

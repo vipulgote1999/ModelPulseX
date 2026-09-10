@@ -21,12 +21,35 @@ jobs:
         run: npm run lint
       - name: Tests (vitest)
         run: npm test
+      # Issue #12: fails when a hot query stops using its range
+      # index (the bug class behind the 2026-09 rows-read breach).
+      # Runs a real local D1 via wrangler.
+      - name: D1 query-plan guard
+        run: npm run test:plans
       - name: Typecheck
         run: npm run typecheck
       - name: Build check
         run: npm run build
-      - name: Audit (no vulnerabilities)
+      # Issue #15: browser smoke over the real dist/frontend bundle.
+      # Fails when the dashboard stops rendering, the freshness banner
+      # lies, or an SSE benchmark.completed broadcast stops refetching.
+      - name: Browser smoke (Playwright)
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+        timeout-minutes: 10
+      # Blocking gate: production dependencies only. This is the exposure that
+      # actually ships in the Worker bundle. Issue #21.
+      - name: Audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=moderate
+      # Advisory gate: full tree including dev tooling. Non-blocking by owner
+      # decision 2026-09-10 (issue #21) because the two remaining findings are
+      # dev-only and have no forward fix:
+      #   - sharp <0.35.4 via miniflare -> wrangler; even wrangler@4.130.0 pins
+      #     miniflare's sharp@0.35.2, and `npm audit fix --force` would
+      #     DOWNGRADE wrangler 4.125.0 -> 4.15.2.
+      #   - @vitest/mocker via vitest; fix is a vitest 5 major.
+      - name: Audit (dev dependencies — advisory)
         run: npm audit --audit-level=moderate
+        continue-on-error: true
       - name: Secret scan
         run: node scripts/secret-scan.js
 

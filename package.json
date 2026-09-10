@@ -17,13 +17,15 @@
     "deploy": "wrangler deploy",
     "cf:typegen": "wrangler types",
     "secret-scan": "node scripts/secret-scan.js",
+    "test:plans": "node scripts/check-query-plans.mjs",
+    "test:e2e": "node test/e2e/dashboard-smoke.mjs",
     "security:audit": "npm audit && node scripts/secret-scan.js"
   },
   "dependencies": {
-    "hono": "^4.7.0",
+    "hono": "^4.13.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^2.12.0"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260820.1",

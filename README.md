@@ -1,15 +1,15 @@
 # ModelPulseX — LLM Performance Observatory
 
-> **Cloudflare-native** live benchmark for **FREE** OpenCode Zen + OpenRouter models — *which free model should I use right now, and which has been best over the last 7 days?*
+> **Cloudflare-native** live benchmark for **FREE** models across **19 provider APIs** (OpenCode Zen, OpenRouter + 17 keyed providers) — *which free model should I use right now, and which has been best over the last 7 days?*
 
 Inspired by [TokenDyno](https://tokendyno.com) (TPS/TTFT leaderboard, sparkline trends, reliability with sample counts, Intelligence Index) but **FREE-only** with **provider comparison**, **7-day history**, **live SSE**, and **dynamic discovery** (no hard-coded model lists).
 
 ![stack](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20D1%20%2B%20Queues%20%2B%20Durable%20Objects-orange)
-![checks](https://img.shields.io/badge/preflight-npm%20test%20%26%20typecheck-green)
+[![preflight](https://github.com/vipulgote1999/ModelPulseX/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/vipulgote1999/ModelPulseX/actions/workflows/ci.yml)
 
 ## What it measures (real, not reported)
 
-Every 5 minutes per model (global 10 / Zen 3 / OpenRouter 5 concurrency, per-model 1):
+Every 5 minutes per model (global 40 / per-provider 1-4 / per-model 1 concurrency — `MAX_GLOBAL_CONCURRENCY` + one `MAX_<PROVIDER>_CONCURRENCY` per provider in `wrangler.jsonc`):
 
 - **Streaming fetch** `POST /v1/chat/completions` `stream:true`
 - Records `request_started_at`, `first_token_at` (first `data:` chunk), `completed_at`
@@ -21,11 +21,9 @@ Every 5 minutes per model (global 10 / Zen 3 / OpenRouter 5 concurrency, per-mod
 - HTTP 200 with zero output tokens is `STREAM_ERROR` (`empty_completion_no_tokens`), never `SUCCESS` — an empty completion would store a 0.0 TPS and inflate reliability
 - Outage after **3 consecutive failures** → incident (started_at, ended_at, duration, reason), same as spec
 
-Benchmark prompts (deterministic per `benchmark_type`, never cross-compare):
+Single benchmark prompt — `short`/`medium` were collapsed into one deterministic `coding` workload (`src/benchmark/workloads.ts`, commits `0147d16` and `3e358ae`):
 
-- `short`: `Return exactly: PONG` (16 tokens) — latency
-- `medium`: 180-220 word summary — sustained
-- `coding`: Python `solve(nums,target)` + complexity — coding
+- `coding`: Python `solve(nums,target)` + complexity, `max_tokens` 4092, 300s timeout — reasoning plus long-form decode, so TPS/TTFT are comparable across models and `benchmark_type` is always `coding`
 
 ## Dynamic free discovery — only FREE
 
@@ -33,9 +31,10 @@ Benchmark prompts (deterministic per `benchmark_type`, never cross-compare):
 - **OpenCode Zen**: `GET /zen/v1/models` (keyless) → `*-free` suffix or `big-pickle` → `FREE`. Others → `UNKNOWN` skip.
 - Missing pricing → `FREE_STATUS=UNKNOWN` skip. **Never** queues unknown/paid.
 - Transition `FREE → PAID`: `active=0`, `free_status=PREVIOUSLY_FREE`, **retains last 7d results** (frozen hourly aggregates) and shows *Previously Free* badge — per “if that model is not there in free we should show its last result” requirement.
-- Re-discovery hourly + manual `POST /api/admin/discover`.
+- Re-discovery every 30 minutes (`*/30` cron) and hourly, plus manual `POST /api/admin/discover`.
+- **19 providers configured** (`PROVIDER_REGISTRY`, `src/providers/registry.ts`): the OpenCode Zen + OpenRouter catalogs above plus 17 keyed providers (Groq, Cerebras, Gemini, NVIDIA, SambaNova, Mistral, Agnes AI, AionLabs, Kilo Code, GLHF, Nscale, Speka, NexaAPI, OrcaRouter, NineRouter, TokenRouter, Ollama), each with its own models listing, free gate, secret and concurrency cap.
 
-Live snapshot (2026-08-23): **29 benchmarkable FREE** (Zen 9 + OpenRouter 20 filtered; TokenDyno comparison: 57 total incl. paid Ollama etc. — we cover **all** free variants).
+Coverage snapshot (2026-09-10, prod `GET /api/leaderboard?range=7d`): **90 rows** across 13 providers — 68 FREE now, 22 previously-free with 0 samples in the last 24h (history retained), while `GET /api/providers` lists all 19 configured providers. Discovery moves these numbers, so the live endpoints are the source — this line is a dated snapshot, not a promise.
 
 ## Architecture — Cloudflare-first (no Redis/Postgres/K8s)
 
@@ -46,7 +45,7 @@ Cron */5 * * * * → Scheduler → verifyFree() → Queue (bench-queue, batch 10
                                                               ↓
                               Durable Object (PerformanceDO) SSE → GET /api/live
                                                               ↓
-                                  Hourly Cron 0 * * * *: discovery + hourly_model_stats + retention cleanup
+                                  Cron */10 (10-min aggregates) · */30 (discovery) · 0 * * * * (hourly aggregates + snapshot + retention cleanup)
                                                               ↓
 React Vite Tailwind shadcn Recharts (SSE live) ← GET /api/leaderboard?range=&provider=&benchmark=&sort=&profile=
 ```
@@ -55,12 +54,13 @@ React Vite Tailwind shadcn Recharts (SSE live) ← GET /api/leaderboard?range=&p
 - **D1** (`providers`, `models`, `benchmark_runs` 7-14d raw, `hourly_model_stats` 30-90d, `availability_incidents` indefinite, `benchmark_config`)
 - **Queues** `bench-queue` / `bench-dlq`
 - **Durable Object** `PerformanceDO` live SSE (fan-out, not history store) — `event: benchmark` `data: {model, provider, tps, ttft_ms}`
-- **Cron** two expressions (UTC): `*/5` scheduler, `0 *` aggregator
+- **Cron** four expressions (UTC): `*/5` scheduler + staleness watchdog, `*/10` 10-minute aggregates, `*/30` discovery, `0 *` hourly discovery + aggregates + leaderboard snapshot + retention cleanup
 
-Concurrency & cost protection (configurable via `wrangler.jsonc` vars):
+Concurrency & cost protection (`wrangler.jsonc` vars — 40 global across 19 providers):
 
 ```
-MAX_GLOBAL=10 MAX_OPENCODE=3 MAX_OPENROUTER=5 MAX_SAME_MODEL=1
+MAX_GLOBAL_CONCURRENCY=40 MAX_SAME_MODEL_CONCURRENCY=1
+MAX_OPENCODE_CONCURRENCY=3 MAX_OPENROUTER_CONCURRENCY=4  (+17 more per-provider caps, 1-4)
 ```
 
 429 → `Retry-After` + exponential backoff + jitter + provider circuit breaker; `verifyFree()` gate before any queue.
@@ -99,7 +99,7 @@ SSE live: `EventSource /api/live` → leaderboard re-fetches without refresh on 
 GET /api/health
 GET /api/providers
 GET /api/models?provider=&includeInactive=1
-GET /api/leaderboard?range=1h|24h|3d|7d&provider=opencode_zen|openrouter&benchmark=short|medium|coding|all&sort=overall|tps|ttft|uptime&profile=balanced|fastest|latency|reliable|coding
+GET /api/leaderboard?range=1h|24h|3d|7d&provider=opencode_zen|openrouter&benchmark=coding|all&sort=overall|tps|ttft|uptime&profile=balanced|fastest|latency|reliable|coding
 GET /api/models/:id
 GET /api/models/:id/history?range=1h|24h|3d|7d&benchmark=
 GET /api/models/:id/incidents
@@ -120,8 +120,8 @@ Query freshness meta included in leaderboard: `last_benchmark`, `last_aggregate`
 | TokenDyno | ModelPulseX |
 | ----------- | ------------- |
 | TPS now / 24h avg, TTFT now, Reliability 24h with `n=` when sparse, Intelligence Index clickable, sparkline trend, provider badge, sorted headers, last success | Same + **TPS 7d**, **TTFT 7d**, **7d Uptime** (not just 24h), **Overall Score** with profiles, **provider comparison with winner**, **Previously Free retention**, **coding benchmark**, **error/incident timelines**, **SSE live**, **methodology** |
-| Samples every 10m (Ollama Pro) vs 60m (Free/Zen) | Scheduler every 5m with caps (10 global) — frequent checks even for free tier; hourly aggregates keep cost low |
-| Ollama + Zen + Go coverage | **Zen + OpenRouter FREE only** (all 29 variants), dynamic discovery covers churn (no hard-code) |
+| Samples every 10m (Ollama Pro) vs 60m (Free/Zen) | Scheduler every 5m with caps (40 global) — frequent checks even for free tier; hourly aggregates keep cost low |
+| Ollama + Zen + Go coverage | **FREE-only across 19 providers** (13 with live rows in the 2026-09-10 leaderboard snapshot), dynamic discovery covers churn (no hard-code) |
 
 ## Quickstart
 
@@ -148,7 +148,7 @@ curl -X POST http://127.0.0.1:8789/api/admin/discover -H "Authorization: Bearer 
 # trigger cron locally
 curl http://127.0.0.1:8789/cdn-cgi/local/scheduled
 # queue a single benchmark for a model
-curl -X POST http://127.0.0.1:8789/api/admin/benchmark -H "Authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" -d '{"model_id":1,"benchmark_type":"short"}'
+curl -X POST http://127.0.0.1:8789/api/admin/benchmark -H "Authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" -d '{"model_id":1,"benchmark_type":"coding"}'
 # reaggregate & cleanup
 curl -X POST http://127.0.0.1:8789/api/admin/reaggregate -H "Authorization: Bearer $ADMIN_TOKEN"
 curl -X POST http://127.0.0.1:8789/api/admin/cleanup -H "Authorization: Bearer $ADMIN_TOKEN"
@@ -168,7 +168,7 @@ npm run deploy  # or deploy.bat on Windows
 curl https://modelpulsex.vipulgote5.workers.dev/api/health
 ```
 
-Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_QUEUE`/`bench-queue` + `bench-dlq`, Durable Object `LIVE_DO` (`PerformanceDO`), Crons `*/5 * * * *` + `0 * * * *`, assets `dist/frontend`.
+Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_QUEUE`/`bench-queue` + `bench-dlq`, Durable Object `LIVE_DO` (`PerformanceDO`), Crons `*/5 * * * *` + `*/10 * * * *` + `*/30 * * * *` + `0 * * * *`, assets `dist/frontend`.
 
 ## Scripts
 
@@ -225,19 +225,21 @@ Local dev via `.dev.vars` (copy `.dev.vars.example`).
 
 See `/methodology` in the app. Key honesty points: measurements vary by provider load, network/routing, time of day, model version, streaming chunking, prompt size; generation window; freeness verified at discovery + pre-queue; unknown pricing never benchmarked. Windowed TPS/TTFT are **medians** and require minimum sample sizes (2 for 1h, 3 for 24h, 5 for 7d) before a figure is shown.
 
+Ranking uses the same evidence rule: a model needs **at least 3 runs in the last 24h** to hold a rank position. Models below that stay visible but are listed last, unranked (`rank: null`, rendered as `—`), and each row carries a derived `measured_tps_label` — **Measured TPS** / **Insufficient samples** / **No recent data** — instead of a constant label.
+
 ## Operations
 
 - **Freshness probe**: `GET /api/health?freshness=15` returns 503 when the newest measurement is older than 15 minutes — point UptimeRobot/BetterStack (or any monitor) at it to catch a stalled pipeline that plain health checks would miss.
-- **Staleness watchdog**: the hourly cron alerts `ALERT_WEBHOOK_URL` (Discord/Slack-compatible `{content,text}` body; set via `wrangler secret put ALERT_WEBHOOK_URL`) when data goes stale, rate-limited to one alert/hour. Threshold: `STALE_ALERT_MINUTES` var (default 30).
+- **Staleness watchdog**: evaluated on the **`*/5` cron tick** (moved off the hourly tick so a 30-minute threshold is honoured within ~5 minutes), it alerts `ALERT_WEBHOOK_URL` (Discord/Slack-compatible `{content,text}` body; set via `wrangler secret put ALERT_WEBHOOK_URL`) when data goes stale, rate-limited to one alert/hour. Threshold: `STALE_ALERT_MINUTES` var (default 30). When the secret is unset the channel is **`log-only`**: `/api/health?freshness=N` reports `scheduler.alert_channel`, and every stale evaluation is logged at error level so the stall is visible in `wrangler tail` — it is never silently swallowed.
 - **Scheduler heartbeat**: every */5 tick persists enqueue/skip counts (migration `0006_scheduler_health.sql`) surfaced via `/api/health` and leaderboard `meta.scheduler`. Apply migrations with `npm run migrate` (remote) after deploying if your API token has D1 permissions; until applied, heartbeat fields read null and everything else works.
 - **Inline fallback**: `BENCH_INLINE_FALLBACK` (default 6) runs the first N selected jobs inside each cron invocation so baseline coverage survives even if queue delivery stalls; the queue carries the remainder with consumer concurrency 8.
 - **Cooldown escalation**: providers failing on quota/429 back off exponentially (base → 2× per repeat, capped at `COOLDOWN_MAX_MS`, default 2h) honoring provider `Retry-After`, so dead keys stop consuming benchmark capacity.
 - **D1 rows_read budget** (free tier 5M/day — exceeded 2026-09-05): scheduler LRU reads maintained `models.last_benchmark_at` (migration `0011`, stamped by inserts) instead of scanning `benchmark_runs` every */5 tick; leaderboard merges latest-row + window medians into one GROUP BY + indexed self-join and edge-caches 30s (`caches.default`); retention cleanup runs daily 00 UTC; dashboard polls 60s with 10s-debounced SSE refetch (hidden-tab skip). Watch usage via `wrangler d1 insights` / dashboard before adding new per-request or per-tick scans.
-- **CI**: GitHub Actions runs lint + vitest + typecheck on every push/PR (`.github/workflows/ci.yml`).
+- **CI**: GitHub Actions (`.github/workflows/ci.yml`, job `preflight`) runs lint + vitest + typecheck + build, the blocking production-dependency audit, an advisory dev-dependency audit and the secret scan on every push/PR.
 
 ## verification — 16 gates (s40)
 
-Checked locally with `npm test && npm run typecheck && npm run build`, `wrangler dev`, `wrangler d1 migrations apply`, `/api/health` → `/api/models` (29 free) → `/api/leaderboard` (29 with sparkline/intelligence) → `/api/models/:id/history` (24h/7d hourly) → `/api/compare` (laguna Zen vs OR with winner) → incidents → cleanup.
+Checked locally with `npm test && npm run typecheck && npm run build`, `wrangler dev`, `wrangler d1 migrations apply`, `/api/health` → `/api/models` (74 rows on 2026-09-10: 53 FREE + 21 previously-free) → `/api/leaderboard` (90 rows with sparkline/intelligence) → `/api/models/:id/history` (24h/7d hourly) → `/api/compare` (laguna Zen vs OR with winner) → incidents → cleanup.
 
 ## License
 

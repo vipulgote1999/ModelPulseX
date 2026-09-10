@@ -3,7 +3,7 @@ session:
   active_flow: sustain
   active_epic_id: e01
   active_story_id: null
-  branch: main
+  branch: master
   workflow_mode: solo-git
   deployment:
     # OFFICIAL PROD ENDPOINT. Bare modelpulsex.workers.dev cannot exist —
