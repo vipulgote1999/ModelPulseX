@@ -252,3 +252,21 @@ De-duplicated the three identical copies (scheduler tick, `getProviderRPMUsage`,
 **Still open: #17** (sample-size-aware rank confidence: intervals + overlap marking). #11 already gated ranks on evidence; #17's intervals were not implemented — no partial claim is made for it.
 
 **Traps for next time:** `npx` does not resolve under `execFileSync` on Windows (use `node node_modules/wrangler/bin/wrangler.js`, which is also faster); a `*/5` substring **inside a block comment** terminates it and breaks parsing; subagent fan-out died again here (`No result provided`, most likely OOM while running Chromium) even though its file writes had already landed — verify the tree before assuming a failed child did nothing; `d1 execute --local` plans must be captured, not predicted.
+
+### 2026-09-10 (session 2, after the merge) — deployed, verified in prod, and one new finding
+
+**Landed:** PR #25 merged to `master` as `dfa5577` (base `d29977e`); **master CI is green again** (`preflight: success` at 13:54Z, breaking four consecutive failures — #21's acceptance). Deployed `09db0911` + applied remote migration `0014_rows_read_observability.sql`.
+
+**Production verification (the evidence the closed issues cite):**
+
+- **#11** — `/api/leaderboard?range=7d` (90 rows) now returns labels `{"Measured TPS":51,"Insufficient samples":17,"No recent data":22}` instead of 90× a constant, **23 rows are `rank: null`**, and the zero-sample row is exactly `{"model":"meta-llama/Llama-3.1-70B-Instruct","sampleCount24h":0,"rank":null,"measured_tps_label":"No recent data"}`.
+- **#12** — `/api/health?freshness=10m` → `d1_budget: {"rows_read_measured_today":2,"top_shape":"provider-count","top_rows":2,"lower_bound":true}`: the query that once read ~10,600 rows per call measures **2 rows** in prod, so the MED-177 fix is confirmed in situ, not just by plan.
+- **#22** — `scheduler.alert_channel: "log-only"` on the public health payload (code shipped; the drill still needs a real webhook secret).
+- **#16** — `/api/providers` returns 19 providers; the 8 declared hard filters execute (leaderboard + scheduler paths both 200).
+- **#15/#18** — `/` serves the rebuilt bundle with recharts 3.10.1; the browser smoke passes locally and in CI.
+
+**Closed:** #11, #12, #13, #14, #15, #16, #18, #19, #20, #21, #23 (each with its evidence in a closing comment). **Still open:** #17 (rank confidence intervals — never attempted, no partial claim), #22 (needs the webhook secret for the drill), #24 (login cross-edge bucket — filed after correcting my own first draft), and the new **#26**.
+
+**New finding — #26 (heartbeat goes stale while benchmarks run).** Investigated after the deploy smoke showed `fresh: false`: `scheduler.last_schedule_at` is frozen at `13:06:17Z` while `last_benchmark` advanced to `13:55:44Z` (age 1 min) and `last_aggregate_at` (the `*/10` tick) keeps updating. `recordScheduleTick` is the **last, unconditional** statement of `scheduleBenchmarks()` and everything before it is individually try/caught — so either the invocation is being terminated mid-tick or that write is failing silently (it only `console.warn`s). Runs-per-10-min buckets show two collapses (`12:1x-12:2x` and `13:1x` onward) against a healthy 24-32, so it is intermittent, and the branches missing their markers (`*/5` schedule, `*/30` discovery) are exactly the provider-network-heavy ones while the pure-D1 `*/10` always writes. A `wrangler tail` capture across consecutive ticks is running to pin the outcome; the issue records the proposed fix (heartbeat at tick **start** as well as end, and surface the tick error on `/api/health` instead of a `console.warn` nobody reads).
+
+**Ops note:** the `bg_run`-through-`cmd.exe` trap bit again — `mkdir -p` in a backgrounded tail made the whole command fail with "The syntax of the command is incorrect", so the first capture silently collected nothing.
