@@ -35,22 +35,49 @@ export interface ScheduleTick {
 }
 
 /** Persist the result of one 5-minute benchmark-scheduler tick (upsert singleton). */
+/** Persist the *start* of one 5-minute tick, before any work runs. A tick that
+ *  overruns or is killed then still shows when it began, instead of leaving the last
+ *  completed tick's timestamp as the only evidence (issue #26). Tolerates a missing
+ *  column (pre-migration). */
+export async function recordScheduleStart(
+  db: D1Database,
+  startedAtMs: number = Date.now(),
+): Promise<void> {
+  try {
+    const now = new Date(startedAtMs).toISOString();
+    await db
+      .prepare(
+        `INSERT INTO scheduler_health (id, last_schedule_started_at, updated_at) VALUES (1,?,?)
+         ON CONFLICT(id) DO UPDATE SET last_schedule_started_at=excluded.last_schedule_started_at, updated_at=excluded.updated_at`,
+      )
+      .bind(now, now)
+      .run();
+  } catch (e) {
+    console.warn("recordScheduleStart", e);
+  }
+}
+
+/** Persist the result of one 5-minute benchmark-scheduler tick (upsert singleton).
+ *  `startedAtMs` additionally records how long the tick took, so a slow tick is
+ *  visible on /api/health instead of silently delaying the heartbeat (issue #26). */
 export async function recordScheduleTick(
   db: D1Database,
   t: ScheduleTick,
+  startedAtMs?: number,
 ): Promise<void> {
   try {
     const now = new Date().toISOString();
     await db
       .prepare(
-        `INSERT INTO scheduler_health (id, last_schedule_at, last_enqueue_count, last_inline_count, last_skipped_cooldown, last_skipped_rpm, updated_at)
-         VALUES (1,?,?,?,?,?,?)
+        `INSERT INTO scheduler_health (id, last_schedule_at, last_enqueue_count, last_inline_count, last_skipped_cooldown, last_skipped_rpm, last_schedule_ms, updated_at)
+         VALUES (1,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET
            last_schedule_at=excluded.last_schedule_at,
            last_enqueue_count=excluded.last_enqueue_count,
            last_inline_count=excluded.last_inline_count,
            last_skipped_cooldown=excluded.last_skipped_cooldown,
            last_skipped_rpm=excluded.last_skipped_rpm,
+           last_schedule_ms=excluded.last_schedule_ms,
            updated_at=excluded.updated_at`,
       )
       .bind(
@@ -59,6 +86,7 @@ export async function recordScheduleTick(
         t.inlineCount,
         t.skippedCooldown,
         t.skippedRpm,
+        startedAtMs === undefined ? null : Date.now() - startedAtMs,
         now,
       )
       .run();
