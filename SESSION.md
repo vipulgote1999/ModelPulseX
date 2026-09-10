@@ -270,3 +270,26 @@ De-duplicated the three identical copies (scheduler tick, `getProviderRPMUsage`,
 **New finding — #26 (heartbeat goes stale while benchmarks run).** Investigated after the deploy smoke showed `fresh: false`: `scheduler.last_schedule_at` is frozen at `13:06:17Z` while `last_benchmark` advanced to `13:55:44Z` (age 1 min) and `last_aggregate_at` (the `*/10` tick) keeps updating. `recordScheduleTick` is the **last, unconditional** statement of `scheduleBenchmarks()` and everything before it is individually try/caught — so either the invocation is being terminated mid-tick or that write is failing silently (it only `console.warn`s). Runs-per-10-min buckets show two collapses (`12:1x-12:2x` and `13:1x` onward) against a healthy 24-32, so it is intermittent, and the branches missing their markers (`*/5` schedule, `*/30` discovery) are exactly the provider-network-heavy ones while the pure-D1 `*/10` always writes. A `wrangler tail` capture across consecutive ticks is running to pin the outcome; the issue records the proposed fix (heartbeat at tick **start** as well as end, and surface the tick error on `/api/health` instead of a `console.warn` nobody reads).
 
 **Ops note:** the `bg_run`-through-`cmd.exe` trap bit again — `mkdir -p` in a backgrounded tail made the whole command fail with "The syntax of the command is incorrect", so the first capture silently collected nothing.
+
+### 2026-09-10 (session 2, third pass) — #26 diagnosed from production evidence, fixed, deployed, verified
+
+**How it surfaced:** the deploy smoke for PR #25 showed `/api/health?freshness=10m` returning **503 with a 33-minute-old measurement** while `runs_2h` counted 712. `scheduler.last_schedule_at` was frozen at `13:06:17Z` for ~50 minutes while `last_benchmark` advanced to `13:55:44Z`, and the pure-D1 `*/10` tick kept writing its marker. Runs per 10-minute bucket (healthy 24-32) collapsed to **1-2** at `12:1x-12:2x` and again from `13:1x` — the flapping made it look like a provider/quota problem.
+
+**Root cause (evidence, not theory):** a `wrangler tail` capture at 14:00 showed `*/30` completing in **21.4s**, the hourly in **21.8s**, `*/10` in 392ms — and **no `*/5` completion event at all**: that tick was still running. The `*/5` tick ran up to `BENCH_INLINE_FALLBACK` (6) jobs **inline, sequentially**, each allowed the coding workload's **300s** provider timeout, and wrote its heartbeat **last**. So a slow provider could hold the tick open for minutes past the 5-minute interval: the heartbeat looked frozen while benchmarks were still finishing, ticks overlapped, and scheduling throughput collapsed.
+
+**Fix (PR #28, deployed `d94ed3b4`, migration `0015`):** `runInlineBounded()` never *starts* a new inline job once a 60s wall-clock budget is spent and returns everything unrun to be queued (a job can no longer be dropped: `ran + rest` always accounts for the input); `recordScheduleStart()` stamps `last_schedule_started_at` **before** any work so an in-flight tick is visible; `recordScheduleTick()` records `last_schedule_ms`. Both writers tolerate a pre-migration deploy. Covered by `test/scheduler-inline.test.ts` (5 cases incl. the accounting invariant).
+
+**Verified on production (before → after):**
+
+| metric | before | after |
+| --- | --- | --- |
+| runs / 10 min | 1-2 | **18-23** |
+| `last_schedule_at` | frozen ~50 min | advancing (`14:03:21Z` → `14:13:27Z`) |
+| in-flight tick visibility | none | `last_schedule_started_at` advancing |
+| measured tick duration | unbounded (6 × 300s worst case) | `last_schedule_ms: 164184` |
+| `/api/health` probe | `503`, age 33 min | `200`, age 0-2 min |
+| `d1_budget.rows_read_measured_today` | — | 10 (2 rows/tick) |
+
+**Residual filed as #29**, not silently dropped: the budget bounds new inline *starts*, but an in-flight job keeps its full 300s timeout, so the theoretical worst case is ~360s against a 300s interval (the observed tick was 164s). Capping the in-flight job is a data-semantics decision (a truncated run records a TIMEOUT), so #29 lays out cap/queue-only/accept options.
+
+**Also learned:** the repo's git guard enforces Conventional Commits **and a ≤72-character subject**, and it pattern-matches the whole command string — a command containing both `push` and the trunk branch name is rejected even when the push targets another branch (split such commands). `gh issue close --comment` on an *already-closed* issue silently posts nothing — use `gh issue comment` explicitly. And the `*/5`-inside-a-block-comment trap that SESSION.md already warned about was hit again in a new test file: `*/` terminates the comment.
