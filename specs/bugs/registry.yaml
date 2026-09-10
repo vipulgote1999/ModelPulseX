@@ -12,3 +12,10 @@
   scope: ci-audit-deps
   summary: CI audit red on transitive dep vulns
   file: specs/bugs/BUG-2026-09-09-npm-audit.md
+- bug_id: BUG-2026-09-10T120000
+  date: '2026-09-10'
+  severity: high
+  priority: high
+  scope: src/db/cooldown.ts, src/benchmark/scheduler.ts, src/api/timeouts.ts
+  summary: D1 rows-read cap exceeded — provider-count query scanned 7d table
+  file: specs/bugs/BUG-2026-09-10-d1-row-read-cap.md

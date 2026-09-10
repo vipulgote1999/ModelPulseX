@@ -182,3 +182,34 @@ Round-3 Playwright tour found: (1) diffusion ~11k TPS outlier flattened all othe
 **Zen RATE_LIMITED root cause (fixed, deployed):** all Zen rows 429'd with `FreeUsageLimitError` (~2h provider cooldown) while direct Zen calls from here return 200 — our implementation, not Zen. Two bugs: (1) Zen RPM default 20/min vs a free tier that trips on ~6-stream bursts → default 5 (`RPM_OPENCODE_ZEN` overrides); (2) blind 429s (no Retry-After) doubled to the 2h cap, so one burst blacked out the provider for hours — new pure `rateLimitCapMs()` caps blind 429s at 15min, explicit Retry-After still honored fully (OpenRouter midnight path intact) +3 unit tests. Vitest+tsc+eslint green, rebuilt, redeployed, prod smoke 200s (benchmark-without-token correctly 401).
 
 **Note:** stale 2h Zen cooldown row expires alone; `/admin/cooldown/reset` clears it now. Manual Test jobs bypass cooldown skips by design (consumer never gated).
+
+## 2026-09-10 — D1 rows-read cap: full-table scans in the provider-count query (fixed)
+
+**Symptom:** Cloudflare blocked D1 reads — 5M rows-read/day free tier exceeded. Dashboard showed one query at **74% of the budget**: `SELECT provider, COUNT(*) FROM benchmark_runs WHERE started_at >= ? GROUP BY provider` (353 calls, 3.74M rows, 10.6k rows *per call* on a 10.6k-row table).
+
+**Root cause:** not missing indexes — a planner trap. `idx_benchmark_runs_provider_model(provider, model)` has `provider` leading, so SQLite satisfied `GROUP BY provider` from index order and planned `SCAN benchmark_runs USING INDEX idx_benchmark_runs_provider_model` — **`started_at >= ?` was never used as an access path**; the filter ran per row after scanning all 7 days. Reproduced with and without `ANALYZE`, and with a covering `(started_at, provider)` index present. The scheduler's RPM limiter asks for a 60-second window and paid for 7 days, 288 cron ticks/day.
+
+**Fix (`GROUP BY +provider`):** unary `+` makes the term not a bare column, so the index-order shortcut is unavailable and the planner falls back to `SEARCH ... (started_at>?)`. `+` is a no-op in SQLite (`+'openrouter'` → `'openrouter'`, `+NULL` → `NULL`) — output verified byte-identical over the same data. VM steps 392 → 0 (60s window), 476 → 197 (24h). Removes ~3.65M rows/day.
+De-duplicated the three identical copies (scheduler tick, `getProviderRPMUsage`, `getProviderDailyUsage`) into one `getProviderUsageSince()` in `src/db/cooldown.ts` so the `+` cannot drift out of a future copy — the duplication is what let one broken query exist three times.
+
+**Second fix (`migrations/0013_rows_read_budget.sql`):** partial covering index `(started_at, provider, status, model) WHERE status != 'SUCCESS'` for the two failure-only `/api/timeouts` aggregates. Failures are ~20% of runs → 9.8k → ~2k rows scanned, `SEARCH INDEX idx_runs_itl` → `SEARCH COVERING INDEX idx_runs_failures`. Verified selected **without** `ANALYZE` (D1 never runs it, so a stats-dependent plan would silently regress). No query changes needed.
+
+**Verification:** preflight green — 18 files / 100 tests, `tsc --noEmit` clean, eslint clean; migration applied to local D1. Plans re-checked from the SQL text extracted out of the source (not retyped), against a prod-shaped 9.8k-row DB built from all 13 migrations.
+
+**Residual (~1.4M rows/day, documented not fixed):** hourly snapshot refresh (~706k, 33 calls) aggregates the full 7d window — a 7d window *is* the whole table, so no index helps; needs incremental windowing (1h/24h from recent runs, 7d from a daily rollup). `/api/timeouts` provider totals (~600k) count all statuses over 7d, so the partial index cannot serve it.
+
+**Shipped:** commit `31bb3e5` on branch `fix/d1-rows-read-cap` (master commits are tool-gated), migration `0013` applied to remote D1, `npm run build` + `wrangler deploy` → version `ac15d17f`, live at <https://modelpulsex.vipulgote5.workers.dev>. Deploy smoke: `/`, `/api/health`, `/api/providers`, `/api/leaderboard`, `/api/timeouts`, `/api/models` all 200; new bundle `index-Cmo_9WE2.js` served; `/api/providers` returns 11 providers with non-zero `usage24h` — proof the changed query executes against prod D1 instead of erroring into its `catch` (which would return all zeros).
+
+**Measured on production** (`wrangler d1 execute DB --remote`; prod `benchmark_runs` = 8,696 rows):
+
+| query | before | after |
+| --- | --- | --- |
+| provider-count, 60s window (288×/day) | 8,696 rows / 8.1ms | **2 rows** / 0.57ms |
+| provider-count, 24h window | 8,696 rows / 7.2ms | 1,998 rows / 1.83ms |
+| failures bucket (`/api/timeouts`) | `SEARCH INDEX idx_runs_itl` | `SEARCH COVERING INDEX idx_runs_failures` |
+
+`EXPLAIN QUERY PLAN` on prod confirms `SCAN ... idx_benchmark_runs_provider_model` → `SEARCH ... idx_runs_itl (started_at>?)`.
+
+**Files:** `src/db/cooldown.ts`, `src/benchmark/scheduler.ts`, `migrations/0013_rows_read_budget.sql`, `specs/bugs/BUG-2026-09-10-d1-row-read-cap.md`, `specs/bugs/registry.yaml`.
+
+**Next:** `wrangler d1 insights` still reports ~3.56M rows/24h for the provider query — that window is ~97% pre-fix traffic and decays over the next day; re-check tomorrow for steady state. Open a PR for `fix/d1-rows-read-cap` when ready. Not fixed: hourly snapshot refresh (~706k/day) and `/api/timeouts` provider totals (~600k/day) — both need pre-aggregation, not indexes.

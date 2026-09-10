@@ -28,6 +28,7 @@ import {
   clearModelCooldown,
   escalateProviderCooldown,
   rateLimitCapMs,
+  getProviderUsageSince,
 } from "../db/cooldown";
 import {
   AUTO_DISABLE_DAILY_MAX_DEFAULT,
@@ -165,23 +166,13 @@ export async function scheduleBenchmarks(
       .bind(nowIso)
       .all<{ model_id: number }>()
       .catch(() => ({ results: [] as Array<{ model_id: number }> })),
-    env.DB.prepare(
-      `SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY provider`,
-    )
-      .bind(rpmSinceIso)
-      .all<{ provider: string; cnt: number }>()
-      .catch(() => ({
-        results: [] as Array<{ provider: string; cnt: number }>,
-      })),
+    getProviderUsageSince(env.DB, rpmSinceIso),
   ]);
   const providerCooldownSet = new Set(
     (providerCooldowns.results ?? []).map((r) => r.provider),
   );
   const modelCooldownSet = new Set(
     (modelCooldowns.results ?? []).map((r) => r.model_id),
-  );
-  const rpmUsageMap = new Map(
-    (rpmUsage.results ?? []).map((r) => [r.provider, r.cnt] as const),
   );
 
   const { jobs, skippedCooldown, skippedRPM } = selectJobs(
@@ -192,7 +183,7 @@ export async function scheduleBenchmarks(
       rpmLimitFor: (p) => rpmForProvider(p, rpmConfig),
       providerCooldowns: providerCooldownSet,
       modelCooldowns: modelCooldownSet,
-      rpmUsage: rpmUsageMap,
+      rpmUsage,
       benchmarkType: chosenType,
     },
   );

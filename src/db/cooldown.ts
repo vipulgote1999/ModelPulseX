@@ -269,17 +269,31 @@ export async function getActiveCooldowns(db: D1Database): Promise<{
   }
 }
 
-export async function getProviderRPMUsage(
+/** Per-provider request counts since an ISO cutoff.
+ *
+ *  Single home for the RPM/daily-budget query (scheduler tick + /api/providers).
+ *
+ *  `GROUP BY +provider` is load-bearing, not cosmetic. Without the unary `+`, SQLite
+ *  satisfies GROUP BY from idx_benchmark_runs_provider_model's leading column and
+ *  full-scans the entire 7-day run table (~10.6k rows read) on every call — it never
+ *  uses `started_at >= ?` as an access path, and the filter is applied per row after
+ *  the scan. That was 74% of the daily D1 rows-read budget (3.74M/day) and tripped the
+ *  free-tier cap on 2026-09-10; see specs/bugs/BUG-2026-09-10-d1-row-read-cap.md.
+ *
+ *  `+` is a no-op in SQLite (`+'openrouter'` -> 'openrouter', `+NULL` -> NULL), so
+ *  grouping and output are unchanged. It only blocks the index-order shortcut, forcing
+ *  SEARCH ... (started_at>?) — ~1 row for the 60s RPM window, ~1.4k for 24h.
+ *  Do not remove. */
+export async function getProviderUsageSince(
   db: D1Database,
-  windowMs = 60000,
+  sinceIso: string,
 ): Promise<Map<string, number>> {
   try {
-    const since = new Date(Date.now() - windowMs).toISOString();
     const rows = await db
       .prepare(
-        `SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY provider`,
+        `SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY +provider`,
       )
-      .bind(since)
+      .bind(sinceIso)
       .all<{ provider: string; cnt: number }>();
     const m = new Map<string, number>();
     for (const r of rows.results ?? []) m.set(r.provider, r.cnt);
@@ -289,23 +303,23 @@ export async function getProviderRPMUsage(
   }
 }
 
+export async function getProviderRPMUsage(
+  db: D1Database,
+  windowMs = 60000,
+): Promise<Map<string, number>> {
+  return getProviderUsageSince(
+    db,
+    new Date(Date.now() - windowMs).toISOString(),
+  );
+}
+
 /** Requests per provider in the trailing 24h — lets the UI show consumption against a documented daily quota. */
 export async function getProviderDailyUsage(
   db: D1Database,
   windowMs = 86_400_000,
 ): Promise<Map<string, number>> {
-  try {
-    const since = new Date(Date.now() - windowMs).toISOString();
-    const rows = await db
-      .prepare(
-        `SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY provider`,
-      )
-      .bind(since)
-      .all<{ provider: string; cnt: number }>();
-    const m = new Map<string, number>();
-    for (const r of rows.results ?? []) m.set(r.provider, r.cnt);
-    return m;
-  } catch {
-    return new Map();
-  }
+  return getProviderUsageSince(
+    db,
+    new Date(Date.now() - windowMs).toISOString(),
+  );
 }
