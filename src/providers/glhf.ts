@@ -8,7 +8,7 @@ import type {
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://glhf.chat/api/openai/v1/models";
 const CHAT_URL = "https://glhf.chat/api/openai/v1/chat/completions";
-const VERIFIED_FREE = new Set<string>([
+export const VERIFIED_FREE = new Set<string>([
     "hf:meta-llama/Meta-Llama-3.1-70B-Instruct",
     "hf:meta-llama/Meta-Llama-3.1-70B-Instruct",
     "meta-llama/Meta-Llama-3.1-70B-Instruct",

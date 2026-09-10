@@ -1,0 +1,16 @@
+epic: e03
+slug: extra-provider-and-ops
+title: Multi-Provider Expansion + Ops Polish
+wsjf: 3
+status: completed
+stories:
+  - id: e03s01
+    title: Multi-provider registry — 19 provider descriptors + adapters, keyed secrets, per-provider free gate and hard filters
+    status: completed
+    points: 8
+    verify: "npm test -- test/discovery.test.ts test/provider-limits.test.ts"
+  - id: e03s02
+    title: Ops polish — 10-minute aggregates + precomputed leaderboard snapshot (0011-0013), OpenAPI endpoint, edge caching, CI preflight + secret scan
+    status: completed
+    points: 5
+    verify: "npm test -- test/snapshot.test.ts test/openapi.test.ts"

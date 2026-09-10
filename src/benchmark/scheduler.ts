@@ -7,6 +7,7 @@ import {
 } from "../db/queries";
 import { applyDataFixes } from "../db/data-fixes";
 import { recordScheduleTick } from "../db/health";
+import { recordRowsRead, checkRowsReadBudget } from "../db/query-cost";
 import {
   getConcurrency,
   capFor,
@@ -153,6 +154,11 @@ export async function scheduleBenchmarks(
   // widening the 60s window to "since UTC midnight" and tripping RPM limits by early morning
   // (root cause of the recurring daily benchmark stalls).
   const rpmSinceIso = new Date(Date.now() - 60_000).toISOString();
+  // Rows-read accounting (issue #12): the quota-critical query reports its own
+  // `meta.rows_read` at the single call site, so the budget is observable from
+  // inside the Worker instead of only in the Cloudflare dashboard. Only measured
+  // shapes are counted — a documented lower bound.
+  let providerUsageRowsRead = 0;
   const [providerCooldowns, modelCooldowns, rpmUsage] = await Promise.all([
     env.DB.prepare(
       `SELECT provider, cooldown_until FROM provider_cooldowns WHERE cooldown_until > ?`,
@@ -166,8 +172,14 @@ export async function scheduleBenchmarks(
       .bind(nowIso)
       .all<{ model_id: number }>()
       .catch(() => ({ results: [] as Array<{ model_id: number }> })),
-    getProviderUsageSince(env.DB, rpmSinceIso),
+    getProviderUsageSince(env.DB, rpmSinceIso, (n) => {
+      providerUsageRowsRead = n;
+    }),
   ]);
+  await recordRowsRead(env.DB, [
+    { shape: "provider-count", rowsRead: providerUsageRowsRead },
+  ]);
+  await checkRowsReadBudget(env.DB, env);
   const providerCooldownSet = new Set(
     (providerCooldowns.results ?? []).map((r) => r.provider),
   );

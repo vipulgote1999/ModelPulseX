@@ -108,6 +108,16 @@ function staleMinutes(env: { STALE_ALERT_MINUTES?: string }): number {
   return Number.isFinite(n) && n > 0 ? n : 30;
 }
 
+/** Where a stale-pipeline alert can actually go. `log-only` means no
+ *  ALERT_WEBHOOK_URL secret is set, so "alerting" is a console line. */
+export type AlertChannel = "configured" | "log-only";
+
+export function alertChannelState(env: {
+  ALERT_WEBHOOK_URL?: string;
+}): AlertChannel {
+  return env.ALERT_WEBHOOK_URL ? "configured" : "log-only";
+}
+
 /** Pure staleness/alert decision — unit-testable core of the watchdog.
  *  alertDue is true only when stale AND not alerted within the last hour. */
 export function shouldAlertStale(
@@ -126,13 +136,64 @@ export function shouldAlertStale(
   return { stale, ageMinutes, alertDue };
 }
 
+/** POST an alert to the configured webhook — the single alert channel, shared by the
+ *  staleness watchdog and the D1 rows-read budget check (issue #12). Returns whether the
+ *  message was delivered; `false` covers "no webhook configured" and delivery failure, so
+ *  callers must not stamp an alert as sent on a false result. Never throws. */
+export async function postWebhook(
+  env: { ALERT_WEBHOOK_URL?: string },
+  content: string,
+): Promise<boolean> {
+  const webhookUrl = env.ALERT_WEBHOOK_URL;
+  if (!webhookUrl) return false;
+  try {
+    // SSRF guard: webhook target must be a clean https URL (same policy as provider calls).
+    assertSafeApiUrl(webhookUrl);
+    // Explicit https-only check at the sink so static analysis sees the
+    // validation adjacent to the fetch (defense in depth with the above).
+    const target = new URL(webhookUrl);
+    if (target.protocol !== "https:")
+      throw new BlockedApiUrlError("webhook must be https");
+    // Sink uses the parsed+validated URL object, never the raw secret string.
+    // pi-lens-ignore: ts-ssrf — documented false positive: this rule's post_filter
+    // flags ANY fetch() whose URL text contains "." or matches /webhook|target/.
+    // Verified to fire identically on the pre-existing HEAD code. The URL is an
+    // operator-set Worker secret (not user input) and is validated above by
+    // assertSafeApiUrl() plus an explicit https-only protocol check.
+    const res = await fetch(target, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content, text: content, message: content }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`webhook ${res.status}`);
+    return true;
+  } catch (e) {
+    // Delivery failed — callers must not stamp, so the next evaluation retries
+    // instead of silencing alerts for an hour over an undelivered send.
+    if (e instanceof BlockedApiUrlError)
+      console.warn("webhook blocked:", e.message);
+    else console.warn("webhook post failed", e);
+    return false;
+  }
+}
+
 /** Fire ALERT_WEBHOOK_URL when data is stale. Rate-limits itself to one alert/hour
- *  via last_stale_alert_at. Returns what happened (for logging/tests). */
+ *  via last_stale_alert_at. Returns what happened (for logging/tests).
+ *  With no webhook configured the channel is `log-only` and the stale state is
+ *  logged at error level on every evaluation — never silently swallowed. */
 export async function watchdogCheck(
   db: D1Database,
   env: { ALERT_WEBHOOK_URL?: string; STALE_ALERT_MINUTES?: string },
   nowMs: number = Date.now(),
-): Promise<{ stale: boolean; ageMinutes: number | null; alerted: boolean }> {
+): Promise<{
+  stale: boolean;
+  ageMinutes: number | null;
+  alerted: boolean;
+  channel: AlertChannel;
+}> {
+  const webhookUrl = env.ALERT_WEBHOOK_URL;
+  const channel = alertChannelState(env);
   const last = await getLastBenchmarkAt(db);
   const health = await getSchedulerHealth(db);
   const lastAlertAtMs = health.last_stale_alert_at
@@ -149,38 +210,38 @@ export async function watchdogCheck(
       stale: decision.stale,
       ageMinutes: decision.ageMinutes,
       alerted: false,
+      channel,
     };
 
-  if (!env.ALERT_WEBHOOK_URL) {
-    // Nothing to deliver to — report stale without stamping, so the next
-    // tick re-evaluates instead of pretending an alert went out.
-    return { stale: true, ageMinutes: decision.ageMinutes, alerted: false };
+  if (channel === "log-only" || !webhookUrl) {
+    // No webhook configured: the alert cannot be delivered. Emit an error-level
+    // line on every stale evaluation so a stall shows up in `wrangler tail` /
+    // Workers Logs instead of vanishing. Deliberately does NOT stamp
+    // last_stale_alert_at, so configuring the secret makes the next tick fire
+    // immediately rather than waiting out the hourly rate limit.
+    console.error(
+      `watchdog: STALE (${decision.ageMinutes ?? "unknown"}m since last benchmark, ` +
+        `threshold ${staleMinutes(env)}m) and the alert channel is NOT CONFIGURED. ` +
+        `Set the ALERT_WEBHOOK_URL secret to receive real alerts. Last: ${last}`,
+    );
+    return {
+      stale: true,
+      ageMinutes: decision.ageMinutes,
+      alerted: false,
+      channel,
+    };
   }
-  try {
-    // SSRF guard: webhook target must be a clean https URL (same policy as provider calls).
-    assertSafeApiUrl(env.ALERT_WEBHOOK_URL);
-    // Explicit https-only check at the sink so static analysis sees the
-    // validation adjacent to the fetch (defense in depth with the above).
-    const target = new URL(env.ALERT_WEBHOOK_URL);
-    if (target.protocol !== "https:")
-      throw new BlockedApiUrlError("webhook must be https");
-    const content =
-      `🔴 ModelPulseX pipeline STALE — no benchmarks for ${decision.ageMinutes}m ` +
-      `(threshold ${staleMinutes(env)}m). Last: ${last}. Check scheduler_health meta + queue DLQ.`;
-    const res = await fetch(env.ALERT_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content, text: content, message: content }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) throw new Error(`webhook ${res.status}`);
-  } catch (e) {
-    // Delivery failed — do NOT stamp, so the next tick retries instead of
-    // silencing alerts for an hour over an undelivered send.
-    if (e instanceof BlockedApiUrlError)
-      console.warn("watchdog webhook blocked:", e.message);
-    else console.warn("watchdog webhook", e);
-    return { stale: true, ageMinutes: decision.ageMinutes, alerted: false };
+  const content =
+    `🔴 ModelPulseX pipeline STALE — no benchmarks for ${decision.ageMinutes}m ` +
+    `(threshold ${staleMinutes(env)}m). Last: ${last}. Check scheduler_health meta + queue DLQ.`;
+  const delivered = await postWebhook(env, content);
+  if (!delivered) {
+    return {
+      stale: true,
+      ageMinutes: decision.ageMinutes,
+      alerted: false,
+      channel,
+    };
   }
   try {
     const now = new Date(nowMs).toISOString();
@@ -193,5 +254,10 @@ export async function watchdogCheck(
   } catch (e) {
     console.warn("watchdog persist", e);
   }
-  return { stale: true, ageMinutes: decision.ageMinutes, alerted: true };
+  return {
+    stale: true,
+    ageMinutes: decision.ageMinutes,
+    alerted: true,
+    channel,
+  };
 }

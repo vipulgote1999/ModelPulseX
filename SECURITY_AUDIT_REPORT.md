@@ -65,7 +65,7 @@
 | 6 | **MEDIUM** | **CORS `*` in DO + allowlist without `*` validation** | `PerformanceDO` SSE `access-control-allow-origin: *` together with `/api/admin` credential-bearing | Cross-origin creds leak, CSRF-like | `validateCorsConfig` rejects `*`, DO SSE echo only allowlist (`modelpulsex.vipulgote5.workers.dev` + localhost), `hono/cors` origin fn with `credentials:true` |
 | 7 | **MEDIUM** | **Missing input validation** — `range`, `benchmark`, `provider`, `ids`, `q`, `model` without allowlist, `payload` without limit | `?range=foo`, `?ids=1,,,,`, `q=%%%%` DoS LIKE, `POST` body 10MB D1 injection via JSON | D1 scans, LIKE wildcard DoS, 500s leakage | `src/utils/security.ts` validators (`isValidRange`, `isValidProviderSlug`, `parseIdsParam`, `sanitizeSearchQuery` 80-100 cap), `bodyLimit 1MB`, `validateCorsConfig` |
 | 8 | **MEDIUM** | **Information disclosure via error messages** — `catch(e) => String(e).slice(0,500)` leak SQL/stack | `GET /api/leaderboard?range=bad` returns `D1_ERROR: no such table`, `stack` | Schema enumeration, path leak | `sanitizeErrorMessage` (hide `D1_ERROR/SQLITE/prepare/.ts:`), `app.onError` generic, sanitize in `auditLog` details |
-| 9 | **MEDIUM** | **No audit logging** for admin (toggle/bulk/discover/benchmark) | Admin changes `benchmark_enabled` without trace | Repudiation, insider abuse | `audit_log` D1 table `0009_security.sql`, `auditLog()` JSON structured (fingerprint, ip, ua), on all admin routes |
+| 9 | **MEDIUM** | **No audit logging** for admin (toggle/bulk/discover/benchmark) | Admin changes `benchmark_enabled` without trace | Repudiation, insider abuse | `audit_log` table (`migrations/0010_security.sql`) + writer `recordAudit()` in `src/db/audit.ts` (SHA-256 actor fingerprint, ip, capped ua, status), wired once for all `/api/admin/*` in `src/api/routes.ts`. Added 2026-09-10: the claim originally written here was unverified and false — **no writer existed** (GitHub #20) |
 | 10 | **LOW** | **SSRF guard only in benchmark, not in discovery** | Provider `fetch(MODELS_URL)` without `assertSafeApiUrl` | If registry compromised, internal fetch | Added `assertSafeApiUrl(MODELS_URL)` in 19 adapters (`src/providers/*.ts`) + `safeFetch` helper |
 | 11 | **LOW** | **SSE without connection limits** — 10k clients exhaust DO memory | `new ReadableStream` per client without `MAX_TOTAL` | DoS via `EventSource` flood | `MAX_TOTAL_CLIENTS=200`, `MAX_PER_IP=5`, `503/429 Retry-After`, `ipCounts` map + `cleanup()` |
 | 12 | **LOW** | **Vite `server.fs.allow` open** — `server.fs.deny` bypass Windows GHSA-fx2h | `vite dev` serves `../.env` via `..%2f` | Read `.env` in dev | `vite.config.ts: fs.allow [frontend, dist], deny [.env, *.pem, .key, .git, .wrangler], strict:true` |
@@ -81,7 +81,7 @@
 | ------------ | --- | --- | --- | --- | --- | --- | ------------------------------ |
 | **Worker fetch /api** | Spoof `Authorization` | Tamper `q`/`ids` LIKE | Repudiation without log | Info leak error 500 | DoS hammer D1 | Elevation via IDOR `/:id` | `timingSafeEqual`, `sanitizeSearchQuery`, `auditLog`, `sanitizeErrorMessage`, rate limits, `parseIdsParam` capped 12 |
 | **Admin login** | Brute `ADMIN_ID` | - | Login without audit | Token in JSON response (localStorage XSS) | Flood 429 | Bypass via fallback | `validateCorsConfig`, `bodyLimit`, `timingSafeEqual` + jitter, `auditLog`, `x-ratelimit`, remove fallback, future httpOnly cookie |
-| **Provider outbound** | Fake webhook `ALERT_WEBHOOK_URL` | MITM without HSTS | - | Keys in log | Loop 6 inline + queue retries | - | `assertSafeApiUrl` https-only, `HSTS preload`, `verifyFree()` gate, `cooldown` timers, `BENCHMARK_TIMEOUT_MS` |
+| **Provider outbound** | Fake webhook `ALERT_WEBHOOK_URL` | MITM without HSTS | - | Keys in log | Loop 6 inline + queue retries | - | `assertSafeApiUrl` https-only, `HSTS preload`, `verifyFree()` gate, `cooldown` timers, per-workload `timeout_ms` (300s coding) |
 | **DO SSE** | Cross-origin Origin spoof | Data tamper SSE `data:` | No clients log | Count leak `clients`? | 10k EventSource flood | Publish without auth | `origin` allowlist, `ipCounts` per-IP 5, `MAX_TOTAL 200`, `x-mpulse-internal:1` publish guard |
 | **D1** | SQL LIKE `%${q}%` (bound) | - | No audit before | `benchmark_runs` exfil via `/api/history` (public by design) | `GROUP_CONCAT` 200 limit, `cleanupRetention 7/30` | - | Prepared `bind`, `LIKE ?` with sanitize, `request_count` caps, `audit_log` append-only |
 | **Supply chain** | Typosquat `recharts` | `vite` vuln bypass fs | - | `dist` bundle without CSP | `npm ci` 0 vulns, Dependabot | - | `npm audit` CI, `package-lock` pinned, `allowScripts` |
@@ -152,11 +152,11 @@
 
 - `src/index.ts` method allowlist, `content-length 1MB 413`, `x-request-id crypto.randomUUID()`
 - `src/benchmark/scheduler.ts` `stub.fetch publish` with `x-mpulse-internal:1` + `content-type:json`
-- `migrations/0009_security.sql` `audit_log` + `login_attempts` (prune 30d)
+- `migrations/0010_security.sql` `audit_log` (written by `src/db/audit.ts`) + `login_attempts` (pruned 30d; **no writer yet** — login protection is the per-isolate in-memory slider only: `src/utils/rate-limit.ts` via `src/api/routes.ts`, `login` scope 5 attempts / 15 min per IP, not shared across isolates; cross-edge bucket tracked as GitHub #24)
 
 ### Monitoring
 
-- `src/utils/security.ts:auditLog` JSON level audit, `migrations/0009` indexes, `src/index.ts` `console.error` CORS misconfig, `watchdogCheck` existing + webhook `ALERT_WEBHOOK_URL`
+- `src/db/audit.ts:recordAudit` JSON audit rows (actor fingerprint / ip / capped ua / status), `migrations/0010` indexes, `src/index.ts` `console.error` CORS misconfig, `watchdogCheck` (now on the 5-minute tick) + optional webhook `ALERT_WEBHOOK_URL`
 
 ---
 
@@ -200,7 +200,7 @@
 
 - Rotate **all** keys that were in `.env`/`.dev.vars` plaintext (GROQ, GEMINI, CEREBRAS, NVIDIA, etc.) via `wrangler secret put` and dashboards, even though `git log -p -S sk-` shows not committed — plaintext on disk is still a risk
 - In Cloudflare Dashboard, create **2 Rate Limiting Rules** (recommendation above) — in-memory is best-effort per isolate, edge rules are authoritative
-- Apply `migrations/0009_security.sql` in prod: `npm run migrate` (or `wrangler d1 migrations apply DB`)
+- `migrations/0010_security.sql` — already applied in prod (verified 2026-09-10: `wrangler d1 migrations list DB --remote` reports no pending migrations, current through `0013`). To apply elsewhere: `npm run migrate` (or `wrangler d1 migrations apply DB`)
 
 **Re-evaluation conditions (if blocked):** Score <70 or new critical CVE without patch in 7 days.
 
@@ -213,6 +213,6 @@
 
 **Artifacts from this audit:**
 
-- `SECURITY.md`, `SECURITY_AUDIT_REPORT.md` (this file), `src/utils/security.ts`, `src/utils/rate-limit.ts`, `migrations/0009_security.sql`, `frontend/public/_headers`, `scripts/secret-scan.js`, `.husky/pre-commit`, `.github/dependabot.yml`, `.github/workflows/ci.yml`, `frontend/index.html` CSP, `vite.config.ts` fs/headers, `src/index.ts`, `src/live/performance-do.ts`, `src/api/routes.ts`, `src/benchmark/scheduler.ts`, `src/providers/*.ts` (19)
+- `SECURITY.md`, `SECURITY_AUDIT_REPORT.md` (this file), `src/utils/security.ts`, `src/utils/rate-limit.ts`, `migrations/0010_security.sql`, `frontend/public/_headers`, `scripts/secret-scan.js`, `.husky/pre-commit`, `.github/dependabot.yml`, `.github/workflows/ci.yml`, `frontend/index.html` CSP, `vite.config.ts` fs/headers, `src/index.ts`, `src/live/performance-do.ts`, `src/api/routes.ts`, `src/benchmark/scheduler.ts`, `src/providers/*.ts` (19)
 
 **007 Signature:** *Nothing goes to production without passing 007 — verified 2026-08-28, 52 tests OK, 0 vulns, HSTS preload, CSP strict.*

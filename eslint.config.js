@@ -20,4 +20,18 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   },
+  {
+    // Standalone Node ESM e2e script (test/e2e/*.mjs). Flat config ships no
+    // ambient Node globals, so declare just the ones it uses.
+    files: ["test/e2e/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        URL: "readonly",
+        console: "readonly",
+        process: "readonly",
+        setTimeout: "readonly",
+      },
+    },
+  },
 );

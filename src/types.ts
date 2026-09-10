@@ -295,6 +295,10 @@ export interface Env {
  BENCH_INLINE_FALLBACK?: string;
  /** Upper bound (ms) for escalating provider cooldowns (default 2h). */
  COOLDOWN_MAX_MS?: string;
+ /** Fraction of the daily D1 rows-read budget that triggers an alert (default 0.8). */
+ ROWS_READ_ALERT_FRACTION?: string;
+ /** Daily D1 rows-read cap for the account's plan (default 5,000,000 = free tier). */
+ D1_DAILY_ROWS_CAP?: string;
  MAX_GLOBAL_CONCURRENCY?: string;
  MAX_OPENCODE_CONCURRENCY?: string;
  MAX_OPENROUTER_CONCURRENCY?: string;
@@ -316,7 +320,6 @@ export interface Env {
  MAX_TOKENROUTER_CONCURRENCY?: string;
  MAX_OLLAMA_CONCURRENCY?: string;
  MAX_SAME_MODEL_CONCURRENCY?: string;
- BENCHMARK_TIMEOUT_MS?: string;
  INCIDENT_THRESHOLD?: string;
  // allow arbitrary provider concurrency envs
  [key: string]:

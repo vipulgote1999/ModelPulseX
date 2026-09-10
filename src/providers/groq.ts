@@ -20,7 +20,7 @@ interface GroqModel {
 // Verified FREE per GroqCloud + freellm.net 2026-05-13: only these are $0 on free tier (others are paid now: llama-3.1-8b-instant etc. marked No Longer Free)
 // Re-checked 2026-09-05: live discovery returns 6 groq models, all inside this set (minimax-m2.7/kimi-k2/whisper currently unlisted — dormant entries, harmless).
 // Keep audio whisper ids in allowlist but they are NOT chat-benchmarkable — flagged disabled separately via migration.
-const VERIFIED_FREE = new Set<string>([
+export const VERIFIED_FREE = new Set<string>([
   "qwen/qwen3.6-27b",
   "minimaxai/minimax-m2.7",
   "groq/compound",

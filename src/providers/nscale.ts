@@ -8,7 +8,7 @@ import type {
 import { measureBenchmark, assertSafeApiUrl } from "../benchmark/engine";
 const MODELS_URL = "https://inference.api.nscale.com/v1/models";
 const CHAT_URL = "https://inference.api.nscale.com/v1/chat/completions";
-const VERIFIED_FREE = new Set<string>([
+export const VERIFIED_FREE = new Set<string>([
     "meta-llama/Llama-3.3-70B-Instruct",
     "meta-llama/Llama-3.1-70B-Instruct",
     "Qwen/Qwen3-Coder-30B-A3B-Instruct",

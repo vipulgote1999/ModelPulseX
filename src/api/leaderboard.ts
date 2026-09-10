@@ -3,7 +3,13 @@ import type { Env, LeaderboardRow } from "../types";
 import { parseRange } from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
 import { getSchedulerHealth } from "../db/health";
-import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
+import {
+  percentile,
+  parseConcatNumbers,
+  MIN_SAMPLES,
+  measuredTpsLabel,
+  assignRanks,
+} from "../utils/metrics";
 import { freeHardFilterWhere } from "../providers/registry";
 import { nowFor } from "../db/snapshot";
 import type { SnapshotRow } from "../db/snapshot";
@@ -54,14 +60,17 @@ export function leaderboardRoutes(env: Env) {
         if (sort === "uptime") return (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1);
         return (b.overall_score ?? -1) - (a.overall_score ?? -1);
       });
-      scored.forEach((r, i) => (r.rank = i + 1));
+      // Rank policy (#11): evidence-gated ranks. Rows without MIN_SAMPLES.w24h
+      // runs in the last 24h are listed unranked (rank: null) after the ranked
+      // set — visible, but not presented as comparable. Documented on /methodology.
+      const ordered = assignRanks(scored);
 
       const isStale = meta?.last_benchmark
         ? Date.now() - new Date(meta.last_benchmark).getTime() > 18 * 60 * 1000
         : true;
 
       const resp = c.json({
-        leaderboard: scored,
+        leaderboard: ordered,
         range,
         benchmark,
         sort,
@@ -277,7 +286,10 @@ export function leaderboardRoutes(env: Env) {
             last_test: entry?.at ?? n?.last_benchmark_at ?? null,
             request_count_7d: s.request_count_7d ?? 0,
             previously_free: s.free_status === "PREVIOUSLY_FREE",
-            measured_tps_label: "Measured TPS",
+            measured_tps_label: measuredTpsLabel(
+              s.sample_count_24h,
+              s.tps_24h,
+            ),
             sparkline,
             sampleCount24h: s.sample_count_24h ?? 0,
             overall_score: null,
@@ -649,7 +661,7 @@ export function leaderboardRoutes(env: Env) {
         last_test,
         request_count_7d: cnt7,
         previously_free: mm.free_status === "PREVIOUSLY_FREE",
-        measured_tps_label: "Measured TPS",
+        measured_tps_label: measuredTpsLabel(sampleCount24h, tps_24h),
         sparkline,
         sampleCount24h,
         overall_score: null,

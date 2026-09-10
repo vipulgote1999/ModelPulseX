@@ -1,6 +1,6 @@
 # e01s01 — Scaffold Wrangler+D1+Queue+DO+Cron+TS+Tests
 
-Status: pending
+Status: completed
 
 ## Objective
 Initialize Cloudflare project structure `src/index.ts, providers/, benchmark/, db/, live/, api/, utils/, types/` + migrations + frontend Vite scaffold + shared test harness so subsequent stories have green Preflight.

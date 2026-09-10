@@ -1,4 +1,4 @@
--- 0009_security.sql — security hardening: audit log and enhanced rate-limit persistence
+-- 0010_security.sql — security hardening: audit log and enhanced rate-limit persistence
 -- Audit log for admin actions (immutable append-only; never stores secrets)
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

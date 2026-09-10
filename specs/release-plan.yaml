@@ -2,13 +2,16 @@ release:
   version: 0.1.0
   name: ModelPulseX Observatory v1
   target: Cloudflare-native FREE model observatory — dynamic discovery, streaming benchmarks, 7-day metrics, live leaderboard
+# Epic status mirrors the epic capsule at specs/epics/<id>-<slug>/epic.yaml (the source of
+# truth); specs/execution-status.yaml is derived from the capsules in this order. All three are
+# checked by test/spec-status-consistency.test.ts.
 epics:
   - id: e01
     slug: cloudflare-observatory
     title: Cloudflare-Native LLM Performance Observatory
     summary: End-to-end Worker+D1+Queue+Cron+DO API + React live dashboard fulfilling P0 spec (s1-40) with verifyFree, TPS/TTFT, 7d aggregates, provider comparison, scoring.
     wsjf: 13
-    status: in_progress
+    status: completed
   - id: e02
     slug: scoring-and-methodology
     title: Scoring, Recommendations & Methodology Hardening
@@ -17,7 +20,7 @@ epics:
     status: pending
   - id: e03
     slug: extra-provider-and-ops
-    title: Extra Provider + Ops Polish
-    summary: Third provider adapter trivially added, daily aggregates indefinite, public API docs, perf tuning, deploy hardening — P2.
+    title: Multi-Provider Expansion + Ops Polish
+    summary: Provider expansion beyond Zen+OpenRouter delivered — 19 registry descriptors (2 keyless catalogs + 17 keyed providers) with per-provider free gate, concurrency/RPM caps and secrets; plus ops polish — 10-minute aggregates, precomputed leaderboard snapshot, rows-read budget fixes (0011-0013), OpenAPI endpoint, edge caching, CI preflight + secret scan — P2.
     wsjf: 3
-    status: pending
+    status: completed

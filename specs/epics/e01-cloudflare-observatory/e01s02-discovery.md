@@ -1,6 +1,6 @@
 # e01s02 — D1 schema + provider interface + dynamic discovery
 
-Status: pending
+Status: completed
 
 ## Objective
 Implement relational schema plus `LLMProvider` contract and two real adapters with strict FREE filtering and 7-day retention of Previously Free.

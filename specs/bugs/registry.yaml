@@ -19,3 +19,43 @@
   scope: src/db/cooldown.ts, src/benchmark/scheduler.ts, src/api/timeouts.ts
   summary: D1 rows-read cap exceeded — provider-count query scanned 7d table
   file: specs/bugs/BUG-2026-09-10-d1-row-read-cap.md
+- bug_id: BUG-2026-09-10T130000
+  date: '2026-09-10'
+  severity: high
+  priority: high
+  scope: src/db/health.ts, src/index.ts, src/api/health.ts
+  summary: Staleness watchdog silent — no webhook, hourly-only evaluation
+  file: specs/bugs/BUG-2026-09-10-watchdog-alert-channel.md
+  github: 22
+- bug_id: BUG-2026-09-10T140000
+  date: '2026-09-10'
+  severity: medium
+  priority: high
+  scope: src/api/leaderboard.ts, src/utils/metrics.ts
+  summary: Zero-sample rows labelled "Measured TPS" and still ranked
+  file: specs/bugs/BUG-2026-09-10-leaderboard-labels.md
+  github: 11
+- bug_id: BUG-2026-09-10T150000
+  date: '2026-09-10'
+  severity: medium
+  priority: high
+  scope: src/db/audit.ts, src/api/routes.ts
+  summary: Security report claimed admin audit logging that did not exist
+  file: specs/bugs/BUG-2026-09-10-audit-log-gap.md
+  github: 20
+- bug_id: BUG-2026-09-10T160000
+  date: '2026-09-10'
+  severity: low
+  priority: medium
+  scope: wrangler.jsonc, src/types.ts
+  summary: Dead BENCHMARK_TIMEOUT_MS config read by nothing
+  file: specs/bugs/BUG-2026-09-10-dead-timeout-config.md
+  github: 23
+- bug_id: BUG-2026-09-10T170000
+  date: '2026-09-10'
+  severity: high
+  priority: high
+  scope: scripts/check-query-plans.mjs, src/db/query-cost.ts, migrations/0014
+  summary: No guard or visibility around the D1 rows-read budget
+  file: specs/bugs/BUG-2026-09-10-rows-read-guard.md
+  github: 12

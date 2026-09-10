@@ -1,6 +1,12 @@
 # e01s03 — Real streaming benchmark engine
 
-Status: pending
+Status: completed
+
+> **Superseded 2026-09-10:** the shipped engine runs a single deterministic
+> `coding` workload (`src/benchmark/workloads.ts`, `max_tokens` 4092,
+> `timeout_ms` 300s). The `short`/`medium` prompts named below were removed in
+> commits `0147d16` and `3e358ae`; the calculation, classification and
+> `token_estimation_method` work described here is what shipped.
 
 ## Objective
 Measure TTFT/TPS from live streaming API responses correctly, across three deterministic workloads, with provider usage vs heuristic token counting and error classification.

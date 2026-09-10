@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency } from "../src/utils/metrics";
+import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency, measuredTpsLabel, isRankEligible, assignRanks, MIN_SAMPLES } from "../src/utils/metrics";
 
-describe("metrics", () => {
-  it("TTFT = first - started", () => {
+describe("metrics", () => {  it("TTFT = first - started", () => {
     expect(computeTTFT(1000, 1120)).toBe(120);
     expect(computeTTFT(1000, null)).toBeNull();
   });
@@ -57,5 +56,51 @@ describe("computeInterTokenLatency", () => {
   });
   it("ignores non-monotonic and nullish input", () => {
     expect(computeInterTokenLatency([50, 10])).toBeNull();
+  });
+});
+
+// Issue #11: honest labels + evidence-gated ranks (no constant "Measured TPS").
+describe("measuredTpsLabel", () => {
+  it("labels a row with no 24h samples as having no recent data", () => {
+    expect(measuredTpsLabel(0, null)).toBe("No recent data");
+    expect(measuredTpsLabel(undefined, 42)).toBe("No recent data");
+  });
+  it("labels a gated (below-threshold) row as insufficient samples", () => {
+    expect(measuredTpsLabel(2, null)).toBe("Insufficient samples");
+  });
+  it("labels a row with a gated-in median as measured", () => {
+    expect(measuredTpsLabel(MIN_SAMPLES.w24h, 12.5)).toBe("Measured TPS");
+  });
+});
+
+describe("rank eligibility + assignment", () => {
+  const row = (id: number, samples: number) => ({
+    model_id: id,
+    rank: 0 as number | null,
+    sampleCount24h: samples,
+  });
+
+  it("requires MIN_SAMPLES.w24h runs in the last 24h", () => {
+    expect(isRankEligible(0)).toBe(false);
+    expect(isRankEligible(2)).toBe(false);
+    expect(isRankEligible(3)).toBe(true);
+    expect(isRankEligible(null)).toBe(false);
+  });
+
+  it("numbers eligible rows and sinks zero-sample rows to the bottom unranked", () => {
+    const ordered = assignRanks([
+      row(1, 0), // zero samples — the live-board symptom from #11
+      row(2, 10),
+      row(3, 3),
+      row(4, 1),
+    ]);
+    expect(ordered.map((r) => r.model_id)).toEqual([2, 3, 1, 4]);
+    expect(ordered.map((r) => r.rank)).toEqual([1, 2, null, null]);
+  });
+
+  it("keeps unranked rows visible (never drops them)", () => {
+    const ordered = assignRanks([row(1, 0), row(2, 0)]);
+    expect(ordered).toHaveLength(2);
+    expect(ordered.every((r) => r.rank === null)).toBe(true);
   });
 });

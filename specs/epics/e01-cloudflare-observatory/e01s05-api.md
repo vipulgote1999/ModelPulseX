@@ -1,6 +1,6 @@
 # e01s05 — API + aggregation + incidents + comparison + scoring
 
-Status: pending
+Status: completed
 
 ## Objective
 Serve leaderboard/history/comparison/health without scanning raw rows; compute incidents/uptime and weighted Overall Score.

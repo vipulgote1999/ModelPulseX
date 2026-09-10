@@ -287,16 +287,20 @@ export async function getActiveCooldowns(db: D1Database): Promise<{
 export async function getProviderUsageSince(
   db: D1Database,
   sinceIso: string,
+  /** Receives D1's `meta.rows_read` for this statement — the query that caused the
+   *  2026-09 rows-read breach is measured at its single call site (issue #12). */
+  onCost?: (rowsRead: number) => void,
 ): Promise<Map<string, number>> {
   try {
-    const rows = await db
+    const res = await db
       .prepare(
         `SELECT provider, COUNT(*) as cnt FROM benchmark_runs WHERE started_at >= ? GROUP BY +provider`,
       )
       .bind(sinceIso)
       .all<{ provider: string; cnt: number }>();
+    onCost?.(res.meta?.rows_read ?? 0);
     const m = new Map<string, number>();
-    for (const r of rows.results ?? []) m.set(r.provider, r.cnt);
+    for (const r of res.results ?? []) m.set(r.provider, r.cnt);
     return m;
   } catch {
     return new Map();

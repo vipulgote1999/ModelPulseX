@@ -1,7 +1,9 @@
 product: ModelPulseX
 vision: >
   Production-ready Cloudflare-native LLM Performance Observatory that continuously measures
-  and displays the real-world performance of FREE models via OpenCode Zen and OpenRouter,
+  and displays the real-world performance of FREE models across 19 provider APIs — OpenCode Zen,
+  OpenRouter, Groq, Cerebras, Gemini, NVIDIA, SambaNova, Mistral, Agnes AI, AionLabs, Kilo Code,
+  GLHF, Nscale, Speka, NexaAPI, OrcaRouter, NineRouter, TokenRouter and Ollama —
   answering "which free model should I use right now, and which has been best over the last 7 days?"
 principles:
   - "Every number traces back to a real streaming benchmark; no fake or provider-reported TPS."
