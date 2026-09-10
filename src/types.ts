@@ -133,6 +133,10 @@ export interface ModelMetadata {
 /** Scheduler heartbeat persisted every 5-minute cron tick — makes enqueue health observable. */
 export interface SchedulerHealth {
  last_schedule_at: string | null;
+ /** Stamped before the tick does any work, so a slow/killed tick is still visible (issue #26). */
+ last_schedule_started_at?: string | null;
+ /** Wall-clock duration of the last completed tick in ms (issue #26). */
+ last_schedule_ms?: number | null;
  last_enqueue_count: number;
  last_inline_count: number;
  last_skipped_cooldown: number;

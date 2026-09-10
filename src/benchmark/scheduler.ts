@@ -6,7 +6,7 @@ import {
   insertBenchmarkRun,
 } from "../db/queries";
 import { applyDataFixes } from "../db/data-fixes";
-import { recordScheduleTick } from "../db/health";
+import { recordScheduleTick, recordScheduleStart } from "../db/health";
 import { recordRowsRead, checkRowsReadBudget } from "../db/query-cost";
 import {
   getConcurrency,
@@ -98,6 +98,42 @@ export async function runDiscovery(
   return { discovered: total, added, fixesApplied };
 }
 
+/** Wall-clock budget a single tick may spend running jobs inline before handing the
+ *  rest to the queue. The 5-minute cron interval is the hard ceiling, and the coding
+ *  workload permits a 300s provider timeout per job — so an unbounded sequential
+ *  inline loop can overrun the interval, which delays the heartbeat (making
+ *  `/api/health` report a frozen scheduler) and lets ticks overlap (issue #26). */
+export const INLINE_BUDGET_MS = 60_000;
+
+/** Run up to `take` jobs inline, never *starting* a new one once `budgetMs` has
+ *  elapsed. Every job not run is returned in `rest` so the caller queues it — a job
+ *  is never dropped just because the tick ran out of time. A job that throws is
+ *  logged and not retried here (unchanged behaviour: the queue path has its own
+ *  retries), and does not abort the remaining inline work. */
+export async function runInlineBounded<T>(
+  jobs: T[],
+  take: number,
+  budgetMs: number,
+  run: (job: T) => Promise<void>,
+  opts: { now?: () => number; onError?: (job: T, e: unknown) => void } = {},
+): Promise<{ ran: number; rest: T[] }> {
+  const now = opts.now ?? Date.now;
+  const startMs = now();
+  let ran = 0;
+  let cursor = 0;
+  while (cursor < jobs.length && ran < take) {
+    if (now() - startMs >= budgetMs) break;
+    const job = jobs[cursor++]!;
+    try {
+      await run(job);
+      ran++;
+    } catch (e) {
+      opts.onError?.(job, e);
+    }
+  }
+  return { ran, rest: jobs.slice(cursor) };
+}
+
 export async function scheduleBenchmarks(
   env: Env,
   opts: { inlineTake?: number } = {},
@@ -114,6 +150,10 @@ export async function scheduleBenchmarks(
   // SAFETY: rpmConfig reads only string env vars (RPM_*/MAX_*_RPM); bindings are ignored.
   const rpmConfig = getRPMConfig(env as unknown as Record<string, unknown>);
   const nowIso = new Date().toISOString();
+  // Mark the tick as started before any work: if a tick is ever killed mid-flight
+  // (or overruns), the health payload still shows when it began (issue #26).
+  const tickStartMs = Date.now();
+  await recordScheduleStart(env.DB, tickStartMs);
   // Single-prompt observatory: no rotation — every cycle benchmarks coding.
   const chosenType: BenchmarkType = "coding";
 
@@ -202,20 +242,18 @@ export async function scheduleBenchmarks(
 
   // Inline fallback: execute the first N selected jobs inside this cron invocation so
   // baseline coverage survives even if queue delivery stalls (observed in prod Aug 2025).
+  // Bounded by INLINE_BUDGET_MS so the tick cannot overrun the 5-minute interval.
   const inlineTake = Math.max(0, Math.min(opts.inlineTake ?? 0, jobs.length));
-  let inlineRan = 0;
-  for (const job of jobs.slice(0, inlineTake)) {
-    try {
-      await handleBenchJob(env, job);
-      inlineRan++;
-    } catch (e) {
-      console.error("inline bench job failed", job.model_id, e);
-    }
-  }
+  const { ran: inlineRan, rest } = await runInlineBounded(
+    jobs,
+    inlineTake,
+    INLINE_BUDGET_MS,
+    (job) => handleBenchJob(env, job),
+    { onError: (job, e) => console.error("inline bench job failed", job.model_id, e) },
+  );
 
   // Enqueue the remainder in batches of 10
   let enqueued = 0;
-  const rest = jobs.slice(inlineTake);
   for (let i = 0; i < rest.length; i += 10) {
     const batch = rest.slice(i, i + 10);
     try {
@@ -227,12 +265,16 @@ export async function scheduleBenchmarks(
   }
 
   // Heartbeat: make enqueue health observable via /api/leaderboard meta + /api/health.
-  await recordScheduleTick(env.DB, {
-    enqueueCount: enqueued,
-    inlineCount: inlineRan,
-    skippedCooldown,
-    skippedRpm: skippedRPM,
-  });
+  await recordScheduleTick(
+    env.DB,
+    {
+      enqueueCount: enqueued,
+      inlineCount: inlineRan,
+      skippedCooldown,
+      skippedRpm: skippedRPM,
+    },
+    tickStartMs,
+  );
 
   return {
     enqueued,
