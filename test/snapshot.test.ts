@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSnapshotRows, nowFor } from "../src/db/snapshot";
+import { buildSnapshotRows, nowFor, refreshLeaderboardSnapshot } from "../src/db/snapshot";
 import type {
   SnapshotMeta,
   SnapshotRaw,
@@ -147,6 +147,65 @@ describe("buildSnapshotRows", () => {
     );
     // single prompt: all view mirrors the coding sparkline, last 24
     expect(JSON.parse(all.sparkline) as number[]).toEqual(Array(24).fill(10));
+  });
+});
+
+describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)", () => {
+  function fakeDb(rows: { benchmark: string; model_id: number }[], stale: { benchmark: string; model_id: number }[]) {
+    // Minimal D1 stub: batch() serves the three reads, then records upserts;
+    // prepare() outside batch serves the sweep DELETE and counts its victims.
+    const upserted: string[] = [];
+    let deleted = 0;
+    const deletedKeys: string[] = [];
+    const db = {
+      upserted,
+      get deleted() { return deleted; },
+      get deletedKeys() { return deletedKeys; },
+      prepare(sql: string) {
+        const stmt = {
+          bind(..._a: unknown[]) { return stmt; },
+          all: async () => ({ results: [] }),
+          first: async () => null,
+          run: async () => {
+            if (sql.startsWith("DELETE FROM leaderboard_snapshot")) {
+              // victims = stale fixture rows never refreshed by this tick
+              deleted = stale.length;
+              for (const r of stale) deletedKeys.push(r.benchmark + ":" + r.model_id);
+            }
+            return { meta: { changes: deleted } };
+          },
+        };
+        return stmt;
+      },
+      batch: async (stmts: unknown[]) => {
+        // First call: the 3-statement read batch. Later calls: upsert chunks.
+        void stmts;
+        const calls = (db as unknown as { n: number }).n ?? 0;
+        (db as unknown as { n: number }).n = calls + 1;
+        if (calls === 0) {
+          return [
+            { results: [{ id: 1, provider_model_id: "a:free", display_name: "A", free_status: "FREE", active: 1, provider: "pa" }] },
+            { results: [] },
+            { results: [] },
+          ];
+        }
+        upserted.push("chunk");
+        return [{ meta: {} }];
+      },
+    };
+    return db;
+  }
+
+  it("deletes snapshot rows this tick did not refresh", async () => {
+    // Regression: disabled stealth/union-alpha kept its last snapshot row and
+    // ranked #1 with status UNKNOWN + zero 7d runs, because nothing ever
+    // deleted rows for models excluded from the refresh query.
+    const db = fakeDb([{ benchmark: "all", model_id: 1 }], [{ benchmark: "all", model_id: 58084 }]);
+    const res = await refreshLeaderboardSnapshot(db as never, Date.now());
+    expect(res.models).toBe(1);
+    expect(db.upserted.length).toBeGreaterThan(0);
+    expect(db.deleted).toBe(1);
+    expect(db.deletedKeys).toEqual(["all:58084"]);
   });
 });
 
