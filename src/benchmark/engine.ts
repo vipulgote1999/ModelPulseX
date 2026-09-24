@@ -12,6 +12,8 @@ import {
   estimateTokensHeuristic,
 } from "../utils/metrics";
 import { retryAfterSeconds } from "../utils/concurrency";
+import { redactHeaders } from "../utils/security";
+import type { PlaygroundDebug } from "../types";
 
 export interface BenchmarkOpts {
   provider: string; // ProviderName (widened for new providers)
@@ -22,6 +24,8 @@ export interface BenchmarkOpts {
   extraHeaders?: Record<string, string>;
   /** Playground only: echo truncated output text in-memory (never persisted). */
   includePreview?: boolean;
+  /** Playground only: attach a redacted debug bundle for download (never persisted). */
+  includeDebug?: boolean;
 }
 
 /**
@@ -106,6 +110,12 @@ export async function measureBenchmark(
   let seenReasoning = false;
   let reasoningTokensReported: number | null = null;
   const chunkTimes: number[] = [];
+  // Debug capture (playground only, bounded) — secrets redacted on attach.
+  const debugWanted = opts.includeDebug === true;
+  const debugRespHeaders: Record<string, string> = {};
+  let debugRespBodyPreview: string | null = null;
+  const debugSsePreview: string[] = [];
+  let debugSseLines = 0;
 
   const body: Record<string, unknown> = {
     model: opts.providerModelId,
@@ -143,6 +153,30 @@ export async function measureBenchmark(
     controller.abort();
   }, opts.benchmark.timeout_ms);
 
+  /** Attach the bounded debug bundle (redacted) when the caller opted in. */
+  const attachDebug = (r: BenchmarkResult): BenchmarkResult => {
+    if (!debugWanted) return r;
+    const debug: PlaygroundDebug = {
+      request: {
+        method: "POST",
+        url: opts.apiUrl,
+        headers: redactHeaders(headers),
+        body,
+      },
+      response: {
+        http_status: httpStatus,
+        headers:
+          Object.keys(debugRespHeaders).length > 0 ? debugRespHeaders : null,
+        body_preview: debugRespBodyPreview,
+        sse_lines: debugSseLines,
+        sse_preview: debugSsePreview,
+        reasoning_seen: seenReasoning,
+      },
+      reproduce_hint: `curl -X POST '${opts.apiUrl}' -H 'content-type: application/json' -H 'accept: text/event-stream' -H 'authorization: Bearer $PROVIDER_API_KEY' -d '<body above>'`,
+    };
+    return { ...r, debug };
+  };
+
   try {
     assertSafeApiUrl(opts.apiUrl);
     const res = await fetch(opts.apiUrl, {
@@ -152,6 +186,15 @@ export async function measureBenchmark(
       signal: controller.signal,
     });
     httpStatus = res.status;
+    if (debugWanted) {
+      try {
+        res.headers.forEach((v, k) => {
+          debugRespHeaders[k.toLowerCase()] = v;
+        });
+      } catch {
+        // headers unreadable — leave empty, still report status
+      }
+    }
     if (!res.ok) {
       let retryAfterMs: number | null = null;
       if (httpStatus === 429) {
@@ -162,6 +205,7 @@ export async function measureBenchmark(
       try {
         const txt = await res.text();
         errorType = txt.slice(0, 500);
+        if (debugWanted) debugRespBodyPreview = txt.slice(0, 2000);
       } catch {
         // body unreadable (transport reset before text()) — record why instead of swallowing
         errorType = "body_read_failed";
@@ -181,23 +225,25 @@ export async function measureBenchmark(
         tokenEstimationMethod,
       );
       if (retryAfterMs != null) out.retry_after_ms = retryAfterMs;
-      return out;
+      return attachDebug(out);
     }
 
     if (!res.body) {
       streamError = true;
       clearTimeout(timeout);
-      return finalize(
-        startedAtIso,
-        null,
-        null,
-        null,
-        null,
-        classifyStatus(httpStatus, false, true),
-        "no_body",
-        httpStatus,
-        opts,
-        tokenEstimationMethod,
+      return attachDebug(
+        finalize(
+          startedAtIso,
+          null,
+          null,
+          null,
+          null,
+          classifyStatus(httpStatus, false, true),
+          "no_body",
+          httpStatus,
+          opts,
+          tokenEstimationMethod,
+        ),
       );
     }
 
@@ -221,6 +267,12 @@ export async function measureBenchmark(
           if (data === "[DONE]") {
             done = true;
             break;
+          }
+          if (debugWanted) {
+            debugSseLines += 1;
+            if (debugSsePreview.length < 50) {
+              debugSsePreview.push(data.slice(0, 500));
+            }
           }
           try {
             const j = JSON.parse(data);
@@ -361,23 +413,25 @@ export async function measureBenchmark(
 
     const status: BenchmarkStatus = "SUCCESS";
     clearTimeout(timeout);
-    return finalize(
-      startedAtIso,
-      firstTokenAtMs ? new Date(firstTokenAtMs).toISOString() : null,
-      completedAtMs ? new Date(completedAtMs).toISOString() : null,
-      inputTokens,
-      outputTokens,
-      status,
-      null,
-      httpStatus,
-      opts,
-      tokenEstimationMethod,
-      outputText,
-      startedPerf,
-      firstPerf,
-      completedPerf,
-      chunkTimes,
-      seenReasoning,
+    return attachDebug(
+      finalize(
+        startedAtIso,
+        firstTokenAtMs ? new Date(firstTokenAtMs).toISOString() : null,
+        completedAtMs ? new Date(completedAtMs).toISOString() : null,
+        inputTokens,
+        outputTokens,
+        status,
+        null,
+        httpStatus,
+        opts,
+        tokenEstimationMethod,
+        outputText,
+        startedPerf,
+        firstPerf,
+        completedPerf,
+        chunkTimes,
+        seenReasoning,
+      ),
     );
   } catch (e: unknown) {
     clearTimeout(timeout);
@@ -395,17 +449,19 @@ export async function measureBenchmark(
     }
     const status = classifyStatus(httpStatus, timedOut, streamError);
     // if we already have first_token, preserve it
-    return finalize(
-      startedAtIso,
-      firstTokenAtMs ? new Date(firstTokenAtMs).toISOString() : null,
-      null,
-      inputTokens,
-      outputTokens,
-      status,
-      errorType ?? msg.slice(0, 500),
-      httpStatus,
-      opts,
-      tokenEstimationMethod,
+    return attachDebug(
+      finalize(
+        startedAtIso,
+        firstTokenAtMs ? new Date(firstTokenAtMs).toISOString() : null,
+        null,
+        inputTokens,
+        outputTokens,
+        status,
+        errorType ?? msg.slice(0, 500),
+        httpStatus,
+        opts,
+        tokenEstimationMethod,
+      ),
     );
   }
 }

@@ -138,6 +138,26 @@ async function handleApi(pathname, req, res) {
         error_type: null,
       },
       preview: "PONG from the mock provider.",
+      debug: {
+        request: {
+          method: "POST",
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          headers: {
+            "content-type": "application/json",
+            authorization: "REDACTED",
+          },
+          body: { model: "test:free" },
+        },
+        response: {
+          http_status: 200,
+          headers: { "content-type": "text/event-stream" },
+          body_preview: null,
+          sse_lines: 1,
+          sse_preview: ['{"choices":[{"delta":{"content":"hi"}}]}'],
+          reasoning_seen: false,
+        },
+        reproduce_hint: "curl mock",
+      },
     });
   }
   logUnmocked(pathname, req);
@@ -237,6 +257,23 @@ test("run test renders metrics + preview, leaks no URL/key fields", async () => 
     [],
     `console errors: ${consoleErrors.join(" | ")}`,
   );
+});
+
+test("debug log downloads as redacted JSON", async () => {
+  await page
+    .getByRole("button", { name: "Download debug log (.json)" })
+    .waitFor({ timeout: 15_000 });
+  const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+  await page.getByRole("button", { name: "Download debug log (.json)" }).click();
+  const download = await downloadPromise;
+  const name = download.suggestedFilename();
+  assert.match(name, /^playground-openrouter-test_free-.*\.json$/);
+  const path = await download.path();
+  assert.ok(path, "download has a path");
+  const bundle = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(bundle.debug.request.url, "https://openrouter.ai/api/v1/chat/completions");
+  assert.equal(bundle.debug.request.headers.authorization, "REDACTED");
+  assert.equal(bundle.answer_preview, "PONG from the mock provider.");
 });
 
 async function main() {

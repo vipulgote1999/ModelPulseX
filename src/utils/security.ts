@@ -52,8 +52,7 @@ export function escapeLikePattern(s: string): string {
   return s.replace(/[%_\\]/g, "\\$&");
 }
 
-/** Sanitize error message for client — hide internal details, keep generic. */
-export function sanitizeErrorMessage(
+/** Sanitize error message for client — hide internal details, keep generic. */export function sanitizeErrorMessage(
   e: unknown,
   fallback = "internal error",
 ): string {
@@ -70,6 +69,23 @@ export function sanitizeErrorMessage(
   }
   // Truncate and strip newlines
   return msg.replace(/[\r\n]+/g, " ").slice(0, 200) || fallback;
+}
+
+/** Header names whose values must never leave the server (keys, tokens, cookies, session ids). */
+const SENSITIVE_HEADER_RE =
+  /authorization|api[-_]?key|x-api-key|token|secret|cookie|session/i;
+
+/** Copy headers with secret-bearing values replaced by REDACTED.
+ *  Used for the playground debug bundle so the downloadable log can show the
+ *  request shape without leaking credentials. Pure, unit-tested. */
+export function redactHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    out[k] = SENSITIVE_HEADER_RE.test(k) ? "REDACTED" : v;
+  }
+  return out;
 }
 
 /** Validate that CORS_ORIGIN env doesn't contain wildcard or insecure values. */

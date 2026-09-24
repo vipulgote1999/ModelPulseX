@@ -54,6 +54,8 @@ describe("playground validation (pure)", () => {
     expect(
       validatePlaygroundInput({ ...base, max_tokens: 4092 }).ok,
     ).toBe(false);
+    // reasoning headroom: 2048 is the ceiling (512 starved thinkers into reasoning_no_content)
+    expect(validatePlaygroundInput({ ...base, max_tokens: 2048 }).ok).toBe(true);
     expect(validatePlaygroundInput({ ...base, timeout_ms: 100 }).ok).toBe(
       false,
     );
@@ -80,6 +82,24 @@ describe("playground validation (pure)", () => {
   it("truncatePreview caps at 2000 chars", () => {
     expect(truncatePreview("x".repeat(5000)).length).toBe(2000);
     expect(truncatePreview("hi")).toBe("hi");
+  });
+});
+
+describe("debug header redaction (pure)", () => {
+  it("redacts secret-bearing headers, keeps the rest", async () => {
+    const { redactHeaders } = await import("../src/utils/security");
+    const out = redactHeaders({
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      authorization: "Bearer sk-secret-123",
+      "x-opencode-session": "ses_abc",
+      "HTTP-Referer": "https://example.test",
+    });
+    expect(out["content-type"]).toBe("application/json");
+    expect(out["HTTP-Referer"]).toBe("https://example.test");
+    expect(out.authorization).toBe("REDACTED");
+    expect(out["x-opencode-session"]).toBe("REDACTED");
+    expect(JSON.stringify(out)).not.toContain("sk-secret-123");
   });
 });
 
@@ -135,8 +155,7 @@ describe("playground engine chat params", () => {
   });
 });
 
-describe("playground route guards", () => {
-  it("rejects unauthenticated", async () => {
+describe("playground route guards", () => {  it("rejects unauthenticated", async () => {
     const res = await postTest(
       { provider: "openrouter", provider_model_id: "m", prompt: "hi" },
       null,
@@ -183,6 +202,154 @@ describe("playground route guards", () => {
     expect(src).not.toContain("insertBenchmarkRun");
     expect(src).not.toContain("benchmark_runs");
     expect(src).toContain("includePreview");
+    expect(src).toContain("includeDebug");
     expect(src).toContain("getProviderEndpoint");
+  });
+});
+
+describe("playground debug bundle", () => {
+  it("engine attaches redacted request + SSE transcript when includeDebug", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        push({ choices: [{ delta: { reasoning_content: "thinking" } }] });
+        push({ choices: [{ delta: { content: "hi" } }] });
+        push({ usage: { prompt_tokens: 5, completion_tokens: 9 } });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "openrouter",
+      providerModelId: "test:free",
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: "sk-secret-xyz",
+      benchmark: {
+        type: "coding",
+        prompt: "Say OK",
+        max_tokens: 64,
+        timeout_ms: 5000,
+      },
+      includeDebug: true,
+    });
+    expect(res.status).toBe("SUCCESS");
+    expect(res.debug).toBeDefined();
+    expect(res.debug!.request.method).toBe("POST");
+    expect(res.debug!.request.url).toBe(
+      "https://openrouter.ai/api/v1/chat/completions",
+    );
+    expect(res.debug!.request.headers.authorization).toBe("REDACTED");
+    expect(res.debug!.response.http_status).toBe(200);
+    expect(res.debug!.response.sse_lines).toBe(3);
+    expect(res.debug!.response.sse_preview.length).toBe(3);
+    expect(res.debug!.response.reasoning_seen).toBe(true);
+    expect(res.debug!.reproduce_hint).toContain("curl");
+    expect(JSON.stringify(res.debug)).not.toContain("sk-secret-xyz");
+    vi.restoreAllMocks();
+  });
+
+  it("engine omits debug unless requested (zero cron overhead)", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}\n\n`,
+          ),
+        );
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "openrouter",
+      providerModelId: "test:free",
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: {
+        type: "coding",
+        prompt: "Say OK",
+        max_tokens: 64,
+        timeout_ms: 5000,
+      },
+    });
+    expect(res.status).toBe("SUCCESS");
+    expect(res.debug).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
+  it("route returns debug with no secret leakage", async () => {
+    const { playgroundRoutes } = await import("../src/api/admin/playground");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}\n\n`,
+          ),
+        );
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const app = playgroundRoutes({
+      ADMIN_TOKEN: TOKEN,
+      OPENROUTER_API_KEY: "sk-route-secret-999",
+    } as never);
+    const res = await app.request("/admin/playground/test", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TOKEN}`,
+      },
+      body: JSON.stringify({
+        provider: "openrouter",
+        provider_model_id: "test:free",
+        prompt: "Say OK",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain("sk-route-secret-999");
+    const j = JSON.parse(text) as {
+      debug?: { request?: { headers?: Record<string, string> } };
+    };
+    expect(j.debug).toBeDefined();
+    expect(j.debug!.request!.headers!.authorization).toBe("REDACTED");
+    vi.restoreAllMocks();
   });
 });

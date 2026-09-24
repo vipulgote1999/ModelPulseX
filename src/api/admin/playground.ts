@@ -120,6 +120,7 @@ export function playgroundRoutes(env: Env) {
         extraHeaders:
           v.value.provider === "opencode_zen" ? zenClientHeaders() : undefined,
         includePreview: true,
+        includeDebug: true,
       });
       const preview = truncatePreview(result.preview ?? "", 2000);
       return c.json({
@@ -129,8 +130,9 @@ export function playgroundRoutes(env: Env) {
         resolvedChatUrl: ep.chatUrl,
         free_status,
         would_queue_in_cron,
-        result: { ...result, preview: undefined },
+        result: { ...result, preview: undefined, debug: undefined },
         preview,
+        debug: result.debug ?? null,
       });
     } catch (e) {
       return c.json({ error: sanitizeErrorMessage(e) }, 500);
