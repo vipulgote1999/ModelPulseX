@@ -245,10 +245,16 @@ export function leaderboardRoutes(env: Env) {
                     uptime_7d, error_rate_7d, sparkline, sample_count_24h, request_count_7d
              FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}`,
           ).bind(...(provider ? [benchmark, provider] : [benchmark])),
+          // Overlay coverage: keyed by snapshot model_ids (no benchmark_enabled /
+          // free-status filter) so every served snapshot row gets its latest-run
+          // overlay — including disabled/paid rows the sweep has not evicted yet.
+          // A filtered overlay join is what rendered measured rows as UNKNOWN +
+          // last_test null (loop-8: disabled stealth/union-alpha ranked #1 with
+          // a SUCCESS overlay sitting unread in models.last_now_json).
           env.DB.prepare(
             `SELECT m.id, m.last_benchmark_at, m.last_now_json FROM models m JOIN providers p ON p.id=m.provider_id
-             WHERE (m.free_status='FREE' OR m.free_status='PREVIOUSLY_FREE') AND COALESCE(m.benchmark_enabled,1)=1${modelHardFilter} ${modelFilter}`,
-          ).bind(...modelBinds),
+             WHERE m.id IN (SELECT model_id FROM leaderboard_snapshot WHERE benchmark=?)${modelFilter}`,
+          ).bind(...(provider ? [benchmark, ...modelBinds] : [benchmark])),
           env.DB.prepare(
             `SELECT (SELECT max(started_at) FROM benchmark_runs) as last_benchmark,
                     (SELECT max(hour_start) FROM hourly_model_stats) as last_aggregate,

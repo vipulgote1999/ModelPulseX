@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+
 import { buildSnapshotRows, nowFor, refreshLeaderboardSnapshot } from "../src/db/snapshot";
 import type {
   SnapshotMeta,
@@ -249,6 +251,19 @@ describe("refreshLeaderboardSnapshot empty-refresh guard", () => {
     expect(res.models).toBe(0);
     expect(res.rows).toBe(0);
     expect(deletes).toBe(0);
+  });
+});
+
+describe("leaderboard overlay coverage (2026-09-24 loop-8)", () => {
+  it("keys the overlay by snapshot ids, not the servable-models filter", async () => {
+    // Regression: disabled stealth/union-alpha ranked #1 with status null
+    // while a SUCCESS overlay sat unread in models.last_now_json — the overlay
+    // query filtered benchmark_enabled=1 but the snapshot row survived.
+    // The overlay SELECT must scope by snapshot model_ids so every served row
+    // gets its latest-run data regardless of current servability.
+    const src = fs.readFileSync("src/api/leaderboard.ts", "utf8");
+    expect(src).toContain("WHERE m.id IN (SELECT model_id FROM leaderboard_snapshot");
+    expect(src).not.toMatch(/last_now_json FROM models[\s\S]{0,300}?COALESCE\(m\.benchmark_enabled/);
   });
 });
 
