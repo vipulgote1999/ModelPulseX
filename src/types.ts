@@ -1,3 +1,27 @@
+/** Debug bundle for the admin playground download — everything needed to
+ *  reproduce a run locally, with secrets redacted. Ephemeral: built in-memory
+ *  per request, never written to D1/logs. */
+export interface PlaygroundDebug {
+  request: {
+    method: string;
+    url: string;
+    /** Secret-bearing values replaced with REDACTED (see redactHeaders). */
+    headers: Record<string, string>;
+    body: unknown;
+  };
+  response: {
+    http_status: number | null;
+    headers: Record<string, string> | null;
+    /** First 2000 chars of a non-OK error body; null on streaming success. */
+    body_preview: string | null;
+    sse_lines: number;
+    /** First 50 SSE data payloads, each truncated to 500 chars. */
+    sse_preview: string[];
+    reasoning_seen: boolean;
+  };
+  reproduce_hint: string;
+}
+
 /** Shared types — single source for API, DB, provider, and frontend. */
 
 export type ProviderName =
@@ -110,6 +134,8 @@ export interface BenchmarkResult {
  token_estimation_method: "provider" | "heuristic";
  /** Ephemeral playground preview (<=2000 chars). Never persisted to D1. */
  preview?: string;
+ /** Ephemeral debug bundle (playground only, includeDebug). Never persisted. */
+ debug?: PlaygroundDebug;
  /** Provider-supplied Retry-After (ms) when status is RATE_LIMITED; null otherwise. */
  retry_after_ms?: number | null;
 }

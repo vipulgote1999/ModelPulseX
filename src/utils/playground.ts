@@ -33,7 +33,10 @@ export const PLAYGROUND_LIMITS = {
   topPMin: 0,
   topPMax: 1,
   maxTokensMin: 16,
-  maxTokensMax: 512,
+  // 2048: reasoning models burn budget on thinking before answering (the cron
+  // coding workload carries 4092 for the same reason). 512 starves them into
+  // reasoning_no_content cutoffs. The 60s timeout still bounds wall-time/cost.
+  maxTokensMax: 2048,
   timeoutMin: 5000,
   timeoutMax: 60000,
 } as const;

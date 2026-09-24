@@ -41,6 +41,7 @@ type PlaygroundResult = {
     error_type: string | null;
   };
   preview: string;
+  debug: unknown | null;
 };
 
 const PROBE_APIS = [
@@ -166,8 +167,43 @@ export default function Playground() {
     }
   };
 
-  const probe = async () => {
-    setProbeBusy(true);
+  const downloadDebugLog = () => {
+    if (!result?.debug) return;
+    const safe = (s: string) => s.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80);
+    const bundle = {
+      exported_at: new Date().toISOString(),
+      exporter: "modelpulsex-admin-playground",
+      ui: {
+        provider,
+        provider_model_id: modelId.trim(),
+        preset: presetId,
+        prompt,
+        system: system || null,
+        temperature: temperature.trim() || null,
+        top_p: topP.trim() || null,
+        max_tokens: maxTokens,
+        timeout_ms: timeoutMs,
+      },
+      free_status: result.free_status,
+      would_queue_in_cron: result.would_queue_in_cron,
+      result: result.result,
+      answer_preview: result.preview,
+      debug: result.debug,
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `playground-${safe(provider)}-${safe(modelId.trim() || "model")}-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const probe = async () => {    setProbeBusy(true);
     setProbeOut(null);
     try {
       const res = await fetch(probePath, { headers: authHeader() });
@@ -238,7 +274,7 @@ export default function Playground() {
               <input id="pg-topp" value={topP} onChange={(e) => setTopP(e.target.value)} placeholder="1" inputMode="decimal" className={inputCls} />
             </div>
             <div>
-              <label htmlFor="pg-maxtok" className={labelCls}>Max tokens 16–512</label>
+              <label htmlFor="pg-maxtok" className={labelCls}>Max tokens 16–2048</label>
               <input id="pg-maxtok" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)} inputMode="numeric" className={inputCls} />
             </div>
             <div>
@@ -368,12 +404,32 @@ export default function Playground() {
             {result.result.error_type && (
               <div className="font-mono text-xs text-amber-200/80 break-all">{result.result.error_type.slice(0, 500)}</div>
             )}
+            {result.result.error_type?.includes("reasoning_no_content") && (
+              <div className="text-xs text-zinc-400 leading-relaxed">
+                This model produced reasoning but no answer text within the token budget.
+                Reasoning models need headroom — retry with Max tokens 1024–2048 or a shorter prompt.
+                (The scheduled benchmark uses 4092 tokens for the same reason.)
+              </div>
+            )}
             <div>
               <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium mb-1">Answer preview (first 2000 chars, not stored)</div>
               <pre className="whitespace-pre-wrap break-words font-mono text-xs text-zinc-200 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-64 overflow-auto">
                 {result.preview || "(no text returned)"}
               </pre>
             </div>
+            {result.debug ? (
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  onClick={downloadDebugLog}
+                  className="rounded-md border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 min-h-6"
+                >
+                  Download debug log (.json)
+                </button>
+                <span className="text-[11px] text-zinc-500">
+                  Request payload + URL + redacted headers + response/SSE transcript. Secrets are REDACTED — reproduce locally with your own key.
+                </span>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
