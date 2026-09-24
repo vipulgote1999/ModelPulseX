@@ -149,9 +149,15 @@ export default function Leaderboard({
   };
 
   const { data: cd } = useCooldowns(12000);
-  const modelCdMap = new Map((cd?.models ?? []).map((m) => [m.model_id, m]));
+  // Drop expired entries client-side: the API returns cooldown_until > now at
+  // query time, but a 12s poll + shared-cache window can serve a chip seconds
+  // past expiry (batch-2: Playwright showed "provider 13h 24m" style chips
+  // lingering). remainingStr already renders "expired" — filter instead.
+  const modelCdMap = new Map(
+    (cd?.models ?? []).filter((m) => new Date(m.cooldown_until).getTime() > Date.now()).map((m) => [m.model_id, m]),
+  );
   const providerCdMap = new Map(
-    (cd?.providers ?? []).map((p) => [p.provider, p]),
+    (cd?.providers ?? []).filter((p) => new Date(p.cooldown_until).getTime() > Date.now()).map((p) => [p.provider, p]),
   );
   const [limitsMap, setLimitsMap] = useState<
     Map<

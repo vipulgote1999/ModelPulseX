@@ -115,9 +115,20 @@ describe("rank eligibility + assignment", () => {
     expect(ordered.map((r) => r.rank)).toEqual([1, null, null]);
   });
 
-  it("keeps unranked rows visible (never drops them)", () => {
-    const ordered = assignRanks([row(1, 0), row(2, 0)]);
-    expect(ordered).toHaveLength(2);
-    expect(ordered.every((r) => r.rank === null)).toBe(true);
+  it("sinks zero-TPS rows even with samples (2026-09-24 batch: 7 failure rows ranked 52-58)", () => {
+    // Live: PROVIDER_ERROR/RATE_LIMITED rows with 3-6 24h samples but null in
+    // every TPS window ranked on uptime residue (score gate nulled them to 5.0
+    // yet they kept ranks). Rank without a speed signal is not comparable.
+    const tps = (tps_now: number | null) => ({
+      tps_now,
+      tps_24h: null as number | null,
+      tps_7d: null as number | null,
+    });
+    const ordered = assignRanks([
+      { ...row(1, 6, "PROVIDER_ERROR"), ...tps(null) },
+      { ...row(2, 6, "SUCCESS"), ...tps(100) },
+    ]);
+    expect(ordered.map((r) => r.model_id)).toEqual([2, 1]);
+    expect(ordered.map((r) => r.rank)).toEqual([1, null]);
   });
 });

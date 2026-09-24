@@ -309,6 +309,8 @@ export default function Dashboard() {
           {rows.length
             ? `${rows.length} models · ${data?.range} ${data?.benchmark} sort:${data?.sort} profile:${data?.profile}`
             : ""}
+          {data?.meta.scheduler?.last_schedule_ms != null &&
+            ` · tick ${(data.meta.scheduler.last_schedule_ms / 1000).toFixed(0)}s`}
         </span>
         {(data?.meta.alert_channel ?? "log-only") === "log-only" && (
           <span

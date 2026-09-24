@@ -62,12 +62,17 @@ export default function Methodology() {
         </p>
         <p className="text-sm">
           The TPS figure is labelled per row: <b>Measured TPS</b> (a 24h median
-          from enough samples), <b>Insufficient samples</b> (runs exist but fall
-          below the 3-sample 24h gate) or <b>No recent data</b> (nothing ran in
-          the last 24h). <b>Ranking uses the same evidence rule</b>: a model needs
-          at least <b>3 runs in the last 24h</b> to hold a rank position, so a rank
-          means comparable evidence rather than merely being listed. Models below
-          that threshold stay visible but are listed last and unranked (shown as
+          from enough samples <i>plus</i> a latest-run measurement backing it),
+          <b>Insufficient samples</b> (runs exist but fall below the 3-sample
+          24h gate, or the latest-run overlay missed so no measurement backs
+          the median) or <b>No recent data</b> (nothing ran in the last 24h).
+          <b>Ranking uses the same evidence rule, plus two more gates</b>: a
+          model needs at least <b>3 runs in the last 24h</b>, a{" "}
+          <b>measured latest-run status</b> (overlay miss → status null →
+          unranked), and <b>TPS in at least one window</b> (failure-only rows
+          with no speed signal stay unranked with null score), so a rank means
+          comparable evidence rather than merely being listed. Models below
+          those gates stay visible but are listed last and unranked (shown as
           “—”).
         </p>
       </section>
