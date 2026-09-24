@@ -75,9 +75,19 @@ export function isRankEligible(
  *  below them, preserving each group's incoming sort order. Unranked rows stay
  *  visible — they are listed, just not ordered. Rows without a measured
  *  status (overlay miss) sink even with samples: a null status means no
- *  latest-run measurement backs the rank. */
+ *  latest-run measurement backs the rank. Rows with no TPS in any window sink
+ *  too: 2026-09-24 prod ranked 7 zero-TPS failure rows 52–58 (all score 5.0)
+ *  on uptime residue after the score gate nulled them — rank without a speed
+ *  signal is not comparable evidence. */
 export function assignRanks<
-  T extends { rank: number | null; sampleCount24h?: number; status?: string | null },
+  T extends {
+    rank: number | null;
+    sampleCount24h?: number;
+    status?: string | null;
+    tps_now?: number | null;
+    tps_24h?: number | null;
+    tps_7d?: number | null;
+  },
 >(rows: T[]): T[] {
   const ranked: T[] = [];
   const unranked: T[] = [];
@@ -87,7 +97,14 @@ export function assignRanks<
     // NOTE: `in`-check, not `??`: a present-but-null status must sink while
     // a missing field keeps legacy behavior.
     const st = "status" in r ? (r.status ?? null) : undefined;
-    (isRankEligible(r.sampleCount24h, st) ? ranked : unranked).push(r);
+    const hasTps = r.tps_now != null || r.tps_24h != null || r.tps_7d != null;
+    // Legacy shapes without TPS fields (unit fixtures) skip the TPS gate —
+    // only rows that actually carry the fields are gated on them.
+    const tpsGate =
+      "tps_now" in r || "tps_24h" in r || "tps_7d" in r ? hasTps : true;
+    (isRankEligible(r.sampleCount24h, st) && tpsGate ? ranked : unranked).push(
+      r,
+    );
   }
   ranked.forEach((r, i) => (r.rank = i + 1));
   unranked.forEach((r) => (r.rank = null));
