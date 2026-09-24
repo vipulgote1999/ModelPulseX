@@ -224,6 +224,34 @@ describe("overlayStatus (2026-09-24 prod: UNKNOWN was a join artifact)", () => {
   });
 });
 
+describe("refreshLeaderboardSnapshot empty-refresh guard", () => {
+  it("skips the sweep when models/raw come back empty", async () => {
+    // Hazard: an outage-shaped empty refresh (no models, no raw) must not
+    // DELETE the whole snapshot table — stale beats empty for an observatory.
+    const { refreshLeaderboardSnapshot } = await import("../src/db/snapshot");
+    let deletes = 0;
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          bind(..._a: unknown[]) { return stmt; },
+          all: async () => ({ results: [] }),
+          first: async () => null,
+          run: async () => {
+            if (sql.startsWith("DELETE FROM leaderboard_snapshot")) deletes++;
+            return { meta: { changes: 0 } };
+          },
+        };
+        return stmt;
+      },
+      batch: async () => [{ results: [] }, { results: [] }, { results: [] }],
+    };
+    const res = await refreshLeaderboardSnapshot(db as never, Date.now());
+    expect(res.models).toBe(0);
+    expect(res.rows).toBe(0);
+    expect(deletes).toBe(0);
+  });
+});
+
 describe("nowFor", () => {
   const json = JSON.stringify({
     short: {

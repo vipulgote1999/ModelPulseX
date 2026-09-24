@@ -324,10 +324,18 @@ export async function refreshLeaderboardSnapshot(
     // `< nowIso` matches exactly the rows this tick did not touch — including
     // rows for models whose only benchmark type changed. `<=` would wipe the
     // rows just written; the upserts and the sweep share one `nowIso`.
-    await db
-      .prepare(`DELETE FROM leaderboard_snapshot WHERE snapshot_at < ?`)
-      .bind(nowIso)
-      .run();
+    // Empty-refresh guard: when models/raw both come back empty (outage or
+    // wiped models table), `rows` is empty and the sweep would delete the
+    // entire table — a site-wide empty leaderboard instead of a stale one.
+    // Skip the sweep on an empty refresh; the next healthy tick still sweeps.
+    if (rows.length > 0) {
+      await db
+        .prepare(`DELETE FROM leaderboard_snapshot WHERE snapshot_at < ?`)
+        .bind(nowIso)
+        .run();
+    } else {
+      console.warn("snapshot refresh: empty models/raw — skipping sweep");
+    }
     return { models: models.length, rows: rows.length };
   } catch (e) {
     console.warn("snapshot refresh", e);
