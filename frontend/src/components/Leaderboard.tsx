@@ -23,7 +23,9 @@ type Row = {
   itl_7d: number | null;
   uptime_7d: number | null;
   error_rate_7d: number | null;
-  status: string;
+  // null = latest-run overlay row missing (no measurement); the API stopped
+  // rendering join-artifact UNKNOWN here in loop-3, so the pill must handle it.
+  status: string | null;
   last_test: string | null;
   overall_score: number | null;
   sparkline?: Array<number | null>;
@@ -414,9 +416,10 @@ export default function Leaderboard({
                   <div className="flex flex-col gap-0.5">
                     <div className="flex gap-1 items-center flex-wrap max-w-[120px] xl:max-w-[160px]">
                       <span
+                        title={r.status == null ? "No recent run recorded (overlay miss) — windowed medians still shown" : undefined}
                         className={`text-[11px] px-2 py-0.5 rounded-full ${r.status === "SUCCESS" ? "bg-emerald-900/40 text-emerald-300 border border-emerald-800" : r.status === "RATE_LIMITED" ? "bg-amber-900/40 text-amber-300 border border-amber-800" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}
                       >
-                        {r.status}
+                        {r.status ?? "—"}
                       </span>
                       {(() => {
                         const mc = modelCdMap.get(r.model_id);
