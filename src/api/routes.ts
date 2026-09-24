@@ -19,6 +19,7 @@ import { adminRoutes } from "./admin";
 import { recordAudit } from "../db/audit";
 import { adminModelsRoutes } from "./admin/models";
 import { adminMaintenanceRoutes } from "./admin/maintenance";
+import { playgroundRoutes } from "./admin/playground";
 
 export function createApi(env: Env) {
   const app = new Hono<{ Bindings: Env }>();
@@ -139,6 +140,7 @@ export function createApi(env: Env) {
   app.route("/api", adminRoutes(env));
   app.route("/api", adminModelsRoutes(env));
   app.route("/api", adminMaintenanceRoutes(env));
+  app.route("/api", playgroundRoutes(env));
 
   // Global error handler — never leak internals (security hardening).
   // D1 quota breach gets a distinct 503 so clients (and the dashboard) can

@@ -20,6 +20,8 @@ export interface BenchmarkOpts {
   apiKey: string | undefined;
   benchmark: BenchmarkDefinition;
   extraHeaders?: Record<string, string>;
+  /** Playground only: echo truncated output text in-memory (never persisted). */
+  includePreview?: boolean;
 }
 
 /**
@@ -105,13 +107,21 @@ export async function measureBenchmark(
   let reasoningTokensReported: number | null = null;
   const chunkTimes: number[] = [];
 
-  const body = {
+  const body: Record<string, unknown> = {
     model: opts.providerModelId,
-    messages: [{ role: "user", content: opts.benchmark.prompt }],
+    messages:
+      opts.benchmark.system_prompt != null && opts.benchmark.system_prompt !== ""
+        ? [
+            { role: "system", content: opts.benchmark.system_prompt },
+            { role: "user", content: opts.benchmark.prompt },
+          ]
+        : [{ role: "user", content: opts.benchmark.prompt }],
     max_tokens: opts.benchmark.max_tokens,
     stream: true,
     stream_options: { include_usage: true },
   };
+  if (opts.benchmark.temperature != null) body.temperature = opts.benchmark.temperature;
+  if (opts.benchmark.top_p != null) body.top_p = opts.benchmark.top_p;
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -411,7 +421,7 @@ function finalize(
   httpStatus: number | null,
   opts: BenchmarkOpts,
   tokenEstimationMethod: "provider" | "heuristic",
-  _outputText?: string,
+  outputText?: string,
   startPerf?: number | null,
   firstPerf?: number | null,
   completedPerf?: number | null,
@@ -491,5 +501,8 @@ function finalize(
     model: opts.providerModelId,
     benchmark_type: opts.benchmark.type,
     token_estimation_method: tokenEstimationMethod,
+    ...(opts.includePreview && outputText
+      ? { preview: outputText.slice(0, 2000) }
+      : {}),
   };
 }

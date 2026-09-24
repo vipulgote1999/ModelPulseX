@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 
 type AdminModel = {
   id: number;
@@ -24,6 +24,8 @@ type ProviderEndpoint = {
   enabled?: number;
   type?: string;
 };
+
+const Playground = lazy(() => import("./admin/Playground"));
 
 const STORAGE_KEY = "modelpulsex_admin_token";
 
@@ -56,6 +58,7 @@ export default function Admin() {
     Record<string, ProviderEndpoint>
   >({});
   const [showEndpoints, setShowEndpoints] = useState(true);
+  const [tab, setTab] = useState<"control" | "playground">("control");
 
   const fetchModels = async (tok = token) => {
     if (!tok) return;
@@ -375,6 +378,38 @@ export default function Admin() {
         </div>
       </div>
 
+      {/* admin section tabs */}
+      <div className="flex gap-2 text-sm" role="tablist" aria-label="Admin sections">
+        <button
+          role="tab"
+          aria-selected={tab === "control"}
+          onClick={() => setTab("control")}
+          className={`rounded-md px-3 py-1.5 ${tab === "control" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+        >
+          Benchmark Control
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "playground"}
+          onClick={() => setTab("playground")}
+          className={`rounded-md px-3 py-1.5 ${tab === "playground" ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-white"}`}
+        >
+          Playground
+        </button>
+      </div>
+
+      {tab === "playground" ? (
+        <Suspense
+          fallback={
+            <div className="rounded-xl border border-zinc-800 p-6 text-sm text-zinc-500 animate-pulse">
+              Loading playground…
+            </div>
+          }
+        >
+          <Playground />
+        </Suspense>
+      ) : (
+        <>
       {/* provider base URLs */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden">
         <button
@@ -761,6 +796,9 @@ export default function Admin() {
           enabled.
         </span>
       </div>
+
+        </>
+      )}
 
       {toast && (
         <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 shadow-xl">

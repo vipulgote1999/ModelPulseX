@@ -1,0 +1,30 @@
+playground:
+  title: Admin Playground — ephemeral provider test console
+  decisions:
+    - base_url_policy: registry-only (B). No free-text URL input. Server exact-matches provider via PROVIDER_ENDPOINTS; client sends provider name only.
+    - persistence: no D1 writes (no benchmark_runs, no hourly, no incidents, no config). Results held in React state only, cleared on refresh. Sole D1 write is the existing audit_log middleware row.
+    - presets: localStorage only. No migration, no preset endpoint.
+  backend:
+    endpoint: POST /api/admin/playground/test
+    auth: isAdmin first line; mounted under /api/admin/* for 30/min limit + recordAudit
+    request: { provider, provider_model_id, prompt, system?, temperature?, top_p?, max_tokens?, timeout_ms? }
+    clamps: { prompt: 1-4000 chars, system: <=4000, temperature: 0-2, top_p: 0-1, max_tokens: 16-512, timeout_ms: 5000-60000 }
+    resolution: providerFor(name, env) must exist; chat URL/key/headers come from the adapter itself (never from client). Registry exact-match + assertSafeApiUrl defense-in-depth.
+    execution: provider.benchmarkModel(model, { type: coding, prompt, max_tokens, timeout_ms, temperature?, top_p?, system_prompt? }) direct; no BENCH_QUEUE.send; no LIVE_DO.publish; no insertBenchmarkRun.
+    response: { ok, provider, model, resolvedChatUrl, free_status, would_queue_in_cron, result: BenchmarkResult, preview: string<=2000 sanitized }
+    free_display: DB lookup models+providers for free_status/active/benchmark_enabled; would_queue = FREE + active + enabled. PAID run allowed ephemeral with warning; scheduler gate unchanged.
+  engine:
+    change: BenchmarkDefinition gains optional temperature/top_p/system_prompt; measureBenchmark includes them in chat body when defined + optional system message. Backward compatible.
+  frontend:
+    location: Admin tabs [Benchmark Control | Playground]
+    components: provider Select (registry), model Combobox (admin models), endpoint read-only + Reset, params FieldGroup (temperature/top_p sliders, max_tokens, timeout Select, stream note, system Textarea), prompt Textarea + preset Select (coding-default + short/reasoning/multilingual/timeout probes, custom in localStorage), Run/Cancel (AbortController, Cmd+Enter, Esc), results Card (TTFT/TPS/generation/ITL/chunks/tokens/method/status/http + Badge + Tabs [Answer|Request JSON] + warning when PAID/UNKNOWN), internal API probe (GET /api/health|providers|models|leaderboard) in collapsible section
+    a11y: FieldLabel htmlFor, aria-invalid/data-invalid, role=alert errors, aria-live polite results, focus-visible, >=24px targets, reduced-motion
+    perf: lazy import Playground inside Admin Suspense; no new deps
+  tests:
+    - test/playground.test.ts: validatePlaygroundInput clamps/rejects; engine includes temperature/system in body (mock fetch); route 401 without token, 400 unknown provider, 400 bad prompt; no DB/queue/DO imports in playground route
+    - preflight: npm test && npm run typecheck && npm run lint green
+  never:
+    - never accept apiUrl/apiKey/headers from client; never echo keys/headers
+    - never store response bodies (preview in-memory only)
+    - never set benchmark_enabled to allow PAID; never change scheduler free gate
+    - never use total duration for TPS; reuse computeTPS generation window

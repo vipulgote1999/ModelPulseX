@@ -82,6 +82,10 @@ export interface BenchmarkDefinition {
  prompt: string;
  max_tokens: number;
  timeout_ms: number;
+ /** Optional chat sampling params — playground probes only. Cron workload omits them. */
+ temperature?: number;
+ top_p?: number;
+ system_prompt?: string;
 }
 
 export interface BenchmarkResult {
@@ -104,6 +108,8 @@ export interface BenchmarkResult {
  model: string; // provider_model_id echoed
  benchmark_type: BenchmarkType;
  token_estimation_method: "provider" | "heuristic";
+ /** Ephemeral playground preview (<=2000 chars). Never persisted to D1. */
+ preview?: string;
  /** Provider-supplied Retry-After (ms) when status is RATE_LIMITED; null otherwise. */
  retry_after_ms?: number | null;
 }
