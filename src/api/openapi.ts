@@ -142,6 +142,8 @@ export function buildOpenApiSpec() {
       "/api/leaderboard": {
         get: {
           summary: "Leaderboard with medians + gating + sparkline",
+          description:
+            "status is null on overlay miss (no latest-run measurement); null-status rows are unranked (rank null) with overall_score null. meta.alert_channel is log-only until ALERT_WEBHOOK_URL is set.",
           parameters: [
             {
               name: "range",
