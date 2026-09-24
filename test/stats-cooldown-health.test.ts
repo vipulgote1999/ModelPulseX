@@ -80,7 +80,9 @@ describe("staleness watchdog decision", () => {
 
 describe("GROUP_CONCAT parsing + percentiles", () => {
   it("parses clean positive numbers from concat strings", () => {
-    expect(parseConcatNumbers("12.5,,30,0")).toEqual([12.5, 30]);
+    // Batch-3: 0 TPS is a genuine stall measurement, not dirt — the parser
+    // keeps it (median bias fix); negatives/NaN are still dropped.
+    expect(parseConcatNumbers("12.5,,30,0")).toEqual([12.5, 30, 0]);
     expect(parseConcatNumbers(null)).toEqual([]);
     expect(parseConcatNumbers("")).toEqual([]);
     expect(parseConcatNumbers("-3,nan,7")).toEqual([7]);

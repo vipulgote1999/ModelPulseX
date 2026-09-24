@@ -142,7 +142,11 @@ export function modelsRoutes(env: Env) {
 
   r.get("/models/:id/incidents", async (c) => {
     const id = Number(c.req.param("id"));
-    // Single db.batch round-trip (4 independent queries, no data deps).
+    // Batch-3: /models/:id validates finite ids but /incidents did not —
+    // /models/abc/incidents ran 4 queries with NaN and returned 200
+    // null-uptime instead of 400. Reject up front like the sibling route.
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "invalid id" }, 400);
     // NOTE: batch takes bound (unexecuted) statements; single-row reads come
     // from results[0], not .first().
     const [incidentsRes, total7Res, total24Res, longestRes] =

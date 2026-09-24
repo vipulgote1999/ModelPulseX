@@ -16,7 +16,12 @@ export function healthRoutes(env: Env) {
     // Lets UptimeRobot/BetterStack catch a stalled pipeline that plain 200s would hide.
     const freshnessParam = c.req.query("freshness");
     if (freshnessParam === undefined) return c.json(base);
-    const minutes = Math.max(1, Number(freshnessParam) || 15);
+    // Batch-3: the old `Number(x) || 15` silently mapped ?freshness=abc to the
+    // 15-minute default — monitors got false-healthy defaults on typos. 400
+    // instead, so a bad probe fails loudly instead of passing quietly.
+    const minutes = Math.max(1, Math.floor(Number(freshnessParam)));
+    if (!Number.isFinite(minutes))
+      return c.json({ error: "invalid freshness, e.g. ?freshness=15" }, 400);
     const [lastBench, sched, rowsToday] = await Promise.all([
       getLastBenchmarkAt(env.DB),
       getSchedulerHealth(env.DB),

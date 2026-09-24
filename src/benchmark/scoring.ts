@@ -10,13 +10,16 @@ export function scoreLeaderboard(rows: LeaderboardRow[], profileId = "balanced")
   const tpsVals = activeRows.map((r) => r.tps_7d ?? r.tps_24h ?? r.tps_now);
   const ttftVals = activeRows.map((r) => r.ttft_7d ?? r.ttft_24h ?? r.ttft_now);
   const relVals = activeRows.map((r) => r.uptime_7d);
-  // consistency as 1 - coefficient of variation approximated via (tps_now vs tps_7d closeness) — simple heuristic
+  // Consistency needs both ends of the comparison: without tps_now AND tps_7d
+  // there is no closeness to measure. Batch-3: the old 0.5 fallback fed every
+  // unevidenced row the same value, and normalizeScores maps a constant input
+  // to a perfect 1.0 — invented consistency that outranked measured rows.
   const consVals = activeRows.map((r) => {
     if (r.tps_7d != null && r.tps_now != null && r.tps_7d !== 0) {
       const ratio = Math.min(r.tps_now, r.tps_7d) / Math.max(r.tps_now, r.tps_7d);
       return ratio; // 0..1 closer to 1 means consistent
     }
-    return 0.5;
+    return null;
   });
 
   const tpsNorm = normalizeScores(tpsVals, false);
@@ -56,8 +59,11 @@ export function recommendationCards(rows: LeaderboardRow[]): Record<string, Lead
   const fastestNow = [...active].filter((r) => r.tps_now != null).sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null;
   const lowestTtft = [...active].filter((r) => r.ttft_now != null).sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0] ?? null;
   const mostReliable = [...active].filter((r) => r.uptime_7d != null).sort((a, b) => (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1))[0] ?? null;
-  // best coding would be leaderboard filtered by benchmark=coding; if not available fallback to most recent
-  const bestCoding = active[0] ?? null;
+  // Single-coding observatory: every row is already coding-filtered upstream,
+  // so best_coding == best_overall. The old active[0] fallback crowned
+  // whatever display_name sorted first — an arbitrary pick mislabeled as a
+  // coding winner. Batch-3 removes the fallback; null when nothing scored.
+  const bestCoding = bestOverall;
   const bestConsistency = [...active].sort((a, b) => {
     const aC = a.tps_7d && a.tps_now ? Math.min(a.tps_now!, a.tps_7d!) / Math.max(a.tps_now!, a.tps_7d!) : 0;
     const bC = b.tps_7d && b.tps_now ? Math.min(b.tps_now!, b.tps_7d!) / Math.max(b.tps_now!, b.tps_7d!) : 0;
