@@ -167,8 +167,8 @@ export default function Docs() {
         <b className="text-zinc-300">Notes:</b> This document is hand-written
         OpenAPI 3.1 (no codegen) so it can never leak internal env keys. Range
         values are <code>1h|24h|3d|7d</code>, benchmark{" "}
-        <code>all|short|medium|coding</code>, sort{" "}
-        <code>overall|tps|ttft|uptime</code>, profile{" "}
+        <code>all|coding</code> (single-prompt observatory; short/medium
+        retired), sort <code>overall|tps|ttft|uptime</code>, profile{" "}
         <code>balanced|fastest|latency|reliable|coding</code>. History batch
         endpoint accepts up to 12 ids and supports <code>granularity=10m</code>{" "}
         for 1h live lines.

@@ -111,12 +111,17 @@ export function assignRanks<
   return [...ranked, ...unranked];
 }
 
-/** Parse SQLite GROUP_CONCAT numeric output ("12.5,,30,0") into clean positive numbers. */
+/** Parse SQLite GROUP_CONCAT numeric output ("12.5,,30,0") into clean numbers.
+ *  Batch-3: the old `n > 0` filter silently dropped genuine 0 TPS samples
+ *  (stall/empty generation), biasing every TPS median high. Zero is a real
+ *  measurement here — the TPS gates (not the parser) decide rankability. */
 export function parseConcatNumbers(gc: string | null | undefined): number[] {
-  return (gc ?? "")
+  if (gc == null || gc === "") return [];
+  return gc
     .split(",")
+    .filter((tok) => tok.trim() !== "")
     .map(Number)
-    .filter((n) => Number.isFinite(n) && n > 0);
+    .filter((n) => Number.isFinite(n) && n >= 0);
 }
 
 

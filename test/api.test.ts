@@ -39,4 +39,23 @@ describe("api/contracts — D1 schema", () => {
     expect(hook).toContain("last_schedule_ms");
     expect(hook).toContain("alert_channel");
   });
+  it("compare parses strict positive-int ids, deduped (batch-3)", () => {
+    // Batch-3: map(Number).filter(Boolean) let "1.5"→1, "-1"→-1, "1,1,2"
+    // doubled rows through. Pin the strict parse at the source.
+    const src = readFileSync("src/api/compare.ts", "utf8");
+    expect(src).toContain("Number.isInteger(n) && n > 0");
+    expect(src).toContain("new Set(");
+  });
+  it("health rejects non-numeric freshness instead of defaulting (batch-3)", () => {
+    // Batch-3: ?freshness=abc silently became 15m — monitors passed quietly on
+    // typos. Pin the 400 at the source.
+    const src = readFileSync("src/api/health.ts", "utf8");
+    expect(src).toContain("invalid freshness");
+  });
+  it("incidents validates integer id like the sibling route (batch-3)", () => {
+    // Batch-3: /models/abc/incidents ran 4 queries with NaN → 200
+    // null-uptime. Pin the up-front 400.
+    const src = readFileSync("src/api/models.ts", "utf8");
+    expect(src).toContain("Number.isInteger(id)");
+  });
 });

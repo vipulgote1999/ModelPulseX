@@ -8,8 +8,12 @@ export function compareRoutes(env: Env) {
   r.get("/compare", async (c) => {
     const model = c.req.query("model");
     const modelsParam = c.req.query("models");
+    // Batch-3: the old map(Number).filter(Boolean) let "1.5"→1, "-1"→-1 and
+    // "1,1,2" through as duplicates — fractional/negative ids hit SQL that can
+    // never match, and doubles emit doubled rows. Strict positive ints, deduped.
     let ids: number[] = [];
-    if (modelsParam) ids = modelsParam.split(",").map(Number).filter(Boolean);
+    if (modelsParam)
+      ids = [...new Set(modelsParam.split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0))];
     else if (model) {
       const safe = sanitizeSearchQuery(model, 80);
       if (!safe) return c.json({ error: "no models matched" }, 404);

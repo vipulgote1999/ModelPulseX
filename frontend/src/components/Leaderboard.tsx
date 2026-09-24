@@ -471,7 +471,7 @@ export default function Leaderboard({
                                 ? "Benchmark queued — result lands on next refresh"
                                 : st === "error"
                                   ? "Trigger failed — click to retry"
-                                  : "Run short benchmark now"
+                                  : "Run coding benchmark now (~400-token two-sum)"
                             }
                             aria-label={`Run benchmark for ${r.display_name}`}
                             className={`cursor-pointer rounded border p-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${st === "queued" ? "border-emerald-700 bg-emerald-900/60 text-emerald-200" : st === "error" ? "border-red-800 bg-red-900/40 text-red-300 hover:bg-red-900/60" : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:text-emerald-200 hover:border-emerald-800 hover:bg-emerald-900/40 disabled:opacity-50"}`}
@@ -572,9 +572,7 @@ export default function Leaderboard({
       {rows.length > 0 && (
         <div className="px-3 py-2 text-[11px] text-zinc-500">
           Click rows to pin for graph comparison (max 3). Play button runs a
-          short benchmark now (needs admin token). Sorted by{" "}
-          <b className="text-zinc-300">{String(sortKey)}</b> {dir}. Selected up
-          to 3 drive the charts below.
+          coding benchmark now (needs admin token). Sorted by{" "}
         </div>
       )}
     </div>
