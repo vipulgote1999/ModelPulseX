@@ -81,6 +81,92 @@ describe("runInlineBounded (issue #26)", () => {
     expect(rest).toEqual([]);
   });
 
+  it("writes the heartbeat even when queue sendBatch throws (2026-09-24 prod stall)", async () => {
+    // Prod evidence: last_schedule_at froze at 01:51 UTC while
+    // last_schedule_started_at advanced every 5 min — the completed-tick write
+    // was skipped on any throw before it. The finally-guaranteed heartbeat must
+    // record the tick's partial counts instead of a frozen timestamp.
+    const { scheduleBenchmarks } = await import("../src/benchmark/scheduler");
+    const statements: string[] = [];
+    const heartbeatPayloads: Array<{
+      enqueueCount: number;
+      inlineCount: number;
+      skippedCooldown: number;
+      skippedRpm: number;
+    }> = [];
+    const fakeDb = {
+      prepare(sql: string) {
+        statements.push(sql);
+        const stmt = {
+          bind(...args: unknown[]) {
+            // recordScheduleTick binds (now, enqueue, inline, skippedCd, skippedRpm, ms, now)
+            if (sql.includes("last_schedule_at") && args.length === 7) {
+              heartbeatPayloads.push({
+                enqueueCount: args[1] as number,
+                inlineCount: args[2] as number,
+                skippedCooldown: args[3] as number,
+                skippedRpm: args[4] as number,
+              });
+            }
+            return stmt;
+          },
+          all: async () => {
+            if (sql.includes("FROM models")) {
+              return {
+                results: [
+                  {
+                    id: 1,
+                    display_name: "m1",
+                    provider_model_id: "m1",
+                    provider: "groq",
+                    last_benchmark: null,
+                  },
+                ],
+              };
+            }
+            if (sql.includes("provider_cooldowns")) return { results: [] };
+            if (sql.includes("model_cooldowns")) return { results: [] };
+            if (sql.includes("FROM benchmark_runs"))
+              return { results: [], meta: { rows_read: 0 } };
+            return { results: [] };
+          },
+          first: async () => {
+            if (sql.includes("RETURNING rows_read")) return { rows_read: 0 };
+            return null;
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+        };
+        return stmt;
+      },
+    };
+    const env = {
+      DB: fakeDb,
+      // Queue explodes on sendBatch: without the finally-guarantee the heartbeat
+      // below would never run and last_schedule_at would freeze.
+      BENCH_QUEUE: {
+        sendBatch: async () => {
+          throw new Error("queue exploded");
+        },
+      },
+      MAX_GLOBAL_CONCURRENCY: "40",
+    };
+    const res = await scheduleBenchmarks(env as never, { inlineTake: 0 });
+    // one job selected (fake model), nothing enqueued (queue threw), no throw out
+    expect(res.selected).toBe(1);
+    expect(res.enqueued).toBe(0);
+    // start-heartbeat ran, and — the regression — the completed heartbeat ran too
+    expect(statements.some((q) => q.includes("last_schedule_started_at"))).toBe(
+      true,
+    );
+    expect(heartbeatPayloads.length).toBe(1);
+    expect(heartbeatPayloads[0]).toEqual({
+      enqueueCount: 0,
+      inlineCount: 0,
+      skippedCooldown: 0,
+      skippedRpm: 0,
+    });
+  });
+
   it("never loses a job: ran + rest always accounts for the input", async () => {
     let clock = 0;
     const jobs = Array.from({ length: 9 }, (_, i) => i);

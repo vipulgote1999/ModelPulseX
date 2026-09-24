@@ -243,38 +243,51 @@ export async function scheduleBenchmarks(
   // Inline fallback: execute the first N selected jobs inside this cron invocation so
   // baseline coverage survives even if queue delivery stalls (observed in prod Aug 2025).
   // Bounded by INLINE_BUDGET_MS so the tick cannot overrun the 5-minute interval.
+  // The heartbeat below is written in a finally: on 2026-09-24 prod froze
+  // last_schedule_at at 01:51 UTC while last_schedule_started_at kept advancing —
+  // the completed-tick write was skipped whenever the tick threw before reaching
+  // it, so /api/health reported a frozen scheduler with zero error signal.
   const inlineTake = Math.max(0, Math.min(opts.inlineTake ?? 0, jobs.length));
-  const { ran: inlineRan, rest } = await runInlineBounded(
-    jobs,
-    inlineTake,
-    INLINE_BUDGET_MS,
-    (job) => handleBenchJob(env, job),
-    { onError: (job, e) => console.error("inline bench job failed", job.model_id, e) },
-  );
-
-  // Enqueue the remainder in batches of 10
+  let inlineRan = 0;
   let enqueued = 0;
-  for (let i = 0; i < rest.length; i += 10) {
-    const batch = rest.slice(i, i + 10);
-    try {
-      await env.BENCH_QUEUE.sendBatch(batch.map((j) => ({ body: j })));
-      enqueued += batch.length;
-    } catch (e) {
-      console.error("queue sendBatch", e);
-    }
-  }
+  try {
+    const { ran, rest } = await runInlineBounded(
+      jobs,
+      inlineTake,
+      INLINE_BUDGET_MS,
+      (job) => handleBenchJob(env, job),
+      {
+        onError: (job, e) =>
+          console.error("inline bench job failed", job.model_id, e),
+      },
+    );
+    inlineRan = ran;
 
-  // Heartbeat: make enqueue health observable via /api/leaderboard meta + /api/health.
-  await recordScheduleTick(
-    env.DB,
-    {
-      enqueueCount: enqueued,
-      inlineCount: inlineRan,
-      skippedCooldown,
-      skippedRpm: skippedRPM,
-    },
-    tickStartMs,
-  );
+    // Enqueue the remainder in batches of 10
+    for (let i = 0; i < rest.length; i += 10) {
+      const batch = rest.slice(i, i + 10);
+      try {
+        await env.BENCH_QUEUE.sendBatch(batch.map((j) => ({ body: j })));
+        enqueued += batch.length;
+      } catch (e) {
+        console.error("queue sendBatch", e);
+      }
+    }
+  } finally {
+    // Heartbeat: make enqueue health observable via /api/leaderboard meta + /api/health.
+    // Idempotent upsert — safe to run even when the work above threw, so a failed
+    // tick still reports its partial counts instead of a frozen timestamp.
+    await recordScheduleTick(
+      env.DB,
+      {
+        enqueueCount: enqueued,
+        inlineCount: inlineRan,
+        skippedCooldown,
+        skippedRpm: skippedRPM,
+      },
+      tickStartMs,
+    );
+  }
 
   return {
     enqueued,
