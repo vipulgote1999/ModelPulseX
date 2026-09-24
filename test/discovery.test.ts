@@ -79,6 +79,11 @@ describe("discovery — free filtering", () => {
     const a = zenClientHeaders();
     const b = zenClientHeaders();
     expect(a["user-agent"]).toMatch(/^opencode\//);
+    // FreeTierError gate (2026-09-16 rollout) rejects non-release UA versions —
+    // the UA must track an official release triplet (opencode/x.y.z ... bun/a.b.c).
+    expect(a["user-agent"]).toMatch(
+      /^opencode\/\d+\.\d+\.\d+ ai-sdk\/provider-utils\/\d+\.\d+\.\d+ runtime\/bun\/\d+\.\d+\.\d+$/,
+    );
     expect(a["x-opencode-client"]).toBe("cli");
     expect(a["x-opencode-project"]).toBe("global");
     expect(a["x-opencode-session"]).toMatch(/^ses_[0-9a-f]+$/);

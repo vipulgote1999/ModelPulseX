@@ -18,9 +18,21 @@ const KNOWN_RETIRED = new Set<string>(["deepseek-v4-flash-free"]);
 
 /** Official OpenCode CLI identity. Zen's free-tier gateway fingerprints these;
  *  without them free models reject with MissingSessionID / hang server-side.
- *  (Verified live 2026-09-08: same key 400s without, 200s with.) */
+ *  (Verified live 2026-09-08: same key 400s without, 200s with.)
+ *
+ *  2026-09-16..20 rollout: Zen returns 403 FreeTierError ("free tier can only
+ *  be used from within OpenCode") to third-party API clients. Per
+ *  anomalyco/opencode#49433 the gate reads the client *version* from
+ *  User-Agent and rejects non-release strings, so this tracks the current
+ *  official release (1.18.31, provider-utils/4.0.40, bun/1.3.14). Caveat per
+ *  #49621: byte-faithful replays with even the genuine UA still 403 — only the
+ *  genuine binary is guaranteed to pass, so a UA bump may not suffice. Models
+ *  that stay gated converge via the existing guards (model cooldown ->
+ *  day-failure escalation -> auto-disable, admin re-enable) without code
+ *  changes; do NOT hard-exclude them from discovery (they are genuinely FREE).
+ *  Re-verify against the live gateway before bumping this again. */
 const ZEN_CLIENT_UA =
-  "opencode/1.15.5 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
+  "opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14";
 
 function randomHex(bytes = 16): string {
   try {
