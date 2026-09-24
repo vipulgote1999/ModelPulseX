@@ -310,6 +310,14 @@ export default function Dashboard() {
             ? `${rows.length} models · ${data?.range} ${data?.benchmark} sort:${data?.sort} profile:${data?.profile}`
             : ""}
         </span>
+        {(data?.meta.alert_channel ?? "log-only") === "log-only" && (
+          <span
+            title="Stall alerts reach only Workers Logs — set ALERT_WEBHOOK_URL so the watchdog can page an operator"
+            className="text-[11px] px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-300 border border-amber-800"
+          >
+            alerts: log-only
+          </span>
+        )}
       </div>
 
       {rows.length > 0 &&

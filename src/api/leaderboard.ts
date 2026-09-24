@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env, LeaderboardRow } from "../types";
 import { parseRange } from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
-import { getSchedulerHealth } from "../db/health";
+import { getSchedulerHealth, alertChannelState } from "../db/health";
 import {
   percentile,
   parseConcatNumbers,
@@ -99,6 +99,12 @@ export function leaderboardRoutes(env: Env) {
             : null,
           observed_window: since,
           scheduler: sched,
+          // Alert-channel visibility on the dashboard path: /api/health
+          // already reports log-only vs configured, but the dashboard polls
+          // /api/leaderboard — without this the banner cannot warn that a
+          // stall reaches only Workers Logs (2026-09-24: prod log-only with
+          // last_stale_alert_at null and no operator signal).
+          alert_channel: alertChannelState(env),
         },
         summary: {
           free_models: scored.filter((r) => r.free_status === "FREE").length,

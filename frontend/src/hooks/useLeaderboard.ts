@@ -33,6 +33,7 @@ export interface LeaderboardResp {
     is_stale: boolean;
     live: string | null;
     stale_message: string | null;
+    alert_channel?: "configured" | "log-only";
   };
   summary: {
     free_models: number;
