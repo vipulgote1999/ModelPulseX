@@ -361,6 +361,13 @@ export function buildOpenApiSpec() {
           responses: { "200": { description: "Result" } },
         },
       },
+      "/api/admin/playground/test": {
+        post: {
+          summary: "Ephemeral provider test (no D1 writes)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Result" } },
+        },
+      },
       "/api/admin/reaggregate": {
         post: {
           summary: "Re-aggregate hourly stats",
