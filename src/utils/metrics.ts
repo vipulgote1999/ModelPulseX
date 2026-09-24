@@ -52,22 +52,38 @@ export function measuredTpsLabel(
 }
 
 /** Rank eligibility: a row needs at least MIN_SAMPLES.w24h runs in the last 24h
- *  before it can hold a rank position (#11). Rank is a claim about comparable
- *  evidence; a row that measured nothing today cannot support it. */
-export function isRankEligible(samples24h: number | null | undefined): boolean {
+ *  AND a latest-run overlay hit before it can hold a rank position (#11 +
+ *  2026-09-24 loop-8). Rank is a claim about comparable evidence; a row with
+ *  no measured status (overlay miss → status null) cannot support it even
+ *  when windowed medians exist — 23 such rows ranked live, including #1. */
+export function isRankEligible(
+  samples24h: number | null | undefined,
+  // undefined = legacy caller with no overlay concept (eligible on samples);
+  // null = overlay miss, no measurement backs the rank (ineligible).
+  status?: string | null,
+): boolean {
+  if (status === null) return false;
   return (samples24h ?? 0) >= MIN_SAMPLES.w24h;
 }
 
 /** Number the evidence-gated rows 1..n and sink unranked rows (rank = null)
  *  below them, preserving each group's incoming sort order. Unranked rows stay
- *  visible — they are listed, just not ordered. */
+ *  visible — they are listed, just not ordered. Rows without a measured
+ *  status (overlay miss) sink even with samples: a null status means no
+ *  latest-run measurement backs the rank. */
 export function assignRanks<
-  T extends { rank: number | null; sampleCount24h?: number },
+  T extends { rank: number | null; sampleCount24h?: number; status?: string | null },
 >(rows: T[]): T[] {
   const ranked: T[] = [];
   const unranked: T[] = [];
-  for (const r of rows)
-    (isRankEligible(r.sampleCount24h) ? ranked : unranked).push(r);
+  for (const r of rows) {
+    // Null status (overlay miss) sinks even with samples; every other shape
+    // (real status, undefined legacy field) keeps the samples-only rule.
+    // NOTE: `in`-check, not `??`: a present-but-null status must sink while
+    // a missing field keeps legacy behavior.
+    const st = "status" in r ? (r.status ?? null) : undefined;
+    (isRankEligible(r.sampleCount24h, st) ? ranked : unranked).push(r);
+  }
   ranked.forEach((r, i) => (r.rank = i + 1));
   unranked.forEach((r) => (r.rank = null));
   return [...ranked, ...unranked];
