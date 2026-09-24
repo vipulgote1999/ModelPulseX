@@ -266,9 +266,6 @@ export async function refreshLeaderboardSnapshot(
     const raw = (rawRes?.results ?? []) as SnapshotRaw[];
     const spark = (sparkRes?.results ?? []) as SnapshotSpark[];
     const rows = buildSnapshotRows({ models, raw, spark, nowIso });
-    // Sweep rows for models no longer servable (deactivated/paid) or stale
-    // benchmark sets: anything not refreshed by this tick is deleted by its
-    // snapshot_at instead of tracking churn explicitly.
     // Upsert in chunks (stay under D1 batch variable limits).
     const CHUNK = 50;
     for (let i = 0; i < rows.length; i += CHUNK) {
@@ -317,6 +314,20 @@ export async function refreshLeaderboardSnapshot(
         ),
       );
     }
+    // Sweep rows for models no longer servable (deactivated, paid, or
+    // auto-disabled): they are excluded from `models` above, so no fresh row
+    // was upserted for them — delete everything this tick did not refresh.
+    // Without this, a dead model's last snapshot row is served forever with
+    // frozen FREE/active flags and medians (2026-09-24: disabled
+    // stealth/union-alpha ranked #1 with status UNKNOWN and zero 7d runs).
+    // Delete marker: every upsert above stamps snapshot_at=nowIso, so
+    // `< nowIso` matches exactly the rows this tick did not touch — including
+    // rows for models whose only benchmark type changed. `<=` would wipe the
+    // rows just written; the upserts and the sweep share one `nowIso`.
+    await db
+      .prepare(`DELETE FROM leaderboard_snapshot WHERE snapshot_at < ?`)
+      .bind(nowIso)
+      .run();
     return { models: models.length, rows: rows.length };
   } catch (e) {
     console.warn("snapshot refresh", e);
