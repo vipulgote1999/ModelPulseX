@@ -209,6 +209,21 @@ describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)
   });
 });
 
+describe("overlayStatus (2026-09-24 prod: UNKNOWN was a join artifact)", () => {
+  it("keeps a genuinely reported status, including UNKNOWN", async () => {
+    const { overlayStatus } = await import("../src/api/leaderboard");
+    expect(overlayStatus("SUCCESS", true)).toBe("SUCCESS");
+    expect(overlayStatus("UNKNOWN", true)).toBe("UNKNOWN");
+  });
+  it("returns null when the overlay row is missing (no measurement)", async () => {
+    // orcarouter/free: 35 24h samples, snapshot row present, overlay row
+    // filtered by benchmark_enabled=0 — UNKNOWN + last_test null was the
+    // artifact. Null lets the windowed medians speak instead of a fake status.
+    const { overlayStatus } = await import("../src/api/leaderboard");
+    expect(overlayStatus(null, false)).toBeNull();
+  });
+});
+
 describe("nowFor", () => {
   const json = JSON.stringify({
     short: {
