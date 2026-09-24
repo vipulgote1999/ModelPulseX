@@ -45,9 +45,14 @@ export type TpsLabel =
 export function measuredTpsLabel(
   samples24h: number | null | undefined,
   tps24h: number | null,
+  // null = overlay miss: the 24h median exists but no latest-run measurement
+  // backs it (loop-8: unmeasured rows labeled "Measured TPS" while status
+  // showed no evidence). Label the trust gap honestly.
+  status?: string | null,
 ): TpsLabel {
   if ((samples24h ?? 0) <= 0) return "No recent data";
   if (tps24h == null) return "Insufficient samples";
+  if (status === null) return "Insufficient samples";
   return "Measured TPS";
 }
 

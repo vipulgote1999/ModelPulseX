@@ -29,7 +29,12 @@ export function scoreLeaderboard(rows: LeaderboardRow[], profileId = "balanced")
   activeRows.forEach((r, i) => idxMap.set(r.model_id, i));
 
   return rows.map((r) => {
-    if (!r.active || r.free_status !== "FREE") return { ...r, overall_score: null };
+    // Unmeasured rows (overlay miss → explicit null status) carry no latest-run
+    // evidence: scoring them with windowed medians alone produced ranked
+    // score-5/67 ghosts (loop-8: null-status rows ranked on uptime residue).
+    // Null the score; the rank sink already lists them last. `=== null` (not
+    // `==`) so legacy rows without a status field keep samples-only behavior.
+    if (!r.active || r.free_status !== "FREE" || r.status === null) return { ...r, overall_score: null };
     const idx = idxMap.get(r.model_id)!;
     const sc = overallScore(tpsNorm[idx]!, ttftNorm[idx]!, relNorm[idx]!, consNorm[idx]!, profile.weights);
     return { ...r, overall_score: sc != null ? Math.round(sc * 1000) / 10 : null }; // 0..100 one decimal
