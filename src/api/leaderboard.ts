@@ -15,6 +15,17 @@ import { nowFor } from "../db/snapshot";
 import type { SnapshotRow } from "../db/snapshot";
 import { isoHoursAgo } from "./shared";
 
+/** Latest-run overlay status for one snapshot row. A missing overlay row
+ *  (model filtered from the models query between refresh and read) carries no
+ *  measurement, so UNKNOWN would be a join artifact — return null and let the
+ *  windowed medians speak. 2026-09-24: orcarouter/free ranked #29 with 35 24h
+ *  samples as UNKNOWN + last_test null because benchmark_enabled=0 filtered
+ *  its overlay row while its snapshot row survived. */
+export function overlayStatus(reported: string | null, overlayHit: boolean): string | null {
+  if (reported != null) return reported;
+  return overlayHit ? "UNKNOWN" : null;
+}
+
 export function leaderboardRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/leaderboard", async (c) => {
@@ -251,9 +262,16 @@ export function leaderboardRoutes(env: Env) {
         }>;
         const nowMap = new Map(nowRows.map((m) => [m.id, m]));
         const meta = (snapBatch[2]?.results?.[0] ?? null) as MetaRow | null;
+        // Overlay coverage: the models query carries benchmark_enabled=1 but the
+        // snapshot sweep keys only on snapshot_at, so a model disabled between
+        // the hourly refresh and this read keeps a fresh snapshot row with no
+        // overlay row. 2026-09-24: orcarouter/free ranked #29 with 35 24h
+        // samples yet status UNKNOWN + last_test null — UNKNOWN was the join
+        // artifact, not a measurement.
         const rows: LeaderboardRow[] = snapRows.map((s) => {
           const n = nowMap.get(s.model_id);
           const entry = nowFor(n?.last_now_json ?? null, benchmark);
+          const overlayHit = entry != null || n?.last_benchmark_at != null;
           let sparkline: Array<number | null> = [];
           try {
             const p: unknown = JSON.parse(s.sparkline ?? "[]");
@@ -282,7 +300,12 @@ export function leaderboardRoutes(env: Env) {
             uptime_7d: s.uptime_7d,
             error_rate_7d: s.error_rate_7d,
             success_rate: s.uptime_7d,
-            status: (entry?.status ?? "UNKNOWN") as LeaderboardRow["status"],
+            // No overlay hit: the latest-run JSON is absent (filtered model or
+            // never-benchmarked). UNKNOWN here would be a join artifact, not a
+            // measurement — and last_test is equally absent — so surface the
+            // null-evidence state honestly instead of a ranked UNKNOWN row.
+            // Ranked rows keep UNKNOWN only when the overlay genuinely reported it.
+            status: overlayStatus(entry?.status ?? null, overlayHit) as unknown as LeaderboardRow["status"],
             last_test: entry?.at ?? n?.last_benchmark_at ?? null,
             request_count_7d: s.request_count_7d ?? 0,
             previously_free: s.free_status === "PREVIOUSLY_FREE",
