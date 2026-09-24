@@ -12,6 +12,8 @@ allure-results/
 .codegraph/
 performance_report/
 dump/
+.pi/
+.playwright-mcp/
 
 # secrets hardening
 .env.local
