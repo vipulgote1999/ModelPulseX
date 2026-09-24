@@ -62,4 +62,18 @@ describe("openapi spec", () => {
     // No serialization of env object keys
     expect(json).not.toContain("CORS_ORIGIN");
   });
+  it("documents the leaderboard overlay-miss contract", () => {
+    // The null-status/unranked/null-score + log-only channel contract is a
+    // load-bearing API guarantee (batch-2: live /api/openapi.json lacked the
+    // description the source carried — deploy lag, not a source bug — so pin
+    // it here and any future drift fails loudly).
+    const spec = buildOpenApiSpec() as unknown as {
+      paths: Record<string, Record<string, { description?: string }>>;
+    };
+    const desc =
+      spec.paths["/api/leaderboard"]?.["get"]?.description ?? "";
+    expect(desc).toContain("overlay miss");
+    expect(desc).toContain("unranked");
+    expect(desc).toContain("alert_channel");
+  });
 });

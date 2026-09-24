@@ -35,6 +35,12 @@ export interface LeaderboardResp {
     live: string | null;
     stale_message: string | null;
     alert_channel?: "configured" | "log-only";
+    scheduler?: {
+      last_schedule_at?: string | null;
+      last_schedule_ms?: number | null;
+      last_enqueue_count?: number | null;
+      last_inline_count?: number | null;
+    } | null;
   };
   summary: {
     free_models: number;
