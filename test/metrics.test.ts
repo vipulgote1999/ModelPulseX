@@ -74,17 +74,22 @@ describe("measuredTpsLabel", () => {
 });
 
 describe("rank eligibility + assignment", () => {
-  const row = (id: number, samples: number) => ({
+  const row = (id: number, samples: number, status: string | null = "SUCCESS") => ({
     model_id: id,
     rank: 0 as number | null,
     sampleCount24h: samples,
+    status,
   });
 
-  it("requires MIN_SAMPLES.w24h runs in the last 24h", () => {
-    expect(isRankEligible(0)).toBe(false);
-    expect(isRankEligible(2)).toBe(false);
-    expect(isRankEligible(3)).toBe(true);
-    expect(isRankEligible(null)).toBe(false);
+  it("requires MIN_SAMPLES.w24h runs in the last 24h plus a measured status", () => {
+    // status omitted (legacy call) counts as unmeasured only when explicitly
+    // null; existing callers/tests pass a real status or nothing.
+    expect(isRankEligible(0, "SUCCESS")).toBe(false);
+    expect(isRankEligible(2, "SUCCESS")).toBe(false);
+    expect(isRankEligible(3, "SUCCESS")).toBe(true);
+    expect(isRankEligible(null, "SUCCESS")).toBe(false);
+    expect(isRankEligible(3, null)).toBe(false);
+    expect(isRankEligible(3, undefined)).toBe(true);
   });
 
   it("numbers eligible rows and sinks zero-sample rows to the bottom unranked", () => {
@@ -96,6 +101,18 @@ describe("rank eligibility + assignment", () => {
     ]);
     expect(ordered.map((r) => r.model_id)).toEqual([2, 3, 1, 4]);
     expect(ordered.map((r) => r.rank)).toEqual([1, 2, null, null]);
+  });
+
+  it("sinks overlay-miss rows even with samples (2026-09-24 loop-8: null-status #1)", () => {
+    // Live: stealth/union-alpha ranked #1 with 4 24h samples but status null
+    // (no latest-run measurement). A null status means no measurement backs
+    // the rank — samples alone are not enough.
+    expect(isRankEligible(4, null)).toBe(false);
+    expect(isRankEligible(35, null)).toBe(false);
+    expect(isRankEligible(35, "SUCCESS")).toBe(true);
+    const ordered = assignRanks([row(1, 35, null), row(2, 35, "SUCCESS"), row(3, 4, null)]);
+    expect(ordered.map((r) => r.model_id)).toEqual([2, 1, 3]);
+    expect(ordered.map((r) => r.rank)).toEqual([1, null, null]);
   });
 
   it("keeps unranked rows visible (never drops them)", () => {
