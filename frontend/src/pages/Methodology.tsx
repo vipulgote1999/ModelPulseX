@@ -85,25 +85,14 @@ export default function Methodology() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">
-          Benchmark workloads (deterministic per benchmark_type)
+          Benchmark workload (deterministic, single prompt)
         </h2>
-        <ul className="list-disc pl-6 text-sm space-y-1">
-          <li>
-            <b>short</b>: “Return exactly: PONG” — 16 max_tokens, measures
-            latency/TTFT.
-          </li>
-          <li>
-            <b>medium</b>: 180–220 word summary — measures sustained
-            generation/TPS.
-          </li>
-          <li>
-            <b>coding</b>: Python two-sum with complexity + test — measures
-            coding quality + sustained.
-          </li>
-        </ul>
-        <p className="text-sm text-zinc-500">
-          Same prompt for all models within a benchmark_type; never compare
-          across types as identical workloads.
+        <p className="text-sm">
+          <b>coding</b>: Python two-sum with complexity + test — measures
+          coding quality + sustained decode (the TPS/TTFT signal short probes
+          cannot give). Same prompt for every model; max_tokens 4092, 300s
+          provider timeout. Retired short/medium types remain visible only on
+          old rows — never compare across types as identical workloads.
         </p>
       </section>
 

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 
 export interface LeaderboardResp {
   leaderboard: Array<{
-    rank: number;
+    rank: number | null;
     model_id: number;
     model: string;
     display_name: string;
@@ -19,11 +19,12 @@ export interface LeaderboardResp {
     ttft_7d: number | null;
     uptime_7d: number | null;
     error_rate_7d: number | null;
-    status: string;
+    status: string | null;
     last_test: string | null;
     overall_score: number | null;
     sparkline?: Array<number | null>;
     sampleCount24h?: number;
+    measured_tps_label?: string;
     rank_?: number;
   }>;
   meta: {

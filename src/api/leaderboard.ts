@@ -324,6 +324,7 @@ export function leaderboardRoutes(env: Env) {
             measured_tps_label: measuredTpsLabel(
               s.sample_count_24h,
               s.tps_24h,
+              overlayHit ? (entry?.status ?? "UNKNOWN") : null,
             ),
             sparkline,
             sampleCount24h: s.sample_count_24h ?? 0,
@@ -668,7 +669,11 @@ export function leaderboardRoutes(env: Env) {
       const sparkline = sparkMap.get(mm.id) ?? [];
       const sampleCount24h = raw?.cnt24 ?? 0;
 
-      const status = nowRow?.status ?? "UNKNOWN";
+      // Same overlay-honesty rule as the snapshot path (loop-8 #43): a missing
+      // latest-run row carries no measurement, so UNKNOWN would be a join
+      // artifact — surface null and let assignRanks sink the row to unranked.
+      const liveOverlayHit = nowRow != null;
+      const status = overlayStatus(nowRow?.status ?? null, liveOverlayHit) as unknown as LeaderboardRow["status"];
       const last_test = nowRow?.started_at ?? null;
 
       rows.push({
@@ -696,7 +701,7 @@ export function leaderboardRoutes(env: Env) {
         last_test,
         request_count_7d: cnt7,
         previously_free: mm.free_status === "PREVIOUSLY_FREE",
-        measured_tps_label: measuredTpsLabel(sampleCount24h, tps_24h),
+        measured_tps_label: measuredTpsLabel(sampleCount24h, tps_24h, liveOverlayHit ? (nowRow?.status ?? "UNKNOWN") : null),
         sparkline,
         sampleCount24h,
         overall_score: null,

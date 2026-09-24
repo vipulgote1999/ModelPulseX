@@ -44,7 +44,7 @@ describe("runInlineBounded (issue #26)", () => {
     expect(rest).toEqual([3, 4]);
   });
 
-  it("still runs the first job even if the budget is zero — progress over perfection", async () => {
+  it("runs nothing when the budget is zero — everything queues", async () => {
     const order: number[] = [];
     const { ran, rest } = await runInlineBounded(
       [1, 2],

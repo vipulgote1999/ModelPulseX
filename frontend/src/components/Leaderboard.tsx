@@ -58,13 +58,23 @@ export default function Leaderboard({
     }
   };
   const sorted = [...rows].sort((a, b) => {
-    // SAFETY: Row fields are number|null|string; sortKey indexes a numeric column, widened for dynamic access
-    const av = (a as unknown as Record<string, number | null>)[sortKey] ?? null;
-    // SAFETY: same widened numeric access as av above
-    const bv = (b as unknown as Record<string, number | null>)[sortKey] ?? null;
+    // SAFETY: Row fields are number|null|string; dynamic access needs widening.
+    // String columns (model/display_name/provider/status) compare
+    // lexicographically — the old numeric cast turned them into NaN and the
+    // comparator returned NaN (Array.sort treats it as 0: unsorted).
+    const av = (a as unknown as Record<string, number | string | null>)[
+      sortKey
+    ] ?? null;
+    const bv = (b as unknown as Record<string, number | string | null>)[
+      sortKey
+    ] ?? null;
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;
+    if (typeof av === "string" || typeof bv === "string")
+      return dir === "desc"
+        ? String(bv).localeCompare(String(av))
+        : String(av).localeCompare(String(bv));
     return dir === "desc"
       ? (bv as number) - (av as number)
       : (av as number) - (bv as number);
