@@ -34,7 +34,11 @@ export function scoreLeaderboard(rows: LeaderboardRow[], profileId = "balanced")
     // score-5/67 ghosts (loop-8: null-status rows ranked on uptime residue).
     // Null the score; the rank sink already lists them last. `=== null` (not
     // `==`) so legacy rows without a status field keep samples-only behavior.
+    // Throughput gate: a row with no TPS in any window has no speed signal —
+    // 2026-09-24 prod ranked 7 zero-TPS failure rows 52–58 on uptime residue
+    // (all score 5.0). Rank means comparable evidence; score null instead.
     if (!r.active || r.free_status !== "FREE" || r.status === null) return { ...r, overall_score: null };
+    if (r.tps_7d == null && r.tps_24h == null && r.tps_now == null) return { ...r, overall_score: null };
     const idx = idxMap.get(r.model_id)!;
     const sc = overallScore(tpsNorm[idx]!, ttftNorm[idx]!, relNorm[idx]!, consNorm[idx]!, profile.weights);
     return { ...r, overall_score: sc != null ? Math.round(sc * 1000) / 10 : null }; // 0..100 one decimal
