@@ -28,10 +28,15 @@ describe("api/contracts — D1 schema", () => {
     expect(ui).toContain("measured_tps_label");
     expect(ui).toContain('r.rank ?? "—"');
   });
-  it("leaderboard query does not scan raw per request — uses hourly stats", async () => {
-    const routes = readFileSync("src/api/leaderboard.ts", "utf8");
-    expect(routes).toContain("hourly_model_stats");
-    expect(routes).toContain("parseRange");
-    expect(routes).toContain("is_stale");
+  it("leaderboard meta carries scheduler heartbeat + alert channel for the banner", () => {
+    // Batch-2: the dashboard tick chip (last_schedule_ms) and log-only alert
+    // chip both read leaderboard meta — if finish() drops either key the
+    // banner silently loses them. Pin the wiring, not the values.
+    const lb = readFileSync("src/api/leaderboard.ts", "utf8");
+    expect(lb).toContain("scheduler: sched");
+    expect(lb).toContain("alert_channel: alertChannelState(env)");
+    const hook = readFileSync("frontend/src/hooks/useLeaderboard.ts", "utf8");
+    expect(hook).toContain("last_schedule_ms");
+    expect(hook).toContain("alert_channel");
   });
 });
