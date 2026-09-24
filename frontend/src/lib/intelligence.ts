@@ -2,6 +2,9 @@
 // Map our free models to AA scores where available; otherwise undefined (show —)
 // TokenDyno exposes aaIntelligence + aaUrl per model; we replicate that table for observatory relevance.
 export const AA_INTELLIGENCE: Record<string, { score: number; url: string }> = {
+  // Live 2026-09-24: 10 of 16 keys match served models; the 6 below matched
+  // nothing on the board (retired Zen variants, renamed families, big-pickle
+  // fallback) and were pruned so the map tracks the live catalog.
   // OpenRouter free family
   "nvidia/nemotron-3-nano-30b-a3b:free": { score: 7.2, url: "https://artificialanalysis.ai/models/nvidia-nemotron-3-nano-30b-a3b" },
   "google/gemma-4-31b-it:free": { score: 29.7, url: "https://artificialanalysis.ai/models/gemma-4-31b" },
@@ -11,16 +14,8 @@ export const AA_INTELLIGENCE: Record<string, { score: number; url: string }> = {
   "nvidia/nemotron-3-ultra-550b-a55b:free": { score: 22.1, url: "https://artificialanalysis.ai/models/nvidia-nemotron-3-ultra" },
   "cohere/north-mini-code:free": { score: 31.2, url: "https://artificialanalysis.ai/models/cohere-north-mini-code" },
   "liquid/lfm-2.5-2.6b:free": { score: 19.4, url: "https://artificialanalysis.ai/models/lfm-2.5" },
-  // Zen free family (same underlying but zen variant)
-  "nemotron-3-ultra-free": { score: 22.1, url: "https://artificialanalysis.ai/models/nvidia-nemotron-3-ultra" },
-  "nemotron-3.5-lightning-free": { score: 20.4, url: "https://artificialanalysis.ai/models/nvidia-nemotron-3.5-lightning" },
-  "deepseek-v4-flash-free": { score: 51.8, url: "https://artificialanalysis.ai/models/deepseek-v4-flash" },
-  "mimo-v2.5-free": { score: 38.2, url: "https://artificialanalysis.ai/models/mimo-v2.5" },
-  "laguna-s-2.1-free": { score: 27.3, url: "https://artificialanalysis.ai/models/laguna-s-2.1" },
   "poolside/laguna-s-2.1:free": { score: 27.3, url: "https://artificialanalysis.ai/models/laguna-s-2.1" },
   "poolside/laguna-xs-2.1:free": { score: 26.1, url: "https://artificialanalysis.ai/models/laguna-xs-2.1" },
-  // fallback for generic
-  "big-pickle": { score: 35.0, url: "https://artificialanalysis.ai/models/big-pickle" },
 };
 
 export function getAA(modelId: string) {
