@@ -249,7 +249,29 @@ export async function renderOgCard(
     rgba[i * 4 + 2] = 15;
     rgba[i * 4 + 3] = 255;
   }
-  fillRect(rgba, W, H, 0, 0, W, 8, 139, 92, 246, 255);
+  // Brand rule: violet -> cyan gradient (matches logo gradient #8B5CF6 -> #22D3EE)
+  for (let x = 0; x < W; x += 4) {
+    const t = x / W;
+    fillRect(
+      rgba,
+      W,
+      H,
+      x,
+      0,
+      4,
+      8,
+      Math.round(139 + (34 - 139) * t),
+      Math.round(92 + (211 - 92) * t),
+      Math.round(246 + (238 - 246) * t),
+      255,
+    );
+  }
+  // Pulse-X motif top-right: baseline, first-token spike, baseline (cyan)
+  const px = W - 40 - 134;
+  fillRect(rgba, W, H, px, 56, 60, 5, 34, 211, 238, 255);
+  fillRect(rgba, W, H, px + 60, 32, 7, 29, 34, 211, 238, 255);
+  fillRect(rgba, W, H, px + 67, 32, 7, 51, 34, 211, 238, 255);
+  fillRect(rgba, W, H, px + 74, 56, 60, 5, 34, 211, 238, 255);
   drawText(rgba, W, H, "ModelPulseX", 40, 40, 3, 232, 232, 239);
   drawText(
     rgba,

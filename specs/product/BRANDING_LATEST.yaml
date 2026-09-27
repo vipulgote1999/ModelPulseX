@@ -1,0 +1,106 @@
+product: ModelPulseX
+kind: branding
+version: 1.0.0
+date: 2026-09-27
+status: approved-for-build
+
+story: >
+  ModelPulseX is an LLM Performance Observatory — it watches free models the way
+  an observatory watches the sky, and reads their streaming heartbeat the way a
+  monitor reads a pulse. The brand must say both at a glance: observe + pulse.
+  Previous header used a generic violet gradient tile with a "◆" glyph and an
+  all-caps "LLM PERFORMANCE OBSERVATORY" line — no ownable mark, no favicon,
+  no OG identity, no reusable component.
+
+concept_reviews:
+  - id: A
+    name: Pulse-X Orbit (CHOSEN)
+    sketch: >
+      An X built from two crossing strokes on a 32-grid. The ascending stroke
+      IS an ECG/token-stream pulse line: flat baseline, sharp spike (first
+      token / TTFT moment), decay ripple (streaming TPS), then continues to
+      form the X arm. A broken orbit ring (observatory) circles the X and gaps
+      exactly where the pulse spike exits — the signal escaping the lens.
+    pros:
+      - Ownable: nobody else has pulse-as-X-arm + broken orbit.
+      - Reads at 16px favicon (X silhouette survives) and at 1200px OG.
+      - Metaphor-complete: X = ModelPulseX, pulse = TPS/TTFT streaming truth,
+        ring = observatory / 7-day watch.
+      - Single continuous-line feel like Linear/Vercel marks; dark-mode native.
+    cons:
+      - Orbit ring must be carefully gapped or it muddies at 16px (mitigated:
+        favicon variant drops the ring, keeps bold X-pulse only).
+  - id: B
+    name: Radar Pulse (REJECTED)
+    sketch: Three concentric rings + center dot + horizontal pulse through middle.
+    reject_reason: >
+      Reads as generic sonar/wifi. Fails distinctiveness review — Grafana,
+      Datadog, and a dozen uptime tools use ring+pulse. Loses the X entirely,
+      so the name initial is absent.
+  - id: C
+    name: Chip Pulse (REJECTED)
+    sketch: Hexagon chip outline with pulse inside.
+    reject_reason: >
+      Says hardware/silicon, not observatory. Hexagon is overused in LLM tooling
+      (HuggingFace-adjacent). Weak at small sizes, no X.
+
+final_mark:
+  name: Pulse-X Orbit
+  grid: 64x64 master (tile 2..62, rx14); Logo.tsx uses halved 32-grid
+  geometry:
+    - clean_arm: M19 19 L45 45, width 5 (6 on favicon), round caps
+    - pulse_arm: M15 45 L26 33 L30 23 L34 35 L49 19, width 5 (6 favicon),
+      round caps, MITER joins (sharp first-token spike weaves through clean
+      arm like a signal crossing a baseline; round joins rejected — they
+      blobbed at the spike tip in v1 image review)
+    - orbit_ring: circle cx=32 cy=32 r=21, width 2.5, opacity 0.55,
+      dasharray 112/20 rotated so the gap sits top-right where the pulse
+      arm exits; omitted on favicon (ring-less bold variant for 16px)
+    - spark_dot: REMOVED in v2 review — merged with the crossing arms
+      into an illegible blob at small sizes
+  image_reviews:
+    - v1: "user screenshot — pulse wiggle + dot merged into mush, no readable X; ring invisible"
+    - v2: "headless-chrome render at 16/32/48/96px dark+light — X legible at all sizes, ring gap correct, shipped"
+  color:
+    primary_gradient: "#8B5CF6 -> #22D3EE" (violet-500 to cyan-400, 135deg)
+    matches_existing: "extends current violet-600/indigo-600 tile toward cyan for streaming/telemetry feel"
+    on_dark_bg: "#0a0a0f tile or transparent; white arms fallback in mono"
+    live_dot: "#34D399 emerald-400 retained for LIVE indicator"
+  typography:
+    wordmark: "Inter 600/700 tracking-tight; 'ModelPulse' zinc-100 + 'X' gradient"
+    descriptor: "11px tracking-[0.18em] zinc-400: 'LLM PERFORMANCE OBSERVATORY'"
+  variants:
+    - full: mark + wordmark horizontal (header, OG, README)
+    - mark: tile alone (favicon base, social avatar, loading spinner frame)
+    - mono: single-color white/black (footer, print, admin dense rows)
+    - favicon: ring-less bold X-pulse, 16/32px safe strokes
+  clearspace: "x-height of X arm on all sides; min size 16px mark / 120px full"
+  misuse:
+    - "no total-duration TPS claim near logo; methodology link stays in footer"
+    - "never place gradient mark on gradient background"
+    - "never recolor spike emerald (emerald reserved for LIVE state)"
+
+assets:
+  - path: frontend/public/logo.svg
+    desc: mark-only, gradient, transparent bg (social avatar, PWA icon base)
+  - path: frontend/public/logo-full.svg
+    desc: horizontal lockup mark + ModelPulseX wordmark + descriptor (README, docs)
+  - path: frontend/public/favicon.svg
+    desc: ring-less bold variant optimized for 16px tab bar
+  - path: frontend/src/components/Logo.tsx
+    desc: CSP-safe inline-SVG React component, variants full|mark|mono, size prop
+  - path: frontend/index.html
+    desc: link rel=icon svg + apple-touch-icon + og:image keep /api/og.png
+  - path: src/api/og.ts
+    desc: OG card top bar becomes violet->cyan gradient + pulse ticks (brand match)
+
+integration:
+  header: "<Logo variant=full> replaces ◆ tile + text stack; LIVE pill unchanged"
+  footer: "mini mono mark + 'ModelPulseX — streaming-derived measurements' + Methodology link"
+  og_card: "gradient rule + 'ModelPulseX' title retained; subtitle unchanged"
+
+verification:
+  - "vite build emits dist/frontend/logo.svg, logo-full.svg, favicon.svg (public/ passthrough)"
+  - "Header renders Logo with aria-label; no external img fetch (inline SVG, CSP default-src self safe)"
+  - "npm test && npm run typecheck && npm run lint green"
+  - "visual review: 16px tab, 36px header, 180px docs, 1200px OG — X-pulse legible at each"

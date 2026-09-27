@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import Header from "./components/Header";
+import Logo from "./components/Logo";
 import Dashboard from "./pages/Dashboard";
 const Methodology = lazy(() => import("./pages/Methodology"));
 const Admin = lazy(() => import("./pages/Admin"));
@@ -30,8 +31,13 @@ export default function App() {
         )}
       </Suspense>
       <footer className="border-t border-zinc-800 mt-10 py-6 text-center text-xs text-zinc-500">
-        ModelPulseX — Measurements are streaming-derived; influenced by provider
-        load, routing, time of day.{" "}
+        <span className="inline-flex items-center gap-2 text-zinc-400">
+          <Logo variant="mark" size={18} withTile={false} label="ModelPulseX" />
+          <span>
+            ModelPulseX — Measurements are streaming-derived; influenced by
+            provider load, routing, time of day.
+          </span>
+        </span>{" "}
         <button
           onClick={() => setPage("methodology")}
           className="underline hover:text-zinc-300"

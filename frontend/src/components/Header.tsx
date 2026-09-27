@@ -1,3 +1,5 @@
+import Logo from "./Logo";
+
 export default function Header({
   onNavigate,
   current,
@@ -9,21 +11,14 @@ export default function Header({
     <header className="sticky top-0 z-40 backdrop-blur bg-[#0a0a0f]/80 border-b border-zinc-800">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 grid place-items-center font-bold text-white">
-            ◆
-          </div>
-          <div>
-            <div className="font-semibold tracking-tight leading-none text-[15px]">
-              LLM PERFORMANCE OBSERVATORY
-            </div>
-            <div className="text-[11px] tracking-widest text-zinc-400 font-medium">
-              18 Providers — FREE MODELS{" "}
-              <span className="inline-flex items-center gap-1 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />{" "}
-                LIVE
-              </span>
-            </div>
-          </div>
+          <Logo variant="full" size={36} />
+          <span className="hidden md:inline text-[11px] tracking-widest text-zinc-400 font-medium">
+            19 Providers — FREE MODELS{" "}
+            <span className="inline-flex items-center gap-1 text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />{" "}
+              LIVE
+            </span>
+          </span>
         </div>
         <nav className="flex items-center gap-2 text-sm">
           <button
