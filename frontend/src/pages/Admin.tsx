@@ -57,7 +57,8 @@ export default function Admin() {
   const [providerEndpoints, setProviderEndpoints] = useState<
     Record<string, ProviderEndpoint>
   >({});
-  const [showEndpoints, setShowEndpoints] = useState(true);
+  const [showEndpoints, setShowEndpoints] = useState(false);
+  const [bulkProvider, setBulkProvider] = useState("");
   const [tab, setTab] = useState<"control" | "playground">("control");
 
   const fetchModels = async (tok = token) => {
@@ -617,24 +618,33 @@ export default function Admin() {
         </button>
         <span className="mx-2 h-4 w-px bg-zinc-800 hidden sm:inline-block" />
         <span className="text-xs text-zinc-500">Per-provider:</span>
-        {providers.slice(0, 8).map((p) => (
-          <span key={p} className="inline-flex gap-1">
-            <button
-              disabled={bulkBusy}
-              onClick={() => toggleProvider(p, 1)}
-              className="rounded px-2 py-1 text-xs bg-zinc-900 border border-zinc-800 hover:bg-zinc-800"
-            >
-              Enable {p}
-            </button>
-            <button
-              disabled={bulkBusy}
-              onClick={() => toggleProvider(p, 0)}
-              className="rounded px-2 py-1 text-xs bg-zinc-900 border border-zinc-800 hover:bg-zinc-800"
-            >
-              Disable {p}
-            </button>
-          </span>
-        ))}
+        <select
+          aria-label="Bulk provider"
+          value={bulkProvider}
+          onChange={(e) => setBulkProvider(e.target.value)}
+          className="rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs text-zinc-100 max-w-[180px]"
+        >
+          <option value="">Select provider…</option>
+          {providers.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <button
+          disabled={bulkBusy || !bulkProvider}
+          onClick={() => toggleProvider(bulkProvider, 1)}
+          className="rounded px-3 py-1.5 text-xs font-medium bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40"
+        >
+          Enable provider
+        </button>
+        <button
+          disabled={bulkBusy || !bulkProvider}
+          onClick={() => toggleProvider(bulkProvider, 0)}
+          className="rounded px-3 py-1.5 text-xs font-medium bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40"
+        >
+          Disable provider
+        </button>
       </div>
 
       {err && (
