@@ -1,4 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
+const COLORS = ["#8b5cf6", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#e879f9"];
 export default function ItlChart({ series, range }: { series: Array<{ id: number; label: string; points: Array<{ hour_start: string; median_itl: number | null }> }>; range?: string }) {
   const isTenMin = range === "1h";
   const allTimes = Array.from(new Set(series.flatMap((s) => s.points.map((p) => p.hour_start)))).sort();
@@ -24,8 +25,8 @@ export default function ItlChart({ series, range }: { series: Array<{ id: number
             <YAxis tick={{ fontSize: 11, fill: "#a1a1aa" }} label={{ value: "ITL ms", angle: -90, position: "insideLeft", fill: "#a1a1aa" }} />
             <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 10 }} />
             <Legend />
-            {series.map((s) => (
-              <Line key={s.id} type="monotone" dataKey={s.label} stroke="#06b6d4" dot={false} strokeWidth={2} connectNulls />
+            {series.map((s, i) => (
+              <Line key={s.id} type="monotone" dataKey={s.label} stroke={COLORS[i % COLORS.length]!} dot={false} strokeWidth={2} connectNulls />
             ))}
           </LineChart>
         </ResponsiveContainer>
