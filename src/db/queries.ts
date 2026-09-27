@@ -301,22 +301,19 @@ export async function markMissingInactive(
   seenIds: Set<string>,
   nowIso: string,
 ) {
-  // benchmark_enabled may not exist pre-migration 0007 — detect once, degrade gracefully.
-  let hasToggle = true;
-  try {
-    await db.prepare(`SELECT benchmark_enabled FROM models LIMIT 1`).all();
-  } catch {
-    hasToggle = false;
-  }
-  const disableClause = hasToggle
-    ? `, benchmark_enabled=CASE WHEN free_status='FREE' THEN 0 ELSE benchmark_enabled END`
-    : ``;
+  // Previous enable state is sacred: disappearance only flips active + FREE→
+  // PREVIOUSLY_FREE. benchmark_enabled is never touched here, so a transient
+  // outage (adapters fall back to small curated lists) or a flaky listing
+  // can never mass-disable models — they self-heal (active=1, enable intact)
+  // on the next cycle that sees them again. Queue safety needs no disable:
+  // the scheduler requires active=1 AND free_status='FREE' AND
+  // benchmark_enabled=1, so inactive rows are never queued.
   if (seenIds.size === 0) {
-    // No models discovered for this provider — deactivate all active as PREVIOUSLY_FREE where applicable.
-    // Previously-free models also auto-disable: they must not burn benchmark probes until an admin re-enables them.
+    // No models discovered for this provider — fail safe: still mark active
+    // rows inactive (unknown state must not benchmark) but keep every flag.
     await db
       .prepare(
-        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END${disableClause}, last_seen=? WHERE provider_id=? AND active=1`,
+        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1`,
       )
       .bind(nowIso, providerId)
       .run();
@@ -340,7 +337,7 @@ export async function markMissingInactive(
     const ph = chunk.map(() => "?").join(",");
     await db
       .prepare(
-        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END${disableClause}, last_seen=? WHERE provider_id=? AND active=1 AND provider_model_id IN (${ph})`,
+        `UPDATE models SET active=0, free_status=CASE WHEN free_status='FREE' THEN 'PREVIOUSLY_FREE' ELSE free_status END, last_seen=? WHERE provider_id=? AND active=1 AND provider_model_id IN (${ph})`,
       )
       .bind(nowIso, providerId, ...chunk)
       .run();
