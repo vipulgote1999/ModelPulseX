@@ -42,6 +42,12 @@ export class BlockedApiUrlError extends Error {}
  *  indistinguishable from the full stream, and raw runs must stay small. */
 const MAX_CHUNK_SAMPLES = 512;
 
+/** Playground answer cap. 12000 chars ≈ 3000 tokens, comfortably above the
+ *  max_tokens ceiling (2048) so the UI shows the full output; the bound only
+ *  guards against a runaway stream within the 60s timeout. In-memory only,
+ *  never persisted. */
+export const PLAYGROUND_PREVIEW_MAX = 12000;
+
 const LOOPBACK_HOST_RE =
   /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\]|::1)$/;
 
@@ -558,7 +564,7 @@ function finalize(
     benchmark_type: opts.benchmark.type,
     token_estimation_method: tokenEstimationMethod,
     ...(opts.includePreview && outputText
-      ? { preview: outputText.slice(0, 2000) }
+      ? { preview: outputText.slice(0, PLAYGROUND_PREVIEW_MAX) }
       : {}),
   };
 }

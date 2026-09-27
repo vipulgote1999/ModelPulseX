@@ -132,7 +132,8 @@ export function playgroundRoutes(env: Env) {
         includePreview: true,
         includeDebug: true,
       });
-      const preview = truncatePreview(result.preview ?? "", 2000);
+      const full = result.preview ?? "";
+      const preview = truncatePreview(full);
       return c.json({
         ok: true,
         provider: v.value.provider,
@@ -143,6 +144,7 @@ export function playgroundRoutes(env: Env) {
         would_queue_in_cron,
         result: { ...result, preview: undefined, debug: undefined },
         preview,
+        preview_truncated: full.length > preview.length,
         debug: result.debug ?? null,
       });
     } catch (e) {

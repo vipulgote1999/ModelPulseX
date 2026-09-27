@@ -42,6 +42,7 @@ type PlaygroundResult = {
     error_type: string | null;
   };
   preview: string;
+  preview_truncated: boolean;
   debug: unknown | null;
 };
 
@@ -775,7 +776,10 @@ export default function Playground() {
               </div>
             )}
             <div>
-              <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium mb-1">Answer preview (first 2000 chars, not stored)</div>
+              <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium mb-1">
+                Answer ({result.preview.length} chars, not stored)
+                {result.preview_truncated ? " — truncated" : ""}
+              </div>
               <pre className="whitespace-pre-wrap break-words font-mono text-xs text-zinc-200 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-64 overflow-auto">
                 {result.preview || "(no text returned)"}
               </pre>

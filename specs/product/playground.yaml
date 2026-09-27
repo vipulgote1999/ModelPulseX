@@ -16,7 +16,7 @@ playground:
     clamps: { prompt: 1-4000 chars, system: <=4000, temperature: 0-2, top_p: 0-1, max_tokens: 16-2048, timeout_ms: 5000-60000, apiKey: string<=500, chatUrl: string 8-500 }
     resolution: providerFor(name, env) must exist; chat URL = caller chatUrl override (after assertSafeApiUrl) else registry exact-match; key = caller apiKey override else adapter env key. apiUrl/baseUrl/extraHeaders/headers from client still rejected (400).
     execution: provider.benchmarkModel(model, { type: coding, prompt, max_tokens, timeout_ms, temperature?, top_p?, system_prompt? }) direct; no BENCH_QUEUE.send; no LIVE_DO.publish; no insertBenchmarkRun.
-    response: { ok, provider, model, resolvedChatUrl, custom_url_used, free_status, would_queue_in_cron, result: BenchmarkResult, preview: string<=2000 sanitized, debug: PlaygroundDebug|null }
+    response: { ok, provider, model, resolvedChatUrl, custom_url_used, free_status, would_queue_in_cron, result: BenchmarkResult, preview: string<=12000 (full output within max_tokens), preview_truncated, debug: PlaygroundDebug|null }
     debug_bundle: { request: { method, url, headers REDACTED, body }, response: { http_status, headers, body_preview<=2000 (non-OK only), sse_lines, sse_preview<=50x500, reasoning_seen }, reproduce_hint (curl template with $PROVIDER_API_KEY placeholder) }
     secrecy: redactHeaders() replaces authorization/api-key/token/secret/cookie/session values with REDACTED; route test asserts serialized response never contains the server key
     free_display: DB lookup models+providers for free_status/active/benchmark_enabled; would_queue = FREE + active + enabled. PAID run allowed ephemeral with warning; scheduler gate unchanged.

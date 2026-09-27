@@ -111,8 +111,9 @@ describe("playground validation (pure)", () => {
     expect(d.ok).toBe(true);
     if (d.ok) expect(d.value.chatUrl).toBeUndefined();
   });
-  it("truncatePreview caps at 2000 chars", () => {
-    expect(truncatePreview("x".repeat(5000)).length).toBe(2000);
+  it("truncatePreview covers full output up to the 12000-char cap", () => {
+    expect(truncatePreview("x".repeat(5000)).length).toBe(5000);
+    expect(truncatePreview("x".repeat(20000)).length).toBe(12000);
     expect(truncatePreview("hi")).toBe("hi");
   });
 });

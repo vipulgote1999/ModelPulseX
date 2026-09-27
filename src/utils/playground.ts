@@ -5,6 +5,7 @@
  *  in the route. Ephemeral: validation never touches D1/queues.
  */
 import { PROVIDER_REGISTRY } from "../providers/registry";
+import { PLAYGROUND_PREVIEW_MAX } from "../benchmark/engine";
 import type { BenchmarkDefinition } from "../types";
 
 export interface PlaygroundInput {
@@ -183,8 +184,9 @@ export function validatePlaygroundInput(
   };
 }
 
-/** Truncate streamed preview for API response — in-memory only, never persisted. */
-export function truncatePreview(text: string | null | undefined, max = 2000): string {
+/** Truncate streamed preview for API response — in-memory only, never persisted.
+ *  Default covers the max_tokens ceiling so the playground shows full output. */
+export function truncatePreview(text: string | null | undefined, max = PLAYGROUND_PREVIEW_MAX): string {
   if (!text) return "";
   return text.length > max ? text.slice(0, max) : text;
 }
