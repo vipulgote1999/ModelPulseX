@@ -211,7 +211,11 @@ export default function Leaderboard({
       .catch(() => {});
   }, []);
 
-  // ponytail: Intelligence column only when at least one row has an AA score (16 mapped of 100+ models)
+  // Intelligence column only when at least one row has an AA score (16 mapped
+  // of 100+ models). ITL + Intelligence are secondary diagnostics hidden below
+  // 2xl so the table fits its card with no horizontal scrollbar at ≤1536px.
+  // Core columns (#, Model, Provider, TPS Now/7d, TTFT, 7d Up, Err%, Status)
+  // always stay visible.
   const showAA = rows.some((r) => getAA(r.model) != null);
 
   return (
@@ -256,7 +260,7 @@ export default function Leaderboard({
                 TTFT
               </th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-white hidden xl:table-cell"
+                className="text-right px-2 py-2 cursor-pointer hover:text-white hidden 2xl:table-cell"
                 onClick={() => sort("itl_now")}
               >
                 ITL
@@ -268,7 +272,7 @@ export default function Leaderboard({
                 7d Up
               </th>
               {showAA && (
-                <th className="text-right px-2 py-2 hidden xl:table-cell">
+                <th className="text-right px-2 py-2 hidden 2xl:table-cell">
                   Intelligence
                 </th>
               )}
@@ -315,13 +319,13 @@ export default function Leaderboard({
                 </td>
                 <td className="px-3 py-2">
                   <div
-                    className="font-medium text-zinc-100 leading-tight truncate max-w-[140px] xl:max-w-[200px]"
+                    className="font-medium text-zinc-100 leading-tight truncate max-w-[120px] xl:max-w-[160px]"
                     title={r.display_name}
                   >
                     {r.display_name}
                   </div>
                   <div
-                    className="text-[11px] text-zinc-500 mono truncate max-w-[140px] xl:max-w-[200px]"
+                    className="text-[11px] text-zinc-500 mono truncate max-w-[120px] xl:max-w-[160px]"
                     title={r.model}
                   >
                     {r.model}
@@ -392,7 +396,7 @@ export default function Leaderboard({
                 <td className="px-2 py-2 text-right mono">
                   {fmtMs(r.ttft_now ?? r.ttft_7d)}
                 </td>
-                <td className="px-2 py-2 text-right mono hidden xl:table-cell">
+                <td className="px-2 py-2 text-right mono hidden 2xl:table-cell">
                   {fmtMs(r.itl_now ?? r.itl_7d)}
                 </td>
                 <td className="px-2 py-2 text-right mono hidden lg:table-cell">
@@ -401,7 +405,7 @@ export default function Leaderboard({
                     : "—"}
                 </td>
                 {showAA && (
-                  <td className="px-2 py-2 text-center hidden xl:table-cell">
+                  <td className="px-2 py-2 text-center hidden 2xl:table-cell">
                     {(() => {
                       const aa = getAA(r.model);
                       return aa ? (
@@ -430,7 +434,7 @@ export default function Leaderboard({
                 </td>
                 <td className="px-2 py-2">
                   <div className="flex flex-col gap-0.5">
-                    <div className="flex gap-1 items-center flex-wrap max-w-[120px] xl:max-w-[160px]">
+                    <div className="flex gap-1 items-center flex-wrap max-w-[100px] xl:max-w-[140px]">
                       <span
                         title={r.status == null ? "No recent run recorded (overlay miss) — windowed medians still shown" : undefined}
                         className={`text-[11px] px-2 py-0.5 rounded-full ${r.status === "SUCCESS" ? "bg-emerald-900/40 text-emerald-300 border border-emerald-800" : r.status === "RATE_LIMITED" ? "bg-amber-900/40 text-amber-300 border border-amber-800" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}
@@ -533,7 +537,7 @@ export default function Leaderboard({
                       if (cd2)
                         return (
                           <span
-                            className="text-[10px] text-zinc-500 max-w-[150px] truncate hidden xl:block"
+                            className="text-[10px] text-zinc-500 max-w-[120px] truncate hidden xl:block"
                             title={cd2.reason ?? ""}
                           >
                             {mc ? "model timeout" : "provider timeout"} ·{" "}

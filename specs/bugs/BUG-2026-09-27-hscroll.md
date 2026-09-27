@@ -19,8 +19,14 @@ table region wider than the viewport on narrower screens).
 1. Root div += `overflow-x-clip`: the page can never scroll horizontally;
    `clip` (not `hidden`) so no scroll container is created and sticky
    positioning keeps working.
-2. Table wrapper `overflow-auto` → `overflow-x-auto`: the wide table still
-   scrolls *inside its card* on small screens instead of moving the page.
+2. Table wrapper `overflow-auto` → `overflow-x-auto`: fallback containment
+   if the table ever exceeds its card again.
+3. Make the table actually fit (follow-up, no card scrollbar at ≤1536px):
+   ITL + Intelligence columns `hidden xl:` → `hidden 2xl:` (secondary
+   diagnostics; core columns always visible), Model column
+   `max-w-[140/200px]` → `[120/160px]`, Status wrap
+   `max-w-[120/160px]` → `[100/140px]`, cooldown-reason line
+   `max-w-[150px]` → `[120px]`.
 
 ## Verification
 
