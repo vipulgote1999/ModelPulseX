@@ -14,9 +14,9 @@ describe("queue/do/concurrency", () => {
     const b1 = backoff(1, 1000);
     expect(b1).toBeGreaterThan(b0 * 0.6); // jitter tolerance
   });
-  it("concurrency defaults 10/3/5/1", () => {
+  it("concurrency defaults serialize Zen (1) to avoid daily 429s", () => {
     const c = getConcurrency({});
-    expect(c).toMatchObject({ maxOpencode: 3, maxSameModel: 1 });
+    expect(c).toMatchObject({ maxOpencode: 1, maxSameModel: 1 });
     expect(c.maxGlobal).toBeGreaterThanOrEqual(12);
     expect(c.maxOpenrouter).toBeGreaterThanOrEqual(4);
     // new providers have defaults too

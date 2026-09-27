@@ -110,10 +110,44 @@ describe("Retry-After header handling", () => {
     expect(retryAfterSeconds(res)).toBe(120);
   });
 
+  it("honors daily-reset Retry-After (Zen 62733s) instead of truncating to 1h", () => {
+    const res = new Response(null, {
+      status: 429,
+      headers: { "retry-after": "62733" },
+    });
+    expect(retryAfterSeconds(res)).toBe(62733);
+  });
+
   it("falls back to jittered default when header missing", () => {
     const res = new Response(null, { status: 429 });
     const v = retryAfterSeconds(res);
     expect(v).toBeGreaterThanOrEqual(1);
     expect(v).toBeLessThanOrEqual(3600);
+  });
+});
+
+describe("queue pacing helpers", () => {
+  it("staggers sendBatch waves 60s apart", async () => {
+    const { staggeredSendDelaySeconds } = await import(
+      "../src/utils/concurrency"
+    );
+    expect(staggeredSendDelaySeconds(0)).toBe(0);
+    expect(staggeredSendDelaySeconds(1)).toBe(60);
+    expect(staggeredSendDelaySeconds(2)).toBe(120);
+  });
+
+  it("backs off queue retries exponentially, capped at 24h", async () => {
+    const { queueRetryDelaySeconds } = await import(
+      "../src/utils/concurrency"
+    );
+    expect(queueRetryDelaySeconds(0)).toBe(60);
+    expect(queueRetryDelaySeconds(1)).toBe(120);
+    expect(queueRetryDelaySeconds(2)).toBe(240);
+    expect(queueRetryDelaySeconds(100)).toBe(86400);
+  });
+
+  it("Zen RPM default is daily-safe (2)", async () => {
+    const { getRPMConfig } = await import("../src/utils/concurrency");
+    expect(getRPMConfig({}).opencode_zen).toBe(2);
   });
 });

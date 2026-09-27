@@ -10,6 +10,7 @@ import {
   truncatePreview,
 } from "../../utils/playground";
 import { sanitizeErrorMessage } from "../../utils/security";
+import { isProviderCooling } from "../../db/cooldown";
 
 /** Server-side API key resolution by registry provider name.
  *  Keys never come from localStorage and are never echoed back.
@@ -118,6 +119,27 @@ export function playgroundRoutes(env: Env) {
       }
     } catch {
       // DB unavailable pre-migration — leave UNKNOWN, still allow ephemeral run
+    }
+
+    // Don't burn shared quota while the provider is cooling from a 429:
+    // cron and playground share the same key, so a manual run during
+    // cooldown would re-trip a daily reset (e.g. Zen retry-after 62733s).
+    try {
+      const cd = await isProviderCooling(env.DB, v.value.provider);
+      if (cd.cooling) {
+        return c.json(
+          {
+            ok: false,
+            error: "provider cooling",
+            cooling: true,
+            cooldown_until: cd.until ?? null,
+            reason: cd.reason ?? null,
+          },
+          429,
+        );
+      }
+    } catch {
+      // Cooldown lookup never blocks an ephemeral run.
     }
 
     try {

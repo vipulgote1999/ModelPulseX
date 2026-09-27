@@ -30,7 +30,8 @@
   "observability": { "enabled": true },
   "vars": {
     "MAX_GLOBAL_CONCURRENCY": "40",
-    "MAX_OPENCODE_CONCURRENCY": "3",
+    "MAX_OPENCODE_CONCURRENCY": "1",
+    "RPM_OPENCODE_ZEN": "2",
     "MAX_OPENROUTER_CONCURRENCY": "4",
     "MAX_GROQ_CONCURRENCY": "3",
     "MAX_CEREBRAS_CONCURRENCY": "2",

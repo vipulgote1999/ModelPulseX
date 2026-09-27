@@ -52,7 +52,7 @@ export function getConcurrency(
 ): ConcurrencyConfig {
   return {
     maxGlobal: Number(env.MAX_GLOBAL_CONCURRENCY) || 16,
-    maxOpencode: Number(env.MAX_OPENCODE_CONCURRENCY) || 3,
+    maxOpencode: Number(env.MAX_OPENCODE_CONCURRENCY) || 1,
     maxOpenrouter: Number(env.MAX_OPENROUTER_CONCURRENCY) || 4,
     maxGroq: Number(env.MAX_GROQ_CONCURRENCY) || 3,
     maxCerebras: Number(env.MAX_CEREBRAS_CONCURRENCY) || 2,
@@ -77,9 +77,12 @@ export function getConcurrency(
 
 export function getRPMConfig(env: Record<string, unknown>): RPMConfig {
   return {
-    // ponytail: Zen free tier trips FreeUsageLimitError well below 20/min (live 2026-09-09: bursts of ~6 concurrent streams 429'd); stay at 5, raise via RPM_OPENCODE_ZEN if Zen documents a higher free RPM
+    // Zen free tier is account-wide daily, not per-minute: bursts of ~6
+    // concurrent streams 429'd (2026-09-09), daily reset 62733s (2026-09-27).
+    // Serialize (concurrency 1) + RPM 2; raise via RPM_OPENCODE_ZEN only if
+    // Zen documents a higher free RPM.
     opencode_zen:
-      Number(env.RPM_OPENCODE_ZEN) || Number(env.MAX_OPENCODE_RPM) || 5,
+      Number(env.RPM_OPENCODE_ZEN) || Number(env.MAX_OPENCODE_RPM) || 2,
     openrouter:
       Number(env.RPM_OPENROUTER) || Number(env.MAX_OPENROUTER_RPM) || 20,
     groq: Number(env.RPM_GROQ) || Number(env.MAX_GROQ_RPM) || 30,
@@ -110,6 +113,18 @@ export function rpmForProvider(provider: string, rpmConfig: RPMConfig): number {
   const key = provider as keyof RPMConfig;
   return (rpmConfig[key] as number) ?? rpmConfig.default;
 }
+
+/** Upper bound for honored upstream Retry-After (seconds). 24h matches the
+ *  Queues `delaySeconds` max and covers daily-reset shapes like Zen
+ *  `retry-after: 62733` (2026-09-27) that the old 1h cap truncated to 3600. */
+export const MAX_RETRY_AFTER_S = 86400;
+
+/** Stagger between queue sendBatch waves (seconds). Spreads one tick's
+ *  remainder over the 5-minute cron window instead of firing all at once. */
+export const SEND_STAGGER_S = 60;
+
+/** Base delay for queue-consumer retries (seconds). Doubled per attempt. */
+export const RETRY_BASE_S = 60;
 
 /** Provider-name → ConcurrencyConfig key. Single source replacing a 20-branch if-chain. */
 const CONCURRENCY_KEYS: Record<string, keyof ConcurrencyConfig> = {
@@ -155,10 +170,14 @@ export function retryAfterSeconds(res: Response): number {
   const ra = res.headers.get("retry-after");
   if (ra) {
     const secs = Number(ra);
-    if (!Number.isNaN(secs)) return Math.max(1, Math.min(3600, secs));
+    if (!Number.isNaN(secs))
+      return Math.max(1, Math.min(MAX_RETRY_AFTER_S, secs));
     const d = Date.parse(ra);
     if (!Number.isNaN(d))
-      return Math.max(1, Math.min(3600, Math.round((d - Date.now()) / 1000)));
+      return Math.max(
+        1,
+        Math.min(MAX_RETRY_AFTER_S, Math.round((d - Date.now()) / 1000)),
+      );
   }
   const reset =
     res.headers.get("x-ratelimit-reset") ||
@@ -166,10 +185,38 @@ export function retryAfterSeconds(res: Response): number {
   if (reset) {
     const n = Number(reset);
     if (!Number.isNaN(n)) {
-      if (n > 1e12) return Math.max(1, Math.round((n - Date.now()) / 1000));
-      if (n > 1e9) return Math.max(1, Math.round(n - Date.now() / 1000));
-      return Math.max(1, n);
+      if (n > 1e12)
+        return Math.max(
+          1,
+          Math.min(MAX_RETRY_AFTER_S, Math.round((n - Date.now()) / 1000)),
+        );
+      if (n > 1e9)
+        return Math.max(
+          1,
+          Math.min(MAX_RETRY_AFTER_S, Math.round(n - Date.now() / 1000)),
+        );
+      return Math.max(1, Math.min(MAX_RETRY_AFTER_S, n));
     }
   }
   return jittered(60);
+}
+
+/** delaySeconds for the Nth queue sendBatch wave (0-based). Pure so the
+ *  stagger is unit-testable; the caller passes it straight to sendBatch. */
+export function staggeredSendDelaySeconds(
+  batchIndex: number,
+  stepS = SEND_STAGGER_S,
+): number {
+  if (!Number.isFinite(batchIndex) || batchIndex <= 0) return 0;
+  return Math.min(MAX_RETRY_AFTER_S, Math.floor(batchIndex) * stepS);
+}
+
+/** delaySeconds for a failed queue message retry. Exponential
+ *  `RETRY_BASE_S * 2^attempts`, capped at MAX_RETRY_AFTER_S. */
+export function queueRetryDelaySeconds(
+  attempts: number,
+  baseS = RETRY_BASE_S,
+): number {
+  const a = !Number.isFinite(attempts) || attempts < 0 ? 0 : Math.floor(attempts);
+  return Math.min(MAX_RETRY_AFTER_S, baseS * Math.pow(2, Math.min(11, a)));
 }

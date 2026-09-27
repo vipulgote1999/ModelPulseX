@@ -13,6 +13,7 @@ import {
   capFor,
   getRPMConfig,
   rpmForProvider,
+  staggeredSendDelaySeconds,
 } from "../utils/concurrency";
 import {
   selectJobs,
@@ -263,11 +264,17 @@ export async function scheduleBenchmarks(
     );
     inlineRan = ran;
 
-    // Enqueue the remainder in batches of 10
+    // Enqueue the remainder in batches of 10, staggered so waves don't burst
+    // the upstream at once (Cloudflare Queues delaySeconds, max 24h). Wave 0
+    // fires now; later waves land 60s apart inside the 5-minute window.
     for (let i = 0; i < rest.length; i += 10) {
       const batch = rest.slice(i, i + 10);
+      const delaySeconds = staggeredSendDelaySeconds(Math.floor(i / 10));
       try {
-        await env.BENCH_QUEUE.sendBatch(batch.map((j) => ({ body: j })));
+        await env.BENCH_QUEUE.sendBatch(
+          batch.map((j) => ({ body: j })),
+          delaySeconds > 0 ? { delaySeconds } : undefined,
+        );
         enqueued += batch.length;
       } catch (e) {
         console.error("queue sendBatch", e);

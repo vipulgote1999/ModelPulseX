@@ -21,6 +21,7 @@ import {
 } from "./db/queries";
 import { recordHourlyJob, watchdogCheck } from "./db/health";
 import { refreshLeaderboardSnapshot } from "./db/snapshot";
+import { queueRetryDelaySeconds } from "./utils/concurrency";
 import type { Env } from "./types";
 
 export { PerformanceDO };
@@ -206,7 +207,15 @@ export default {
           msg.ack();
         } catch (e) {
           console.error("bench job failed", msg.body?.model_id, e);
-          msg.retry();
+          // Back off instead of immediate redelivery: an upstream 429/timeout
+          // storm must not tight-loop the queue into the same limit.
+          try {
+            msg.retry({
+              delaySeconds: queueRetryDelaySeconds(msg.attempts ?? 0),
+            });
+          } catch {
+            msg.retry();
+          }
         }
       }
       return;
