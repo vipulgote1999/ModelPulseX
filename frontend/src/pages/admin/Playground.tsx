@@ -53,6 +53,28 @@ const PROBE_APIS = [
   "/api/leaderboard?range=1h",
 ];
 
+/** Small absolute-positioned copy button for <pre> blocks. */
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch {
+          // clipboard unavailable — user selects manually
+        }
+      }}
+      className="absolute top-2 right-2 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white"
+      title={`Copy ${label} to clipboard`}
+    >
+      {done ? "Copied ✓" : `Copy ${label}`}
+    </button>
+  );
+}
+
 /** Split a raw provider error body into a short code + full human message.
  *  Non-JSON bodies (plain text, HTML) are returned verbatim. */
 function parseErrorType(raw: string): { code: string | null; message: string } {
@@ -118,7 +140,6 @@ export default function Playground() {
   });
   const [showKey, setShowKey] = useState(false);
   const [usedKey, setUsedKey] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
   // Session-only endpoint override: free-text chat URL for this test alone.
   // Empty = registry default. Never stored; SSRF-guarded server-side.
   const [customUrl, setCustomUrl] = useState("");
@@ -819,9 +840,14 @@ export default function Playground() {
                 Answer ({result.preview.length} chars, not stored)
                 {result.preview_truncated ? " — truncated" : ""}
               </div>
-              <pre className="whitespace-pre-wrap break-words font-mono text-xs text-zinc-200 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-64 overflow-auto">
-                {result.preview || "(no text returned)"}
-              </pre>
+              <div className="relative">
+                {result.preview && (
+                  <CopyButton text={result.preview} label="answer" />
+                )}
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs text-zinc-200 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-64 overflow-auto">
+                  {result.preview || "(no text returned)"}
+                </pre>
+              </div>
             </div>
             {result.debug ? (
               <div className="space-y-2">
@@ -845,21 +871,7 @@ export default function Playground() {
                 </div>
                 {showLog && debugJson && (
                   <div className="relative">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(debugJson);
-                          setToast("Log copied to clipboard");
-                        } catch {
-                          setToast("Copy failed — select the text manually");
-                        }
-                        setTimeout(() => setToast(null), 1500);
-                      }}
-                      className="absolute top-2 right-2 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                      title="Copy full log JSON to clipboard"
-                    >
-                      Copy log
-                    </button>
+                    <CopyButton text={debugJson} label="log" />
                     <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-zinc-300 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-96 overflow-auto">
                       {debugJson}
                     </pre>
@@ -893,12 +905,6 @@ export default function Playground() {
           </pre>
         )}
       </details>
-
-      {toast && (
-        <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 shadow-xl">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }
