@@ -10,7 +10,8 @@ const CROSS_ARM = "M9.5 9.5 L22.5 22.5";
 
 function MarkPaths({ stroke }: { stroke: string }) {
   return (
-    <>
+    // Scaled ~1.2x about center so the artwork fills the tile (no dead padding)
+    <g transform="translate(16,16) scale(1.2) translate(-16,-16)">
       <circle
         cx="16"
         cy="16"
@@ -39,7 +40,7 @@ function MarkPaths({ stroke }: { stroke: string }) {
         strokeLinejoin="miter"
         strokeMiterlimit={4}
       />
-    </>
+    </g>
   );
 }
 
