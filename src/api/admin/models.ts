@@ -40,7 +40,8 @@ export function adminModelsRoutes(env: Env) {
         binds.push(pattern, pattern);
       }
       if (conds.length) sql += " WHERE " + conds.join(" AND ");
-      sql += " ORDER BY p.name ASC, m.display_name ASC";
+      sql +=
+        " ORDER BY COALESCE(m.benchmark_enabled,1) DESC, CASE WHEN m.free_status='FREE' THEN 0 ELSE 1 END ASC, p.name ASC, m.display_name ASC";
       rows = await env.DB.prepare(sql)
         .bind(...binds)
         .all();
@@ -64,7 +65,8 @@ export function adminModelsRoutes(env: Env) {
           binds2.push(pattern2, pattern2);
         }
         if (conds2.length) sql2 += " WHERE " + conds2.join(" AND ");
-        sql2 += " ORDER BY p.name ASC, m.display_name ASC";
+        sql2 +=
+          " ORDER BY CASE WHEN m.free_status='FREE' THEN 0 ELSE 1 END ASC, p.name ASC, m.display_name ASC";
         rows = await env.DB.prepare(sql2)
           .bind(...binds2)
           .all();

@@ -11,4 +11,10 @@ describe("workload budget floors", () => {
     // 4092 tokens at ~13.6 TPS ≈ 300s. Slower than that records TIMEOUT.
     expect(WORKLOADS.coding.timeout_ms).toBeGreaterThanOrEqual(300_000);
   });
+
+  // Sampling is pinned so cron and the playground measure identical
+  // conditions — a silent drift here splits leaderboard history.
+  it("coding pins top_p 0.95 (matches playground default)", () => {
+    expect(WORKLOADS.coding.top_p).toBe(0.95);
+  });
 });

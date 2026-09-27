@@ -118,7 +118,7 @@ export default function Playground() {
   const [prompt, setPrompt] = useState(BUILTIN_PRESETS[0]!.prompt);
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState("0.7");
-  const [topP, setTopP] = useState("1");
+  const [topP, setTopP] = useState("0.95");
   const [maxTokens, setMaxTokens] = useState("1024");
   const [timeoutMs, setTimeoutMs] = useState("60000");
   const [presetId, setPresetId] = useState(BUILTIN_PRESETS[0]!.id);
@@ -637,7 +637,7 @@ export default function Playground() {
             </div>
             <div>
               <label htmlFor="pg-topp" className={labelCls}>Top_p 0–1</label>
-              <input id="pg-topp" value={topP} onChange={(e) => setTopP(e.target.value)} placeholder="1" inputMode="decimal" className={inputCls} />
+              <input id="pg-topp" value={topP} onChange={(e) => setTopP(e.target.value)} placeholder="0.95" inputMode="decimal" className={inputCls} />
             </div>
             <div>
               <label htmlFor="pg-maxtok" className={labelCls}>Max tokens 16–2048{thinking ? " (thinking)" : ""}</label>

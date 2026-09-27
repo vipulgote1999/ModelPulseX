@@ -96,7 +96,7 @@ export default function Methodology() {
           <b>coding</b>: Python two-sum with complexity + test — measures
           coding quality + sustained decode (the TPS/TTFT signal short probes
           cannot give). Same prompt for every model; max_tokens 4092, 300s
-          provider timeout. Retired short/medium types remain visible only on
+          provider timeout, top_p 0.95. Retired short/medium types remain visible only on
           old rows — never compare across types as identical workloads.
         </p>
       </section>

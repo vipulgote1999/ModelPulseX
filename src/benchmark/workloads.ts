@@ -13,6 +13,13 @@ export const WORKLOADS: Record<BenchmarkType, BenchmarkDefinition> = {
     // Timeout 300s covers a full budget at ~13.6 TPS; slower records TIMEOUT.
     max_tokens: 4092,
     timeout_ms: 300000,
+    // Nucleus sampling 0.95 (2026-09-27): the no-truncation default (top_p=1)
+    // lets tail tokens through on several free gateways and produced ragged
+    // completions; 0.95 is accepted by every OpenAI-compatible provider in
+    // the registry and matches the playground default. Kept in the workload
+    // (not left to provider defaults) so cron and playground measure the
+    // same sampling conditions.
+    top_p: 0.95,
   },
 };
 

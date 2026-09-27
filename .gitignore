@@ -26,3 +26,6 @@ secrets/
 .dev.vars.backup*
 .env.*.backup
 /.pi/tasks
+
+# warden (local-only, not for commit)
+pi-warden.md

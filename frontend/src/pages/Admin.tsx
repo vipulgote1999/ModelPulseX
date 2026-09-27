@@ -248,7 +248,18 @@ export default function Admin() {
       const want = enabledFilter === "enabled" ? 1 : 0;
       r = r.filter((m) => (m.benchmark_enabled ?? 1) === want);
     }
-    return r;
+    // Default sort: enabled first, then FREE status, then provider/display name.
+    return [...r].sort((a, b) => {
+      const ae = (a.benchmark_enabled ?? 1) === 1 ? 0 : 1;
+      const be = (b.benchmark_enabled ?? 1) === 1 ? 0 : 1;
+      if (ae !== be) return ae - be;
+      const af = a.free_status === "FREE" ? 0 : 1;
+      const bf = b.free_status === "FREE" ? 0 : 1;
+      if (af !== bf) return af - bf;
+      const ap = a.provider_name.localeCompare(b.provider_name);
+      if (ap !== 0) return ap;
+      return a.display_name.localeCompare(b.display_name);
+    });
   }, [models, enabledFilter]);
 
   const stats = useMemo(() => {
