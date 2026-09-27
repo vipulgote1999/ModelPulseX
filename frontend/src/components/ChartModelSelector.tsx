@@ -76,7 +76,7 @@ export default function ChartModelSelector({
   ];
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3 min-w-0 max-w-full overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold">
           Graph comparison — pick up to 3 models
@@ -87,17 +87,29 @@ export default function ChartModelSelector({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
         {[0, 1, 2].map((slot) => (
-          <div key={slot} className="flex gap-2 items-center">
-            <span className="text-xs font-mono text-zinc-500 w-6">
+          <div key={slot} className="flex gap-2 items-center min-w-0 max-w-full">
+            <span className="text-xs font-mono text-zinc-500 w-6 shrink-0">
               {slot + 1}.
             </span>
             <select
               aria-label={`Compare slot ${slot + 1}`}
               value={slots[slot] === "" ? "" : String(slots[slot])}
               onChange={(e) => updateSlot(slot, e.target.value)}
-              className="flex-1 rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
+              title={
+                slots[slot] === ""
+                  ? "No model selected"
+                  : (() => {
+                      const cur = sortedByIntel.find(
+                        (r) => r.model_id === Number(slots[slot]),
+                      );
+                      return cur
+                        ? `${cur.display_name} · ${cur.provider}`
+                        : String(slots[slot]);
+                    })()
+              }
+              className="flex-1 min-w-0 w-full max-w-full truncate rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
             >
               <option value="">— None —</option>
               {sortedByIntel.map((r) => {
@@ -108,13 +120,19 @@ export default function ChartModelSelector({
                 const disabled =
                   selected.includes(r.model_id) &&
                   selected[slot] !== r.model_id;
+                // Shorten long model ids so the native dropdown never forces
+                // the grid cell / card wider than the viewport.
+                const shortName =
+                  r.display_name.length > 28
+                    ? `${r.display_name.slice(0, 27)}…`
+                    : r.display_name;
                 return (
                   <option
                     key={r.model_id}
                     value={String(r.model_id)}
                     disabled={disabled}
                   >
-                    {r.display_name} · {r.provider}
+                    {shortName} · {r.provider}
                     {scoreTxt}
                     {tpsTxt}
                   </option>
