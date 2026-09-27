@@ -198,6 +198,65 @@ describe("benchmark engine — reasoning/thinking streams", () => {
     vi.restoreAllMocks();
   });
 
+  it("flags Gemini extra_content.google.thought chunks as reasoning_seen", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        // Live Gemini shape: thought text rides content deltas marked
+        // extra_content.google.thought — no reasoning_content field.
+        push({
+          choices: [
+            {
+              delta: {
+                content: "<thought>planning…",
+                extra_content: { google: { thought: true } },
+              },
+            },
+          ],
+        });
+        push({ choices: [{ delta: { content: "PONG" } }] });
+        push({
+          usage: { prompt_tokens: 5, completion_tokens: 10 },
+        });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
+    );
+    const res = await measureBenchmark({
+      provider: "gemini",
+      providerModelId: "models/gemini-2.5-flash-lite",
+      apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      apiKey: undefined,
+      benchmark: {
+        type: "short",
+        prompt: "hi",
+        max_tokens: 64,
+        timeout_ms: 5000,
+      },
+      includeDebug: true,
+    } as never);
+    expect(res.status).toBe("SUCCESS");
+    expect(res.debug?.response.reasoning_seen).toBe(true);
+    // Gemini usage already excludes thought text: provider numbers stand,
+    // no heuristic fallback.
+    expect(res.output_tokens).toBe(10);
+    expect(res.token_estimation_method).toBe("provider");
+    vi.restoreAllMocks();
+  });
+
   it("handles OpenRouter reasoning + reasoning_details without polluting answer", async () => {
     const { measureBenchmark } = await import("../src/benchmark/engine");
     const enc = new TextEncoder();

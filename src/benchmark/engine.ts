@@ -348,6 +348,22 @@ export async function measureBenchmark(
               seenReasoning = true;
               isReasoning = true;
             }
+            // Gemini-style thought flag: thinking rides regular content deltas
+            // marked extra_content.google.thought — no parallel reasoning field
+            // (live shape: {"delta":{"content":"…","extra_content":{"google":
+            // {"thought":true}}}}). Flag detection only: unlike the OpenAI
+            // convention, Gemini's usage completion_tokens already excludes
+            // thought text, so provider numbers are visible-only and need no
+            // re-accounting — isReasoning stays false by design here.
+            const extra = choiceDelta?.extra_content as
+              | Record<string, unknown>
+              | undefined;
+            const google = extra?.google as
+              | Record<string, unknown>
+              | undefined;
+            if (google?.thought === true) {
+              seenReasoning = true;
+            }
             const delta =
               (typeof choiceDelta?.content === "string"
                 ? (choiceDelta.content as string)
