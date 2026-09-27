@@ -123,6 +123,9 @@ export default function Playground() {
   // Empty = registry default. Never stored; SSRF-guarded server-side.
   const [customUrl, setCustomUrl] = useState("");
   const [usedCustomUrl, setUsedCustomUrl] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [prevMaxTokens, setPrevMaxTokens] = useState<string | null>(null);
+  const [usedThinking, setUsedThinking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const setKey = (v: string) => {
@@ -271,6 +274,24 @@ export default function Playground() {
     if (p) {
       setPrompt(p.prompt);
       setMaxTokens(String(p.max_tokens));
+      // A preset defines its own budget — explicit choice wins over the toggle.
+      setThinking(false);
+      setPrevMaxTokens(null);
+    }
+  };
+
+  // Thinking mode: one-tap full reasoning headroom (2048-token ceiling).
+  // Reasoning models burn budget on thinking before answering; toggling off
+  // restores the previous budget. Pure UI — the request just carries max_tokens.
+  const toggleThinking = () => {
+    if (thinking) {
+      setThinking(false);
+      if (prevMaxTokens != null) setMaxTokens(prevMaxTokens);
+      setPrevMaxTokens(null);
+    } else {
+      setPrevMaxTokens(maxTokens);
+      setMaxTokens("2048");
+      setThinking(true);
     }
   };
 
@@ -281,6 +302,7 @@ export default function Playground() {
     setShowLog(false);
     setUsedKey(false);
     setUsedCustomUrl(false);
+    setUsedThinking(thinking);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setRunning(true);
@@ -345,6 +367,7 @@ export default function Playground() {
         timeout_ms: timeoutMs,
         session_key_used: usedKey,
         custom_chat_url: usedCustomUrl ? customUrl.trim() : null,
+        thinking_mode: usedThinking,
       },
       free_status: result.free_status,
       would_queue_in_cron: result.would_queue_in_cron,
@@ -596,8 +619,8 @@ export default function Playground() {
               <input id="pg-topp" value={topP} onChange={(e) => setTopP(e.target.value)} placeholder="1" inputMode="decimal" className={inputCls} />
             </div>
             <div>
-              <label htmlFor="pg-maxtok" className={labelCls}>Max tokens 16–2048</label>
-              <input id="pg-maxtok" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)} inputMode="numeric" className={inputCls} />
+              <label htmlFor="pg-maxtok" className={labelCls}>Max tokens 16–2048{thinking ? " (thinking)" : ""}</label>
+              <input id="pg-maxtok" value={maxTokens} onChange={(e) => { setMaxTokens(e.target.value); setThinking(false); setPrevMaxTokens(null); }} inputMode="numeric" className={inputCls} />
             </div>
             <div>
               <label htmlFor="pg-timeout" className={labelCls}>Timeout</label>
@@ -661,13 +684,21 @@ export default function Playground() {
             />
             <div className="text-[11px] text-zinc-500 mt-1">Cmd/Ctrl+Enter to run. Esc cancels while running.</div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap items-center">
             <button
               onClick={run}
               disabled={running || !provider || !modelId.trim() || !prompt.trim()}
               className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed min-h-6"
             >
               {running ? "Running…" : "Run test"}
+            </button>
+            <button
+              onClick={toggleThinking}
+              aria-pressed={thinking}
+              title={thinking ? "Thinking mode on: 2048-token budget. Click to restore." : "Thinking mode: full 2048-token budget for reasoning models"}
+              className={`rounded-md border px-4 py-2 text-sm font-medium min-h-6 ${thinking ? "bg-violet-950/60 border-violet-600 text-violet-200" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"}`}
+            >
+              {thinking ? "Thinking: on" : "Thinking: off"}
             </button>
             {running && (
               <button
@@ -714,6 +745,14 @@ export default function Playground() {
                   title={`This run used a custom endpoint URL: ${result.resolvedChatUrl}`}
                 >
                   custom URL
+                </span>
+              )}
+              {usedThinking && (
+                <span
+                  className="inline-flex rounded px-2 py-0.5 border bg-violet-950/40 border-violet-800 text-violet-300"
+                  title="This run used thinking mode: full 2048-token budget for reasoning headroom"
+                >
+                  thinking
                 </span>
               )}
               {!result.would_queue_in_cron && (
