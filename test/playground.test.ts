@@ -79,6 +79,19 @@ describe("playground validation (pure)", () => {
       expect(r.value.benchmark.system_prompt).toBe("Be concise.");
     }
   });
+  it("accepts a session-only apiKey override, rejects oversized keys", () => {
+    const r = validatePlaygroundInput({ ...base, apiKey: "sk-session-123" });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.apiKey).toBe("sk-session-123");
+    expect(
+      validatePlaygroundInput({ ...base, apiKey: "x".repeat(501) }).ok,
+    ).toBe(false);
+    expect(validatePlaygroundInput({ ...base, apiKey: 123 }).ok).toBe(false);
+    // absent key stays undefined — server env key is used
+    const d = validatePlaygroundInput(base);
+    expect(d.ok).toBe(true);
+    if (d.ok) expect(d.value.apiKey).toBeUndefined();
+  });
   it("truncatePreview caps at 2000 chars", () => {
     expect(truncatePreview("x".repeat(5000)).length).toBe(2000);
     expect(truncatePreview("hi")).toBe("hi");
@@ -162,7 +175,7 @@ describe("playground route guards", () => {  it("rejects unauthenticated", async
     );
     expect(res.status).toBe(401);
   });
-  it("rejects client-supplied urls/keys (registry-only)", async () => {
+  it("rejects client-supplied urls/headers (registry-only)", async () => {
     const res = await postTest({
       provider: "openrouter",
       provider_model_id: "m",
@@ -174,9 +187,21 @@ describe("playground route guards", () => {  it("rejects unauthenticated", async
       provider: "openrouter",
       provider_model_id: "m",
       prompt: "hi",
-      apiKey: "sk-evil",
+      headers: { authorization: "Bearer sk-evil" },
     });
     expect(res2.status).toBe(400);
+  });
+  it("lets a session apiKey pass the registry guard (used for one request only)", async () => {
+    // unknown provider fails later at provider lookup — not at the url/key guard
+    const res = await postTest({
+      provider: "nope",
+      provider_model_id: "m",
+      prompt: "hi",
+      apiKey: "sk-session-123",
+    });
+    expect(res.status).toBe(400);
+    const j = (await res.json()) as { error?: string };
+    expect(j.error ?? "").toContain("unknown provider");
   });
   it("rejects unknown provider before any fetch", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
@@ -350,6 +375,54 @@ describe("playground debug bundle", () => {
     };
     expect(j.debug).toBeDefined();
     expect(j.debug!.request!.headers!.authorization).toBe("REDACTED");
+    vi.restoreAllMocks();
+  });
+
+  it("session apiKey override is used for the request and never echoed", async () => {
+    const { playgroundRoutes } = await import("../src/api/admin/playground");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}\n\n`,
+          ),
+        );
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    let seenAuth: string | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init: unknown) => {
+        const headers = (init as { headers: Record<string, string> }).headers;
+        seenAuth =
+          headers["authorization"] ?? headers["Authorization"] ?? null;
+        return new Response(stream, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    const app = playgroundRoutes({ ADMIN_TOKEN: TOKEN } as never);
+    const res = await app.request("/admin/playground/test", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TOKEN}`,
+      },
+      body: JSON.stringify({
+        provider: "openrouter",
+        provider_model_id: "test:free",
+        prompt: "Say OK",
+        apiKey: "sk-session-secret-456",
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(seenAuth).toBe("Bearer sk-session-secret-456");
+    const text = await res.text();
+    expect(text).not.toContain("sk-session-secret-456");
     vi.restoreAllMocks();
   });
 });

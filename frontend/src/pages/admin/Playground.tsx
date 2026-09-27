@@ -51,16 +51,51 @@ const PROBE_APIS = [
   "/api/leaderboard?range=1h",
 ];
 
+/** Split a raw provider error body into a short code + full human message.
+ *  Non-JSON bodies (plain text, HTML) are returned verbatim. */
+function parseErrorType(raw: string): { code: string | null; message: string } {
+  try {
+    const j = JSON.parse(raw) as unknown;
+    const err =
+      typeof j === "object" && j !== null && "error" in j
+        ? (j as { error: unknown }).error
+        : j;
+    if (typeof err === "object" && err !== null) {
+      const rec = err as Record<string, unknown>;
+      const message =
+        typeof rec.message === "string" ? rec.message : null;
+      if (message) {
+        return {
+          code: typeof rec.code === "string" ? rec.code : null,
+          message,
+        };
+      }
+    }
+    if (typeof j === "string" && j) return { code: null, message: j };
+  } catch {
+    // not JSON — fall through to raw
+  }
+  return { code: null, message: raw };
+}
+
 export default function Playground() {
   const [endpoints, setEndpoints] = useState<RegistryEndpoint[]>([]);
   const [modelHints, setModelHints] = useState<string[]>([]);
+  const [modelOptions, setModelOptions] = useState<
+    Array<{ provider: string; id: string; active: number; free: string }>
+  >([]);
   const [provider, setProvider] = useState("");
   const [modelId, setModelId] = useState("");
+  const [modelOpen, setModelOpen] = useState(false);
+  const [modelHi, setModelHi] = useState(0);
+  const [showLog, setShowLog] = useState(false);
+  const autoPicked = useRef(false);
+  const modelBoxRef = useRef<HTMLDivElement | null>(null);
   const [prompt, setPrompt] = useState(BUILTIN_PRESETS[0]!.prompt);
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState("0.7");
   const [topP, setTopP] = useState("1");
-  const [maxTokens, setMaxTokens] = useState("256");
+  const [maxTokens, setMaxTokens] = useState("1024");
   const [timeoutMs, setTimeoutMs] = useState("60000");
   const [presetId, setPresetId] = useState(BUILTIN_PRESETS[0]!.id);
   const [custom, setCustom] = useState<PromptPreset[]>(() => loadCustomPresets());
@@ -70,7 +105,28 @@ export default function Playground() {
   const [probePath, setProbePath] = useState(PROBE_APIS[0]!);
   const [probeOut, setProbeOut] = useState<string | null>(null);
   const [probeBusy, setProbeBusy] = useState(false);
+  // Session-only provider key: tab-scoped (sessionStorage), cleared on tab
+  // close, sent with a single request only, never stored server-side.
+  const [sessionKey, setSessionKey] = useState(() => {
+    try {
+      return sessionStorage.getItem("modelpulsex_playground_key") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [showKey, setShowKey] = useState(false);
+  const [usedKey, setUsedKey] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  const setKey = (v: string) => {
+    setSessionKey(v);
+    try {
+      if (v) sessionStorage.setItem("modelpulsex_playground_key", v);
+      else sessionStorage.removeItem("modelpulsex_playground_key");
+    } catch {
+      // private mode — key lives in memory only for this page view
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -90,10 +146,24 @@ export default function Playground() {
         const res = await fetch("/api/admin/models", { headers: authHeader() });
         if (!res.ok) return;
         const j = (await res.json()) as {
-          models?: { provider_name: string; provider_model_id: string }[];
+          models?: {
+            provider_name: string;
+            provider_model_id: string;
+            active?: number;
+            free_status?: string;
+          }[];
         };
+        const list = j.models ?? [];
         setModelHints(
-          (j.models ?? []).map((m) => `${m.provider_name} / ${m.provider_model_id}`),
+          list.map((m) => `${m.provider_name} / ${m.provider_model_id}`),
+        );
+        setModelOptions(
+          list.map((m) => ({
+            provider: m.provider_name,
+            id: m.provider_model_id,
+            active: m.active ?? 1,
+            free: m.free_status ?? "UNKNOWN",
+          })),
         );
       } catch {
         // hints are best-effort; free-text model id still works
@@ -101,6 +171,32 @@ export default function Playground() {
     })();
     // NOTE: mount-only fetch; functional setProvider avoids stale reads.
   }, []);
+
+  // Auto-pick a sensible default model: first active, else first FREE, else first.
+  useEffect(() => {
+    if (autoPicked.current || modelId !== "" || modelOptions.length === 0)
+      return;
+    const pick =
+      modelOptions.find((m) => m.active === 1) ??
+      modelOptions.find((m) => m.free === "FREE") ??
+      modelOptions[0];
+    if (!pick) return;
+    autoPicked.current = true;
+    if (endpoints.length === 0 || endpoints.some((e) => e.name === pick.provider)) {
+      setProvider(pick.provider);
+    }
+    setModelId(pick.id);
+  }, [modelOptions, endpoints, modelId]);
+
+  // Close model dropdown on outside click.
+  useEffect(() => {
+    if (!modelOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!modelBoxRef.current?.contains(e.target as Node)) setModelOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [modelOpen]);
 
   const selectedEndpoint = useMemo(
     () => endpoints.find((e) => e.name === provider) ?? null,
@@ -117,6 +213,28 @@ export default function Playground() {
     return ids.slice(0, 200);
   }, [modelHints, provider]);
 
+  // Rich filtered options for the combobox: prefer meta (active/free badges),
+  // fall back to plain hint strings when meta is unavailable.
+  const modelMatches = useMemo(() => {
+    const q = modelId.trim().toLowerCase();
+    const fromMeta = modelOptions
+      .filter((m) => (provider ? m.provider === provider : true))
+      .filter((m) => (q ? m.id.toLowerCase().includes(q) : true))
+      .slice(0, 50);
+    if (fromMeta.length > 0 || modelOptions.length > 0) return fromMeta;
+    return hintsForProvider
+      .filter((id) => (q ? id.toLowerCase().includes(q) : true))
+      .slice(0, 50)
+      .map((id) => ({ provider, id, active: 1, free: "" }));
+  }, [modelOptions, hintsForProvider, provider, modelId]);
+
+  const chooseModel = (id: string, prov?: string) => {
+    setModelId(id);
+    if (prov && prov !== provider) setProvider(prov);
+    setModelOpen(false);
+    setModelHi(0);
+  };
+
   const applyPreset = (id: string) => {
     setPresetId(id);
     const p = allPresets.find((x) => x.id === id);
@@ -130,6 +248,8 @@ export default function Playground() {
     if (running) return;
     setErr(null);
     setResult(null);
+    setShowLog(false);
+    setUsedKey(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setRunning(true);
@@ -146,6 +266,10 @@ export default function Playground() {
       if (t !== "") body.temperature = Number(t);
       const tp = topP.trim();
       if (tp !== "") body.top_p = Number(tp);
+      if (sessionKey.trim()) {
+        body.apiKey = sessionKey.trim();
+        setUsedKey(true);
+      }
       const res = await fetch("/api/admin/playground/test", {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeader() },
@@ -167,10 +291,11 @@ export default function Playground() {
     }
   };
 
-  const downloadDebugLog = () => {
-    if (!result?.debug) return;
-    const safe = (s: string) => s.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80);
-    const bundle = {
+  // Debug bundle shared by download + inline preview. The session key is
+  // deliberately never included — debug headers are REDACTED server-side.
+  const buildDebugBundle = () => {
+    if (!result?.debug) return null;
+    return {
       exported_at: new Date().toISOString(),
       exporter: "modelpulsex-admin-playground",
       ui: {
@@ -183,6 +308,7 @@ export default function Playground() {
         top_p: topP.trim() || null,
         max_tokens: maxTokens,
         timeout_ms: timeoutMs,
+        session_key_used: usedKey,
       },
       free_status: result.free_status,
       would_queue_in_cron: result.would_queue_in_cron,
@@ -190,6 +316,16 @@ export default function Playground() {
       answer_preview: result.preview,
       debug: result.debug,
     };
+  };
+
+  const debugJson = result?.debug
+    ? JSON.stringify(buildDebugBundle(), null, 2)
+    : null;
+
+  const downloadDebugLog = () => {
+    const bundle = buildDebugBundle();
+    if (!bundle) return;
+    const safe = (s: string) => s.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80);
     const blob = new Blob([JSON.stringify(bundle, null, 2)], {
       type: "application/json",
     });
@@ -239,21 +375,100 @@ export default function Playground() {
               ))}
             </select>
           </div>
-          <div>
+          <div ref={modelBoxRef} className="relative">
             <label htmlFor="pg-model" className={labelCls}>Model id</label>
             <input
               id="pg-model"
               value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
+              onChange={(e) => {
+                setModelId(e.target.value);
+                setModelOpen(true);
+                setModelHi(0);
+              }}
+              onFocus={() => {
+                setModelOpen(true);
+                setModelHi(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!modelOpen) {
+                    setModelOpen(true);
+                    return;
+                  }
+                  const n = modelMatches.length;
+                  if (n === 0) return;
+                  setModelHi((h) =>
+                    e.key === "ArrowDown" ? (h + 1) % n : (h - 1 + n) % n,
+                  );
+                } else if (e.key === "Enter") {
+                  if (modelOpen && modelMatches[modelHi]) {
+                    e.preventDefault();
+                    const m = modelMatches[modelHi]!;
+                    chooseModel(m.id, m.provider);
+                  }
+                } else if (e.key === "Escape") {
+                  setModelOpen(false);
+                }
+              }}
               placeholder="e.g. big-pickle"
-              list="pg-model-hints"
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={modelOpen}
+              aria-controls="pg-model-listbox"
+              aria-activedescendant={
+                modelOpen && modelMatches[modelHi]
+                  ? `pg-model-opt-${modelHi}`
+                  : undefined
+              }
               className={`${inputCls} font-mono`}
             />
-            <datalist id="pg-model-hints">
-              {hintsForProvider.map((h) => (
-                <option key={h} value={h} />
-              ))}
-            </datalist>
+            {modelOpen && modelMatches.length > 0 && (
+              <ul
+                id="pg-model-listbox"
+                role="listbox"
+                aria-label="Matching models"
+                className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-zinc-700 bg-zinc-950 shadow-xl"
+              >
+                {modelMatches.map((m, i) => (
+                  <li
+                    key={`${m.provider}/${m.id}`}
+                    id={`pg-model-opt-${i}`}
+                    role="option"
+                    aria-selected={modelId === m.id || i === modelHi}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      chooseModel(m.id, m.provider);
+                    }}
+                    onMouseEnter={() => setModelHi(i)}
+                    className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 font-mono text-xs ${
+                      i === modelHi
+                        ? "bg-violet-600/30 text-zinc-100"
+                        : "text-zinc-300"
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate" title={`${m.provider} / ${m.id}`}>
+                      {m.id}
+                    </span>
+                    {m.free === "FREE" && (
+                      <span className="shrink-0 rounded border border-emerald-800 bg-emerald-950/40 px-1.5 py-px text-[10px] text-emerald-300">
+                        FREE
+                      </span>
+                    )}
+                    {m.active !== 1 && (
+                      <span className="shrink-0 rounded border border-zinc-700 px-1.5 py-px text-[10px] text-zinc-500">
+                        inactive
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-1 text-[11px] text-zinc-500">
+              {modelOptions.length > 0
+                ? `↑↓ to navigate · Enter to select · ${modelMatches.length} match${modelMatches.length === 1 ? "" : "es"}${provider ? ` for ${provider}` : ""}`
+                : "Type to filter — ↑↓ Enter to pick."}
+            </div>
           </div>
           <div className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2">
             <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium">Endpoint (from registry)</div>
@@ -262,6 +477,43 @@ export default function Playground() {
             </div>
             <div className="text-[11px] text-zinc-500 mt-1">
               Custom base URLs are not allowed — server exact-matches the registry.
+            </div>
+          </div>
+          <div className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2">
+            <label htmlFor="pg-key" className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium">
+              Session API key (optional)
+            </label>
+            <div className="flex gap-2 mt-1">
+              <input
+                id="pg-key"
+                type={showKey ? "text" : "password"}
+                value={sessionKey}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="Paste provider key…"
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded-md bg-zinc-900 border border-zinc-800 px-2 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-600"
+              />
+              <button
+                onClick={() => setShowKey((v) => !v)}
+                className="shrink-0 rounded-md border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                title={showKey ? "Hide key" : "Show key"}
+              >
+                {showKey ? "Hide" : "Show"}
+              </button>
+              {sessionKey && (
+                <button
+                  onClick={() => setKey("")}
+                  className="shrink-0 rounded-md border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Remove session key"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-1">
+              Tab-only: kept in sessionStorage, cleared when the tab closes.
+              Sent with this request alone — never stored server-side, never in logs (REDACTED).
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -288,7 +540,7 @@ export default function Playground() {
           </div>
           <div>
             <label htmlFor="pg-system" className={labelCls}>System prompt (optional)</label>
-            <textarea id="pg-system" value={system} onChange={(e) => setSystem(e.target.value)} rows={2} placeholder="Be concise." className={`${inputCls} font-mono`} />
+            <textarea id="pg-system" value={system} onChange={(e) => setSystem(e.target.value)} rows={2} placeholder="You are a helpful assistant. Be concise." className={`${inputCls} font-mono`} />
           </div>
         </div>
 
@@ -306,7 +558,7 @@ export default function Playground() {
             <button
               onClick={() => {
                 const id = `custom-${Date.now()}`;
-                setCustom(saveCustomPreset({ id, label: `Custom ${custom.length + 1}`, prompt, max_tokens: Number(maxTokens) || 256 }));
+                setCustom(saveCustomPreset({ id, label: `Custom ${custom.length + 1}`, prompt, max_tokens: Number(maxTokens) || 1024 }));
                 setPresetId(id);
               }}
               className="rounded-md border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
@@ -378,6 +630,14 @@ export default function Playground() {
               </span>
               <span className="text-zinc-400">HTTP {result.result.http_status ?? "—"}</span>
               <span className="text-zinc-400">free_status {result.free_status}</span>
+              {usedKey && (
+                <span
+                  className="inline-flex rounded px-2 py-0.5 border bg-violet-950/40 border-violet-800 text-violet-300"
+                  title="This run used your tab-only session key instead of the server key"
+                >
+                  session key
+                </span>
+              )}
               {!result.would_queue_in_cron && (
                 <span className="inline-flex rounded px-2 py-0.5 border bg-zinc-800 border-zinc-700 text-zinc-300">
                   Would skip cron queue (needs FREE + active + enabled)
@@ -401,9 +661,35 @@ export default function Playground() {
                 </div>
               ))}
             </div>
-            {result.result.error_type && (
-              <div className="font-mono text-xs text-amber-200/80 break-all">{result.result.error_type.slice(0, 500)}</div>
-            )}
+            {result.result.error_type && (() => {
+              const parsed = parseErrorType(result.result.error_type!);
+              const isRaw = parsed.message === result.result.error_type;
+              return (
+                <div className="rounded-md border border-amber-800 bg-amber-950/30 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-semibold text-amber-200">
+                      Error{parsed.code ? ` · ${parsed.code}` : ""}
+                    </span>
+                    <span className="text-amber-200/60">
+                      HTTP {result.result.http_status ?? "—"}
+                    </span>
+                  </div>
+                  <div className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-amber-100/90">
+                    {parsed.message}
+                  </div>
+                  {!isRaw && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-amber-200/70 hover:text-amber-200">
+                        Raw response body
+                      </summary>
+                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-amber-200/70">
+                        {result.result.error_type}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
             {result.result.error_type?.includes("reasoning_no_content") && (
               <div className="text-xs text-zinc-400 leading-relaxed">
                 This model produced reasoning but no answer text within the token budget.
@@ -418,16 +704,30 @@ export default function Playground() {
               </pre>
             </div>
             {result.debug ? (
-              <div className="flex flex-wrap gap-2 items-center">
-                <button
-                  onClick={downloadDebugLog}
-                  className="rounded-md border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 min-h-6"
-                >
-                  Download debug log (.json)
-                </button>
-                <span className="text-[11px] text-zinc-500">
-                  Request payload + URL + redacted headers + response/SSE transcript. Secrets are REDACTED — reproduce locally with your own key.
-                </span>
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <button
+                    onClick={() => setShowLog((v) => !v)}
+                    className="rounded-md border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 min-h-6"
+                    aria-expanded={showLog}
+                  >
+                    {showLog ? "Hide log preview" : "Preview log"}
+                  </button>
+                  <button
+                    onClick={downloadDebugLog}
+                    className="rounded-md border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 min-h-6"
+                  >
+                    Download debug log (.json)
+                  </button>
+                  <span className="text-[11px] text-zinc-500">
+                    Request payload + URL + redacted headers + response/SSE transcript. Secrets are REDACTED — reproduce locally with your own key.
+                  </span>
+                </div>
+                {showLog && debugJson && (
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-zinc-300 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-96 overflow-auto">
+                    {debugJson}
+                  </pre>
+                )}
               </div>
             ) : null}
           </div>

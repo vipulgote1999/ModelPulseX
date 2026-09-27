@@ -15,7 +15,7 @@ export const CODING_DEFAULT =
   "Implement a Python function solve(nums, target) that returns indices of two numbers adding to target. Explain complexity and provide working code with a test case. Keep output under 400 tokens.";
 
 export const BUILTIN_PRESETS: PromptPreset[] = [
-  { id: "coding-default", label: "Coding default (benchmark)", prompt: CODING_DEFAULT, max_tokens: 256 },
+  { id: "coding-default", label: "Coding default (benchmark)", prompt: CODING_DEFAULT, max_tokens: 1024 },
   { id: "short-probe", label: "Short probe", prompt: "Say OK in 5 words.", max_tokens: 32 },
   {
     id: "reasoning-probe",

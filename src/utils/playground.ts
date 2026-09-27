@@ -14,6 +14,9 @@ export interface PlaygroundInput {
   top_p?: unknown;
   max_tokens?: unknown;
   timeout_ms?: unknown;
+  /** Optional caller-supplied key for this ephemeral request only.
+   *  Never persisted, never logged — the engine redacts it from debug. */
+  apiKey?: unknown;
 }
 
 export interface ValidPlayground {
@@ -22,6 +25,8 @@ export interface ValidPlayground {
   prompt: string;
   system_prompt?: string;
   benchmark: BenchmarkDefinition;
+  /** Session-only override; when absent the server env key is used. */
+  apiKey?: string;
 }
 
 export const PLAYGROUND_LIMITS = {
@@ -131,6 +136,17 @@ export function validatePlaygroundInput(
       error: `timeout_ms must be ${PLAYGROUND_LIMITS.timeoutMin}-${PLAYGROUND_LIMITS.timeoutMax}`,
     };
 
+  // Session-only key: ephemeral override, never stored server-side.
+  let apiKey: string | undefined;
+  if (raw.apiKey !== undefined && raw.apiKey !== null && raw.apiKey !== "") {
+    if (typeof raw.apiKey !== "string")
+      return { ok: false, error: "apiKey must be a string" };
+    const k = raw.apiKey.trim();
+    if (k.length < 1 || k.length > 500)
+      return { ok: false, error: "apiKey too long (max 500 chars)" };
+    apiKey = k;
+  }
+
   const benchmark: BenchmarkDefinition = {
     type: "coding",
     prompt,
@@ -143,7 +159,7 @@ export function validatePlaygroundInput(
 
   return {
     ok: true,
-    value: { provider, provider_model_id: modelId, prompt, system_prompt, benchmark },
+    value: { provider, provider_model_id: modelId, prompt, system_prompt, benchmark, apiKey },
   };
 }
 

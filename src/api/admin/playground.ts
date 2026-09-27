@@ -12,7 +12,9 @@ import {
 import { sanitizeErrorMessage } from "../../utils/security";
 
 /** Server-side API key resolution by registry provider name.
- *  Keys never come from the client and are never echoed back.
+ *  Keys never come from localStorage and are never echoed back.
+ *  A caller-supplied session key (playground only, this request alone)
+ *  takes precedence over env keys; it is never persisted or logged.
  *  opencode_zen uses OPENCODE_API_KEY (not OPENCODE_ZEN_API_KEY); agnes uses AGNES_API_KEY. */
 function apiKeyFor(provider: string, env: Env): string | undefined {
   const e = env as unknown as Record<string, string | undefined>;
@@ -66,12 +68,13 @@ export function playgroundRoutes(env: Env) {
   r.post("/admin/playground/test", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
     const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    // Reject client-supplied URLs/keys/headers outright — registry-only (decision B).
+    // Reject client-supplied URLs/headers outright — registry-only (decision B).
+    // apiKey is the one exception: an optional session-only override for this
+    // ephemeral request (never stored, redacted from debug).
     if (
       raw.apiUrl !== undefined ||
       raw.baseUrl !== undefined ||
       raw.chatUrl !== undefined ||
-      raw.apiKey !== undefined ||
       raw.extraHeaders !== undefined ||
       raw.headers !== undefined
     ) {
@@ -115,7 +118,7 @@ export function playgroundRoutes(env: Env) {
         provider: v.value.provider,
         providerModelId: v.value.provider_model_id,
         apiUrl: ep.chatUrl,
-        apiKey: apiKeyFor(v.value.provider, env),
+        apiKey: v.value.apiKey ?? apiKeyFor(v.value.provider, env),
         benchmark: v.value.benchmark,
         extraHeaders:
           v.value.provider === "opencode_zen" ? zenClientHeaders() : undefined,
