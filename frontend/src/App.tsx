@@ -10,7 +10,7 @@ export default function App() {
     "dashboard",
   );
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-zinc-100">
+    <div className="min-h-screen overflow-x-clip bg-[#0a0a0f] text-zinc-100">
       <Header onNavigate={setPage} current={page} />
       <Suspense
         fallback={

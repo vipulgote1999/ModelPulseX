@@ -216,7 +216,7 @@ export default function Leaderboard({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-      <div className="overflow-auto">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/80 text-[11px] tracking-widest text-zinc-400 border-b border-zinc-800">
             <tr>
