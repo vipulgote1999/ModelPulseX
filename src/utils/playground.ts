@@ -1,6 +1,8 @@
 /** Playground input validation + clamps — pure, Cloudflare-free, unit-tested.
- *  Registry-only (decision B): client sends provider name only, never URLs/keys.
- *  Ephemeral: validation never touches D1/queues.
+ *  Session-only overrides (apiKey, chatUrl) are allowed for this ephemeral
+ *  request alone: never persisted, never logged. URL shape is checked here;
+ *  SSRF safety (https-only, no creds) is enforced by assertSafeApiUrl
+ *  in the route. Ephemeral: validation never touches D1/queues.
  */
 import { PROVIDER_REGISTRY } from "../providers/registry";
 import type { BenchmarkDefinition } from "../types";
@@ -17,6 +19,9 @@ export interface PlaygroundInput {
   /** Optional caller-supplied key for this ephemeral request only.
    *  Never persisted, never logged — the engine redacts it from debug. */
   apiKey?: unknown;
+  /** Optional caller-supplied chat-completions URL override for this
+   *  ephemeral request only. Must pass assertSafeApiUrl server-side. */
+  chatUrl?: unknown;
 }
 
 export interface ValidPlayground {
@@ -27,6 +32,8 @@ export interface ValidPlayground {
   benchmark: BenchmarkDefinition;
   /** Session-only override; when absent the server env key is used. */
   apiKey?: string;
+  /** Session-only chat URL override; when absent the registry URL is used. */
+  chatUrl?: string;
 }
 
 export const PLAYGROUND_LIMITS = {
@@ -147,6 +154,19 @@ export function validatePlaygroundInput(
     apiKey = k;
   }
 
+  // Session-only chat URL override: ephemeral, never stored server-side.
+  // Shape-checked here (string, <=500 chars); SSRF safety is enforced by
+  // assertSafeApiUrl in the route before any fetch happens.
+  let chatUrl: string | undefined;
+  if (raw.chatUrl !== undefined && raw.chatUrl !== null && raw.chatUrl !== "") {
+    if (typeof raw.chatUrl !== "string")
+      return { ok: false, error: "chatUrl must be a string" };
+    const u = raw.chatUrl.trim();
+    if (u.length < 8 || u.length > 500)
+      return { ok: false, error: "chatUrl must be 8-500 chars" };
+    chatUrl = u;
+  }
+
   const benchmark: BenchmarkDefinition = {
     type: "coding",
     prompt,
@@ -159,7 +179,7 @@ export function validatePlaygroundInput(
 
   return {
     ok: true,
-    value: { provider, provider_model_id: modelId, prompt, system_prompt, benchmark, apiKey },
+    value: { provider, provider_model_id: modelId, prompt, system_prompt, benchmark, apiKey, chatUrl },
   };
 }
 

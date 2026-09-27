@@ -25,6 +25,7 @@ type PlaygroundResult = {
   provider: string;
   model: string;
   resolvedChatUrl: string;
+  custom_url_used: boolean;
   free_status: string;
   would_queue_in_cron: boolean;
   result: {
@@ -116,6 +117,11 @@ export default function Playground() {
   });
   const [showKey, setShowKey] = useState(false);
   const [usedKey, setUsedKey] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  // Session-only endpoint override: free-text chat URL for this test alone.
+  // Empty = registry default. Never stored; SSRF-guarded server-side.
+  const [customUrl, setCustomUrl] = useState("");
+  const [usedCustomUrl, setUsedCustomUrl] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const setKey = (v: string) => {
@@ -235,6 +241,29 @@ export default function Playground() {
     setModelHi(0);
   };
 
+  // Switching provider clears the stale model id and auto-picks the first
+  // active model for the new provider (else first FREE, else first hint).
+  // A custom endpoint URL is also reset — it belonged to the old provider.
+  const changeProvider = (name: string) => {
+    setProvider(name);
+    setModelOpen(false);
+    setModelHi(0);
+    setCustomUrl("");
+    const opts = modelOptions.filter((m) => m.provider === name);
+    const pick =
+      opts.find((m) => m.active === 1) ??
+      opts.find((m) => m.free === "FREE") ??
+      opts[0];
+    if (pick) {
+      setModelId(pick.id);
+      return;
+    }
+    const hint = modelHints
+      .filter((h) => h.startsWith(`${name} / `))
+      .map((h) => h.slice(name.length + 3))[0];
+    setModelId(hint ?? "");
+  };
+
   const applyPreset = (id: string) => {
     setPresetId(id);
     const p = allPresets.find((x) => x.id === id);
@@ -250,6 +279,7 @@ export default function Playground() {
     setResult(null);
     setShowLog(false);
     setUsedKey(false);
+    setUsedCustomUrl(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setRunning(true);
@@ -269,6 +299,10 @@ export default function Playground() {
       if (sessionKey.trim()) {
         body.apiKey = sessionKey.trim();
         setUsedKey(true);
+      }
+      if (customUrl.trim()) {
+        body.chatUrl = customUrl.trim();
+        setUsedCustomUrl(true);
       }
       const res = await fetch("/api/admin/playground/test", {
         method: "POST",
@@ -309,6 +343,7 @@ export default function Playground() {
         max_tokens: maxTokens,
         timeout_ms: timeoutMs,
         session_key_used: usedKey,
+        custom_chat_url: usedCustomUrl ? customUrl.trim() : null,
       },
       free_status: result.free_status,
       would_queue_in_cron: result.would_queue_in_cron,
@@ -367,7 +402,7 @@ export default function Playground() {
             <select
               id="pg-provider"
               value={provider}
-              onChange={(e) => setProvider(e.target.value)}
+              onChange={(e) => changeProvider(e.target.value)}
               className={inputCls}
             >
               {endpoints.map((e) => (
@@ -471,12 +506,46 @@ export default function Playground() {
             </div>
           </div>
           <div className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2">
-            <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium">Endpoint (from registry)</div>
-            <div className="font-mono text-[11px] text-violet-300 break-all mt-1">
-              {selectedEndpoint?.chatUrl ?? "—"}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] tracking-widest uppercase text-zinc-500 font-medium">Endpoint (from registry)</div>
+              {customUrl ? (
+                <button
+                  onClick={() => setCustomUrl("")}
+                  className="shrink-0 rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Back to the registry URL"
+                >
+                  Reset
+                </button>
+              ) : (
+                <button
+                  onClick={() => setCustomUrl(selectedEndpoint?.chatUrl ?? "")}
+                  className="shrink-0 rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Edit the chat URL for this test only"
+                >
+                  Customize
+                </button>
+              )}
             </div>
+            {customUrl ? (
+              <input
+                id="pg-url"
+                value={customUrl}
+                onChange={(e) => setCustomUrl(e.target.value)}
+                placeholder="https://…/chat/completions"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="url"
+                className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-800 px-2 py-1.5 font-mono text-[11px] text-violet-200 placeholder:text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 break-all"
+              />
+            ) : (
+              <div className="font-mono text-[11px] text-violet-300 break-all mt-1">
+                {selectedEndpoint?.chatUrl ?? "—"}
+              </div>
+            )}
             <div className="text-[11px] text-zinc-500 mt-1">
-              Custom base URLs are not allowed — server exact-matches the registry.
+              {customUrl
+                ? "Custom URL for this test only — https only, never stored. Cron still uses the registry."
+                : "Registry default. Customize for a one-off test — cron still uses the registry."}
             </div>
           </div>
           <div className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2">
@@ -638,6 +707,14 @@ export default function Playground() {
                   session key
                 </span>
               )}
+              {(usedCustomUrl || result.custom_url_used) && (
+                <span
+                  className="inline-flex rounded px-2 py-0.5 border bg-violet-950/40 border-violet-800 text-violet-300"
+                  title={`This run used a custom endpoint URL: ${result.resolvedChatUrl}`}
+                >
+                  custom URL
+                </span>
+              )}
               {!result.would_queue_in_cron && (
                 <span className="inline-flex rounded px-2 py-0.5 border bg-zinc-800 border-zinc-700 text-zinc-300">
                   Would skip cron queue (needs FREE + active + enabled)
@@ -724,9 +801,26 @@ export default function Playground() {
                   </span>
                 </div>
                 {showLog && debugJson && (
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-zinc-300 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-96 overflow-auto">
-                    {debugJson}
-                  </pre>
+                  <div className="relative">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(debugJson);
+                          setToast("Log copied to clipboard");
+                        } catch {
+                          setToast("Copy failed — select the text manually");
+                        }
+                        setTimeout(() => setToast(null), 1500);
+                      }}
+                      className="absolute top-2 right-2 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      title="Copy full log JSON to clipboard"
+                    >
+                      Copy log
+                    </button>
+                    <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-zinc-300 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 max-h-96 overflow-auto">
+                      {debugJson}
+                    </pre>
+                  </div>
                 )}
               </div>
             ) : null}
@@ -756,6 +850,12 @@ export default function Playground() {
           </pre>
         )}
       </details>
+
+      {toast && (
+        <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-100 shadow-xl">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

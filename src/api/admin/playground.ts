@@ -68,13 +68,12 @@ export function playgroundRoutes(env: Env) {
   r.post("/admin/playground/test", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
     const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    // Reject client-supplied URLs/headers outright — registry-only (decision B).
-    // apiKey is the one exception: an optional session-only override for this
-    // ephemeral request (never stored, redacted from debug).
+    // Registry-first: apiUrl/baseUrl/extraHeaders/headers are never accepted.
+    // apiKey + chatUrl are the session-only exceptions: optional overrides for
+    // this ephemeral request (never stored; URL must pass assertSafeApiUrl).
     if (
       raw.apiUrl !== undefined ||
       raw.baseUrl !== undefined ||
-      raw.chatUrl !== undefined ||
       raw.extraHeaders !== undefined ||
       raw.headers !== undefined
     ) {
@@ -87,10 +86,18 @@ export function playgroundRoutes(env: Env) {
     if (!adapter) return c.json({ error: "unknown provider" }, 400);
     const ep = getProviderEndpoint(v.value.provider);
     if (!ep) return c.json({ error: "unknown provider" }, 400);
+    // Registry URL by default; a caller-supplied chatUrl override must pass
+    // the same SSRF guard. A blocked custom URL is a 400 (caller error),
+    // while a blocked registry URL is a 500 (server misconfiguration).
+    const chatUrl = v.value.chatUrl ?? ep.chatUrl;
+    const customUrlUsed = v.value.chatUrl != null;
     try {
-      assertSafeApiUrl(ep.chatUrl);
+      assertSafeApiUrl(chatUrl);
     } catch {
-      return c.json({ error: "provider endpoint blocked" }, 500);
+      return c.json(
+        { error: customUrlUsed ? "custom chat URL blocked" : "provider endpoint blocked" },
+        customUrlUsed ? 400 : 500,
+      );
     }
 
     // Display-only freeness: does this target currently qualify for cron queue?
@@ -117,7 +124,7 @@ export function playgroundRoutes(env: Env) {
       const result = await measureBenchmark({
         provider: v.value.provider,
         providerModelId: v.value.provider_model_id,
-        apiUrl: ep.chatUrl,
+        apiUrl: chatUrl,
         apiKey: v.value.apiKey ?? apiKeyFor(v.value.provider, env),
         benchmark: v.value.benchmark,
         extraHeaders:
@@ -130,7 +137,8 @@ export function playgroundRoutes(env: Env) {
         ok: true,
         provider: v.value.provider,
         model: v.value.provider_model_id,
-        resolvedChatUrl: ep.chatUrl,
+        resolvedChatUrl: chatUrl,
+        custom_url_used: customUrlUsed,
         free_status,
         would_queue_in_cron,
         result: { ...result, preview: undefined, debug: undefined },

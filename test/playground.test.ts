@@ -92,6 +92,25 @@ describe("playground validation (pure)", () => {
     expect(d.ok).toBe(true);
     if (d.ok) expect(d.value.apiKey).toBeUndefined();
   });
+  it("accepts a session-only chatUrl override, rejects bad shapes", () => {
+    const r = validatePlaygroundInput({
+      ...base,
+      chatUrl: "https://custom.example.com/v1/chat/completions",
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok)
+      expect(r.value.chatUrl).toBe(
+        "https://custom.example.com/v1/chat/completions",
+      );
+    expect(
+      validatePlaygroundInput({ ...base, chatUrl: "x".repeat(501) }).ok,
+    ).toBe(false);
+    expect(validatePlaygroundInput({ ...base, chatUrl: 123 }).ok).toBe(false);
+    expect(validatePlaygroundInput({ ...base, chatUrl: "x" }).ok).toBe(false);
+    const d = validatePlaygroundInput(base);
+    expect(d.ok).toBe(true);
+    if (d.ok) expect(d.value.chatUrl).toBeUndefined();
+  });
   it("truncatePreview caps at 2000 chars", () => {
     expect(truncatePreview("x".repeat(5000)).length).toBe(2000);
     expect(truncatePreview("hi")).toBe("hi");
@@ -202,6 +221,73 @@ describe("playground route guards", () => {  it("rejects unauthenticated", async
     expect(res.status).toBe(400);
     const j = (await res.json()) as { error?: string };
     expect(j.error ?? "").toContain("unknown provider");
+  });
+  it("uses a custom chatUrl for the request and flags it", async () => {
+    const { playgroundRoutes } = await import("../src/api/admin/playground");
+    const enc = new TextEncoder();
+    const mkStream = () =>
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            enc.encode(
+              `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}\n\n`,
+            ),
+          );
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+    let seenUrl: string | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        seenUrl = String(url);
+        return new Response(mkStream(), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    const app = playgroundRoutes({ ADMIN_TOKEN: TOKEN } as never);
+    const res = await app.request("/admin/playground/test", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TOKEN}`,
+      },
+      body: JSON.stringify({
+        provider: "openrouter",
+        provider_model_id: "test:free",
+        prompt: "Say OK",
+        chatUrl: "https://custom.example.com/v1/chat/completions",
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(seenUrl).toBe("https://custom.example.com/v1/chat/completions");
+    const j = (await res.json()) as {
+      resolvedChatUrl?: string;
+      custom_url_used?: boolean;
+    };
+    expect(j.resolvedChatUrl).toBe(
+      "https://custom.example.com/v1/chat/completions",
+    );
+    expect(j.custom_url_used).toBe(true);
+    vi.restoreAllMocks();
+  });
+  it("rejects a blocked custom chatUrl with 400 before any fetch", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await postTest({
+      provider: "openrouter",
+      provider_model_id: "m",
+      prompt: "hi",
+      chatUrl: "http://169.254.169.254/latest/meta-data",
+    });
+    expect(res.status).toBe(400);
+    const j = (await res.json()) as { error?: string };
+    expect(j.error ?? "").toContain("blocked");
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
   it("rejects unknown provider before any fetch", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
