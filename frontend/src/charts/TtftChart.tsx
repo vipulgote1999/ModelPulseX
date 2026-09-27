@@ -9,12 +9,12 @@ import {
   CartesianGrid,
 } from "recharts";
 const COLORS = [
-  "#8b5cf6",
-  "#06b6d4",
-  "#f59e0b",
-  "#10b981",
-  "#ef4444",
-  "#e879f9",
+  "#a78bfa",
+  "#22d3ee",
+  "#34d399",
+  "#fbbf24",
+  "#fb7185",
+  "#60a5fa",
 ];
 export default function TtftChart({
   series,

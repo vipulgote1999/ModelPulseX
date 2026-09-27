@@ -12,9 +12,9 @@ export default function Sparkline({ points, width = 120, height = 28 }: { points
     const y = height - ((v - min) / range) * (height - 4) - 2;
     d += i === 0 || points[i - 1] == null ? `M${x.toFixed(1)},${y.toFixed(1)}` : ` L${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  // color by trend: up green, down amber, flat zinc
+  // color by trend: up emerald, down amber, flat violet (observatory tokens)
   const first = vals[0]!, last = vals[vals.length - 1]!;
-  const color = last > first * 1.05 ? "#10b981" : last < first * 0.95 ? "#f59e0b" : "#8b5cf6";
+  const color = last > first * 1.05 ? "#34d399" : last < first * 0.95 ? "#fbbf24" : "#a78bfa";
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
       <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />

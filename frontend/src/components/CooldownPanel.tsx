@@ -262,9 +262,9 @@ export default function CooldownPanel() {
                   {models.map((m) => (
                     <div
                       key={m.model_id}
-                      className="flex gap-2 items-center rounded bg-sky-950/20 border border-sky-900/30 px-2 py-1.5"
+                      className="flex gap-2 items-center rounded bg-cyan-950/20 border border-cyan-900/30 px-2 py-1.5"
                     >
-                      <span className="text-xs font-medium text-sky-300 flex-1 truncate">
+                      <span className="text-xs font-medium text-cyan-300 flex-1 truncate">
                         {m.provider_model_id}{" "}
                         <span className="text-[11px] text-zinc-500">
                           · {m.provider}

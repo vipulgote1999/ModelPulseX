@@ -13,11 +13,11 @@ export default function ErrorChart({ series }: { series: Array<{ hour: string; T
             <YAxis tick={{ fontSize: 11, fill: "#a1a1aa" }} />
             <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46" }} />
             <Legend />
-            <Bar dataKey="TIMEOUT" stackId="e" fill="#f59e0b" />
-            <Bar dataKey="RATE_LIMITED" stackId="e" fill="#eab308" />
-            <Bar dataKey="PROVIDER_ERROR" stackId="e" fill="#ef4444" />
+            <Bar dataKey="TIMEOUT" stackId="e" fill="#fbbf24" />
+            <Bar dataKey="RATE_LIMITED" stackId="e" fill="#fb923c" />
+            <Bar dataKey="PROVIDER_ERROR" stackId="e" fill="#fb7185" />
             <Bar dataKey="MODEL_UNAVAILABLE" stackId="e" fill="#a1a1aa" />
-            <Bar dataKey="STREAM_ERROR" stackId="e" fill="#8b5cf6" />
+            <Bar dataKey="STREAM_ERROR" stackId="e" fill="#a78bfa" />
           </BarChart>
         </ResponsiveContainer>
       </div>

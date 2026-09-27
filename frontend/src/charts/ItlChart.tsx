@@ -1,5 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
-const COLORS = ["#8b5cf6", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#e879f9"];
+const COLORS = ["#a78bfa", "#22d3ee", "#34d399", "#fbbf24", "#fb7185", "#60a5fa"];
 export default function ItlChart({ series, range }: { series: Array<{ id: number; label: string; points: Array<{ hour_start: string; median_itl: number | null }> }>; range?: string }) {
   const isTenMin = range === "1h";
   const allTimes = Array.from(new Set(series.flatMap((s) => s.points.map((p) => p.hour_start)))).sort();

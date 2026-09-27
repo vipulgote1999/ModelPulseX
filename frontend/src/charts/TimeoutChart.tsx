@@ -11,13 +11,13 @@ import {
 } from "recharts";
 
 const COLORS = [
-  "#8b5cf6",
-  "#06b6d4",
-  "#f59e0b",
-  "#10b981",
-  "#ef4444",
-  "#e879f9",
-  "#64748b",
+  "#a78bfa",
+  "#22d3ee",
+  "#34d399",
+  "#fbbf24",
+  "#fb7185",
+  "#60a5fa",
+  "#71717a",
 ];
 
 type Failure = { bucket: string; provider: string; status: string; n: number };

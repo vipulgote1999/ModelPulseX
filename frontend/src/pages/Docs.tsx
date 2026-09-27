@@ -94,7 +94,7 @@ export default function Docs() {
               <div key={method} className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`text-xs px-2 py-0.5 rounded font-mono border ${method === "get" ? "bg-sky-900/30 text-sky-300 border-sky-800" : "bg-amber-900/30 text-amber-300 border-amber-800"}`}
+                    className={`text-xs px-2 py-0.5 rounded font-mono border ${method === "get" ? "bg-cyan-900/30 text-cyan-300 border-cyan-800" : "bg-amber-900/30 text-amber-300 border-amber-800"}`}
                   >
                     {method.toUpperCase()}
                   </span>

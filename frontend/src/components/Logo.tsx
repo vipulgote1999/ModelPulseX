@@ -2,16 +2,17 @@ import { useId } from "react";
 
 type LogoVariant = "mark" | "full" | "mono";
 
-// v2 geometry (32-grid, halved from 64-grid master):
-// clean X arm + pulse X arm (straight diagonal, one sharp first-token spike
-// weaving through the clean arm like a signal crossing a baseline).
+// v3 geometry (32-grid — AI round-4 solid mark, orbit restored):
+// thick solid X arm + pulse arm (straight diagonal, one sharp first-token
+// spike weaving through the solid arm like a signal crossing a baseline),
+// thin dashed orbit ring. Flat tile, no glow — wordmark stays code-rendered.
 const PULSE_ARM = "M7.5 22.5 L13 16.5 L15 11.5 L17 17.5 L24.5 9.5";
 const CROSS_ARM = "M9.5 9.5 L22.5 22.5";
 
 function MarkPaths({ stroke }: { stroke: string }) {
   return (
-    // Scaled ~1.2x about center so the artwork fills the tile (no dead padding)
-    <g transform="translate(16,16) scale(1.2) translate(-16,-16)">
+    // Scaled ~1.1x about center — round-4 airy padding so thick strokes clear the tile
+    <g transform="translate(16,16) scale(1.1) translate(-16,-16)">
       <circle
         cx="16"
         cy="16"
@@ -28,17 +29,16 @@ function MarkPaths({ stroke }: { stroke: string }) {
         d={CROSS_ARM}
         fill="none"
         stroke={stroke}
-        strokeWidth="2.6"
+        strokeWidth="4.2"
         strokeLinecap="round"
       />
       <path
         d={PULSE_ARM}
         fill="none"
         stroke={stroke}
-        strokeWidth="2.6"
+        strokeWidth="3.6"
         strokeLinecap="round"
-        strokeLinejoin="miter"
-        strokeMiterlimit={4}
+        strokeLinejoin="round"
       />
     </g>
   );

@@ -11,7 +11,7 @@ export default function ReliabilityChart({ models }: { models: Array<{ display_n
               {m.points.length === 0 && <span className="text-[11px] text-zinc-500 px-2 self-center">no hourly samples yet — check raw history</span>}
               {m.points.map((p) => {
                 const ok = (p.success_rate ?? 0) >= 0.5;
-                return <div key={p.hour_start} title={`${new Date(p.hour_start).toLocaleString()} — success ${(p.success_rate ?? 0) * 100 | 0}%`} className={`flex-1 ${ok ? "bg-emerald-500/80" : "bg-zinc-700"}`} />;
+                return <div key={p.hour_start} title={`${new Date(p.hour_start).toLocaleString()} — success ${(p.success_rate ?? 0) * 100 | 0}%`} className={`flex-1 ${ok ? "bg-emerald-400/80" : "bg-zinc-600"}`} />;
               })}
             </div>
             <div className="w-[160px] text-[11px] text-zinc-400">

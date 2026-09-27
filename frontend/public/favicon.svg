@@ -6,9 +6,9 @@
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="14" fill="#0B0B12"/>
-  <g transform="translate(32,32) scale(1.2) translate(-32,-32)">
+  <g transform="translate(32,32) scale(1.1) translate(-32,-32)">
   <!-- ring-less bold variant: survives 16px tab bar -->
-  <path d="M19 19 L45 45" fill="none" stroke="url(#mpx-f)" stroke-width="6" stroke-linecap="round"/>
-  <path d="M15 45 L26 33 L30 23 L34 35 L49 19" fill="none" stroke="url(#mpx-f)" stroke-width="6" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="4"/>
+  <path d="M19 19 L45 45" fill="none" stroke="url(#mpx-f)" stroke-width="8.4" stroke-linecap="round"/>
+  <path d="M15 45 L26 33 L30 23 L34 35 L49 19" fill="none" stroke="url(#mpx-f)" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

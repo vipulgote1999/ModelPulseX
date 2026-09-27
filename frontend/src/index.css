@@ -7,6 +7,31 @@
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background:#2a2a36; border-radius:999px; }
 
+/* ModelPulseX observatory palette — single source of truth.
+   Base: violet-tinted near-black. Brand: violet #8b5cf6 -> cyan #22d3ee
+   (logo + primary CTAs only). Semantics: emerald = live/success,
+   amber = warn/stale/rate-limit, cyan = info/model-cooldown, rose = fault.
+   Data series (charts): violet / cyan / emerald / amber / rose / blue. */
+:root {
+  --mpx-bg: #0a0a0f;
+  --mpx-surface-raised: #12121a;
+  --mpx-surface-overlay: #1a1a24;
+  --mpx-border: #27272e;
+  --mpx-brand-violet: #8b5cf6;
+  --mpx-brand-cyan: #22d3ee;
+  --mpx-data-1: #a78bfa;
+  --mpx-data-2: #22d3ee;
+  --mpx-data-3: #34d399;
+  --mpx-data-4: #fbbf24;
+  --mpx-data-5: #fb7185;
+  --mpx-data-6: #60a5fa;
+  --mpx-ok: #34d399;
+  --mpx-warn: #fbbf24;
+  --mpx-fault: #fb7185;
+}
+::selection { background: rgba(139, 92, 246, 0.35); }
+:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+
 /* fonts loaded via preconnect in index.html, fallback system stack */
 body { background:#0a0a0f; color:#e8e8ef; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
 .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }

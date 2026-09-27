@@ -343,7 +343,7 @@ export default function Leaderboard({
                 </td>
                 <td className="px-3 py-2 hidden md:table-cell">
                   <span
-                    className={`text-xs px-2 py-0.5 rounded-full border ${r.provider === "opencode_zen" ? "border-violet-800 bg-violet-900/30 text-violet-300" : "border-sky-800 bg-sky-900/30 text-sky-300"}`}
+                    className={`text-xs px-2 py-0.5 rounded-full border ${r.provider === "opencode_zen" ? "border-violet-800 bg-violet-900/30 text-violet-300" : "border-cyan-800 bg-cyan-900/30 text-cyan-300"}`}
                   >
                     {r.provider}
                   </span>
@@ -447,7 +447,7 @@ export default function Leaderboard({
                           return (
                             <span
                               title={`${mc.reason ?? "MODEL_COOLDOWN"} until ${new Date(mc.cooldown_until).toLocaleString()}`}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-300 border border-sky-800"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/30 text-cyan-300 border border-cyan-800"
                             >
                               ⏱ model {remainingStr(mc.cooldown_until)}
                             </span>
@@ -478,7 +478,7 @@ export default function Leaderboard({
                                   : "Run coding benchmark now (~400-token two-sum)"
                             }
                             aria-label={`Run benchmark for ${r.display_name}`}
-                            className={`cursor-pointer rounded border p-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${st === "queued" ? "border-emerald-700 bg-emerald-900/60 text-emerald-200" : st === "error" ? "border-red-800 bg-red-900/40 text-red-300 hover:bg-red-900/60" : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:text-emerald-200 hover:border-emerald-800 hover:bg-emerald-900/40 disabled:opacity-50"}`}
+                            className={`cursor-pointer rounded border p-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${st === "queued" ? "border-emerald-700 bg-emerald-900/60 text-emerald-200" : st === "error" ? "border-rose-800 bg-rose-900/40 text-rose-300 hover:bg-rose-900/60" : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:text-emerald-200 hover:border-emerald-800 hover:bg-emerald-900/40 disabled:opacity-50"}`}
                           >
                             {st === "busy" ? (
                               <svg

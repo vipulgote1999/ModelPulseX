@@ -277,7 +277,7 @@ export default function Admin() {
       <div className="max-w-[520px] mx-auto px-4 py-10">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 shadow-xl backdrop-blur">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 grid place-items-center font-bold text-white">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-600 to-cyan-500 grid place-items-center font-bold text-white">
               ◆
             </div>
             <div>
@@ -359,7 +359,7 @@ export default function Admin() {
       {/* top bar */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 grid place-items-center font-bold text-white">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-600 to-cyan-500 grid place-items-center font-bold text-white">
             ◆
           </div>
           <div>
