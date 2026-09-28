@@ -17,6 +17,7 @@ import { timeoutsRoutes } from "./timeouts";
 import { liveRoutes } from "./live";
 import { adminRoutes } from "./admin";
 import { recordAudit } from "../db/audit";
+import { isAdmin, bearerToken, sessionCookie, csrfOk } from "./shared";
 import { adminModelsRoutes } from "./admin/models";
 import { adminMaintenanceRoutes } from "./admin/maintenance";
 import { playgroundRoutes } from "./admin/playground";
@@ -90,10 +91,14 @@ export function createApi(env: Env) {
         );
         return null;
       },
+      // `x-admin-token` removed (SEC-005): a custom auth header is routinely
+      // logged verbatim by proxies and log shippers, which normally redact
+      // Authorization. `x-csrf-token` is added for the double-submit check and
+      // is not a credential on its own.
       allowHeaders: [
         "content-type",
         "authorization",
-        "x-admin-token",
+        "x-csrf-token",
         "x-request-id",
       ],
       allowMethods: ["GET", "POST", "OPTIONS"],
@@ -102,21 +107,41 @@ export function createApi(env: Env) {
     }),
   );
 
-  // Admin audit trail — EVERY /api/admin/* request that reaches the route layer is
-  // recorded, allowed or denied. One seam here so a new admin router cannot silently
-  // skip the trail (issue #20: the security report claimed admin auditing that did not
-  // exist). Denials are the brute-force signal, so they are recorded too; the credential
-  // is fingerprinted inside recordAudit and never stored raw.
+  // Admin audit trail. Registered AFTER the rate limiter on purpose: a request
+  // refused with 429 never reaches this middleware, so hammering cannot turn a
+  // capped login attempt into one D1 write per request. 429s are not audited —
+  // the limiter is the record there.
   //
-  // Registered AFTER the rate limiter above on purpose: a request refused with 429 never
-  // reaches this middleware, so an attacker hammering the endpoint cannot turn a capped
-  // login attempt into one D1 write per request. Trade-off: 429s are not audited — the
-  // limiter itself is the record there. Denials that pass the limiter ARE audited.
+  // SEC-003: this previously wrote a row for EVERY /api/admin/* request,
+  // including requests with no credential that got a 401, and including 404s
+  // for paths that do not exist. The only bound was the per-isolate in-memory
+  // limiter (30/min), so a client spreading across source IPs could drive
+  // unbounded writes against the D1 write quota. The forensic signal is
+  // preserved and the amplification is dropped: a row is written when the
+  // request was authenticated, when it presented a credential that failed
+  // (that is the brute-force signal), or on any /api/admin/login attempt.
+  // A bare unauthenticated probe with no credential carries no signal a real
+  // attempt would lack, so it is not written.
   app.use("/api/admin/*", async (c, next) => {
     if (c.req.method === "OPTIONS") return next(); // CORS preflight is not an action
-    await next();
+    // SEC-001 CSRF gate. Placed before the route handler so a state-changing
+    // request is rejected without running any handler logic or D1 work.
+    // Only enforced once a session cookie is actually present: a Bearer-authed
+    // curl/CI call has no cookie to double-submit against, and SameSite=Strict
+    // already means the browser will not attach the session cookie to a
+    // cross-site request in the first place.
+    if (sessionCookie(c.req) && !csrfOk({ req: c.req, method: c.req.method }))
+      return c.json({ error: "csrf token missing or invalid" }, 403);
+    const isLogin = c.req.path === "/api/admin/login";
     const presented =
-      c.req.header("authorization") ?? c.req.header("x-admin-token") ?? "";
+      bearerToken(c.req.header("authorization")) ??
+      sessionCookie(c.req) ??
+      "";
+    await next();
+    const authed = c.res.status < 400 && isAdmin(c, env);
+    // Write on: success, an explicit login attempt, or a presented credential
+    // that did not work. Skip: unauthenticated no-credential probes.
+    if (!authed && !presented && !isLogin) return;
     await recordAudit(env.DB, {
       action: `${c.req.method.toLowerCase()} ${c.req.path}`,
       actor: presented,

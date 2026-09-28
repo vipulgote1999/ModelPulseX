@@ -86,7 +86,37 @@ describe("recordAudit", () => {
 });
 
 describe("admin route auditing (issue #20)", () => {
-  it("records a denied admin call (brute-force signal) and still returns 401", async () => {
+  // SEC-003 narrowed what gets written. An audit row is recorded for an
+  // authenticated call, for a call that PRESENTED a credential (the
+  // brute-force signal), and for any /api/admin/login attempt. A bare
+  // unauthenticated probe with no credential is not written: it is pure D1
+  // write amplification bounded only by a per-isolate in-memory limiter, and
+  // it carries no signal a real attempt would lack. The tests below pin both
+  // halves so the narrowing cannot silently become "audit nothing".
+  it("records a denied call that presented a credential and still returns 401", async () => {
+    const env = {
+      CORS_ORIGIN: "https://example.test",
+      ADMIN_TOKEN: TOKEN,
+      DB: capturingDb(),
+    };
+    const res = await createApi(env as never).request(
+      "https://example.test/api/admin/benchmark",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer not-the-right-token" },
+        body: JSON.stringify({ model_id: 1 }),
+      },
+    );
+    expect(res.status).toBe(401);
+    const inserts = (env.DB as unknown as { inserts: Array<{ binds: unknown[] }> })
+      .inserts;
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]!.binds[1]).toBe("post /api/admin/benchmark");
+    expect(inserts[0]!.binds[2]).toBe(await fingerprint("not-the-right-token"));
+    expect(inserts[0]!.binds[6]).toBe(JSON.stringify({ status: 401 }));
+  });
+
+  it("does NOT write a row for a bare unauthenticated probe (SEC-003)", async () => {
     const env = {
       CORS_ORIGIN: "https://example.test",
       ADMIN_TOKEN: TOKEN,
@@ -99,10 +129,7 @@ describe("admin route auditing (issue #20)", () => {
     expect(res.status).toBe(401);
     const inserts = (env.DB as unknown as { inserts: Array<{ binds: unknown[] }> })
       .inserts;
-    expect(inserts).toHaveLength(1);
-    expect(inserts[0]!.binds[1]).toBe("post /api/admin/benchmark");
-    expect(inserts[0]!.binds[2]).toBe("anonymous");
-    expect(inserts[0]!.binds[6]).toBe(JSON.stringify({ status: 401 }));
+    expect(inserts).toHaveLength(0);
   });
 
   it("records an authorized admin call with a fingerprinted actor", async () => {
@@ -124,7 +151,9 @@ describe("admin route auditing (issue #20)", () => {
     const inserts = (env.DB as unknown as { inserts: Array<{ binds: unknown[] }> })
       .inserts;
     expect(inserts).toHaveLength(1);
-    expect(inserts[0]!.binds[2]).toBe(await fingerprint(`Bearer ${TOKEN}`));
+    // The raw bearer value is fingerprinted, so the row proves "same actor"
+    // without the table becoming a token dump.
+    expect(inserts[0]!.binds[2]).toBe(await fingerprint(TOKEN));
     expect(String(inserts[0]!.binds[2])).not.toContain(TOKEN);
   });
 
@@ -136,8 +165,11 @@ describe("admin route auditing (issue #20)", () => {
     };
     const api = createApi(env as never);
     for (const path of ["/api/admin/models/1/toggle", "/api/admin/cleanup"]) {
-      const res = await api.request(`https://example.test${path}`, { method: "POST" });
-      expect(res.status).toBe(401);
+      const res = await api.request(`https://example.test${path}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      expect(res.status).not.toBe(403);
     }
     const inserts = (env.DB as unknown as { inserts: Array<{ binds: unknown[] }> })
       .inserts;
@@ -145,5 +177,28 @@ describe("admin route auditing (issue #20)", () => {
       "post /api/admin/models/1/toggle",
       "post /api/admin/cleanup",
     ]);
+  });
+
+  it("still audits a login attempt (the real brute-force path)", async () => {
+    const env = {
+      CORS_ORIGIN: "https://example.test",
+      ADMIN_TOKEN: TOKEN,
+      ADMIN_ID: "admin",
+      ADMIN_PASSWORD: "a-long-enough-password",
+      DB: capturingDb(),
+    };
+    const res = await createApi(env as never).request(
+      "https://example.test/api/admin/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "admin", password: "wrong" }),
+      },
+    );
+    expect(res.status).toBe(401);
+    const inserts = (env.DB as unknown as { inserts: Array<{ binds: unknown[] }> })
+      .inserts;
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]!.binds[1]).toBe("post /api/admin/login");
   });
 });
