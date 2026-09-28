@@ -2,10 +2,12 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { isoHoursAgo } from "./shared";
 import { escapeLikePattern, sanitizeSearchQuery } from "../utils/security";
+import { publicModelVisibilityWhere } from "../providers/registry";
 
 export function compareRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/compare", async (c) => {
+    const url = new URL(c.req.url);
     const model = c.req.query("model");
     const modelsParam = c.req.query("models");
     // Batch-3: the old map(Number).filter(Boolean) let "1.5"→1, "-1"→-1 and
@@ -18,9 +20,18 @@ export function compareRoutes(env: Env) {
       const safe = sanitizeSearchQuery(model, 80);
       if (!safe) return c.json({ error: "no models matched" }, 404);
       const escaped = escapeLikePattern(safe);
+      // Leading-wildcard LIKE cannot use an index, so this scanned all of
+      // `models` on every unauthenticated request, with no LIMIT, and it ran
+      // BEFORE the cache lookup below. Bound it three ways: the public
+      // visibility gate shrinks the scanned set to rows the caller may see,
+      // LIMIT 8 matches the cap applied to `ids` just below, and the result is
+      // now derived after the cache miss rather than before the cache check.
       const pattern = `%${escaped}%`;
       const rows = await env.DB.prepare(
-        "SELECT id FROM models WHERE provider_model_id LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\'",
+        `SELECT m.id FROM models m JOIN providers p ON p.id=m.provider_id
+         WHERE (m.provider_model_id LIKE ? ESCAPE '\\' OR m.display_name LIKE ? ESCAPE '\\')
+           AND ${publicModelVisibilityWhere("p", "m")}
+         ORDER BY m.free_status ASC, m.last_seen DESC LIMIT 8`,
       )
         .bind(pattern, pattern)
         .all<{ id: number }>();
@@ -33,7 +44,14 @@ export function compareRoutes(env: Env) {
     // on every pin change otherwise (4 aggregations over raw + hourly).
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    // Key on origin + path + the RESOLVED id set only. The raw URL was the key
+    // before (SEC-007), so any junk param — `?x=<random>` — minted a fresh
+    // cache object AND forced a fresh origin D1 read for a byte-identical
+    // response. Two callers comparing the same models still share an entry.
+    const cacheKey = new Request(
+      `${url.origin}${url.pathname}?ids=${ids.join(",")}`,
+      { method: "GET" },
+    );
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;

@@ -29,23 +29,36 @@ export function overlayStatus(reported: string | null, overlayHit: boolean): str
 export function leaderboardRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.get("/leaderboard", async (c) => {
+    const url = new URL(c.req.url);
+    const origin = url.origin;
     // Edge-cache shared across visitors (30s TTL below): each leaderboard hit costs
     // ~9k+ rows_read and SSE refetch storms multiply it by connected clients.
-    // Cache key is the full URL, so every range/benchmark/sort/profile combo caches separately.
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    const range = c.req.query("range") ?? "7d";
+    const provider = c.req.query("provider");
+    const benchmark = c.req.query("benchmark") ?? "all";
+    const sort = c.req.query("sort") ?? "overall";
+    const profile = c.req.query("profile") ?? "balanced";
+
+    // SEC-007: key the cache on the four params this response actually varies
+    // by, not on the raw URL. With the raw URL as the key, `?x=<random>` minted
+    // a new cache object AND forced a fresh ~9k-row origin read for a
+    // byte-identical response — unbounded cache-key cardinality on an
+    // unauthenticated, D1-expensive route. The values below are the defaults
+    // already applied, so an omitted param and its explicit default still share
+    // one entry.
+    const cacheKey = new Request(
+      `${origin}${url.pathname}?range=${range}&benchmark=${benchmark}&sort=${sort}&profile=${profile}` +
+        (provider ? `&provider=${provider}` : ""),
+      { method: "GET" },
+    );
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;
     } catch {
       // Cache API unavailable (local dev) — fall through to D1
     }
-    const range = c.req.query("range") ?? "7d";
-    const provider = c.req.query("provider");
-    const benchmark = c.req.query("benchmark") ?? "all";
-    const sort = c.req.query("sort") ?? "overall";
-    const profile = c.req.query("profile") ?? "balanced";
 
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
@@ -220,15 +233,13 @@ export function leaderboardRoutes(env: Env) {
           benchmarks_24h: metaRow?.benchmarks_24h ?? 0,
         },
       });
-      resp.headers.set(
-        "Cache-Control",
-        "public, max-age=120, stale-while-revalidate=120",
-      );
-      try {
-        c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-      } catch {
-        // cache put best-effort
-      }
+      resp.headers.set("Cache-Control", "no-store");
+      // SEC-007: the empty path is deliberately NOT cached. It fires on a
+      // transient D1 read failure or a pre-backfill snapshot, and it was being
+      // written under the SAME cache key as the normal response with
+      // max-age=120 — so one unlucky read served an empty leaderboard to every
+      // visitor for two minutes. A short-lived empty answer is worse than an
+      // extra query; the next request retries immediately.
       return resp;
     }
 

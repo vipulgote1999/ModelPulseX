@@ -11,7 +11,12 @@ export function cooldownsRoutes(env: Env) {
     // few seconds of staleness is harmless.
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    // SEC-007: this route reads NO query params, so key on origin+path only.
+    // Keying on the raw URL meant `?x=<random>` created a new cache object and
+    // a fresh D1 read for a byte-identical body.
+    const cacheKey = new Request(`${new URL(c.req.url).origin}/api/cooldowns`, {
+      method: "GET",
+    });
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;

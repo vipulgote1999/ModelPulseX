@@ -310,7 +310,15 @@ export function ogRoutes(env: Env) {
     // and each render costs a 7d raw scan + PNG encode.
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    // SEC-007: key on origin+path only. This route reads NO query params
+    // (verified: no c.req.query anywhere in the handler), so the raw URL as
+    // the key let `?x=<random>` bypass the cache entirely — and each bypass
+    // costs a 7d raw scan AND a 1200x630 PNG encode, making this the worst
+    // case for cache-key flooding on the whole surface.
+    const ogUrl = new URL(c.req.url);
+    const cacheKey = new Request(`${ogUrl.origin}/api/og.png`, {
+      method: "GET",
+    });
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;

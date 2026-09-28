@@ -21,7 +21,11 @@ export function providersRoutes(env: Env) {
     // 24h-usage GROUP BY costs ~1k rows_read per origin hit.
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    // SEC-007: no query params are read, so key on origin+path only. A junk
+    // `?x=<random>` used to force a fresh ~1k-row origin read per request.
+    const cacheKey = new Request(`${new URL(c.req.url).origin}/api/providers`, {
+      method: "GET",
+    });
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;
