@@ -1,30 +1,29 @@
 import { useState } from "react";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
+import { getCsrfToken } from "../lib/adminSession";
 
-export function getAdminToken(): string | null {
-  try {
-    return localStorage.getItem("mpx_admin_token") || null;
-  } catch {
-    return null;
-  }
-}
-
-export function setAdminToken(v: string) {
-  // localStorage may be unavailable (private mode) — token just won't persist
-  try {
-    localStorage.setItem("mpx_admin_token", v);
-  } catch {
-    /* ignore */
-  }
+/** Admin auth for the ops panel (SEC-001).
+ *
+ *  Preferred path: the visitor is already signed in on the /admin page, so the
+ *  session is in an HttpOnly cookie the browser attaches by itself and we only
+ *  need the in-memory CSRF token. Nothing is read from storage and no
+ *  credential enters JS.
+ *
+ *  Fallback path: someone opened this public panel without signing in. They
+ *  type the token, it is used for that single request as a `Bearer` header,
+ *  and it is deliberately NOT persisted — keeping it in localStorage is the
+ *  exact exposure this change removes. */
+function adminPostHeaders(fallbackToken?: string | null): Record<string, string> {
+  const h: Record<string, string> = { "content-type": "application/json" };
+  const csrf = getCsrfToken();
+  if (csrf) h["X-CSRF-Token"] = csrf;
+  if (!csrf && fallbackToken) h.authorization = `Bearer ${fallbackToken}`;
+  return h;
 }
 
 export default function CooldownPanel() {
   const { data, refresh } = useCooldowns(10000);
   const [busy, setBusy] = useState<string | null>(null);
-  const [tokenInput, setTokenInput] = useState<string>(
-    () => getAdminToken() ?? "",
-  );
-  const [showToken, setShowToken] = useState(false);
   // ponytail: collapsed by default — ops detail, keeps leaderboard + charts near the top
   const [open, setOpen] = useState(false);
 
@@ -32,30 +31,33 @@ export default function CooldownPanel() {
   const models = data?.models ?? [];
   const hasAny = providers.length > 0 || models.length > 0;
 
+  /** Ask for a one-shot Bearer token only when the visitor has no in-memory
+   *  CSRF token (i.e. is not signed in). Never stored. */
+  const needToken = (why: string): string | null => {
+    const csrf = getCsrfToken();
+    if (csrf) return null; // cookie session will authenticate the request
+    const t = prompt(`${why} (ADMIN_TOKEN, used for this request only):`);
+    return t && t.trim() ? t.trim() : null;
+  };
+
   const resetProvider = async (provider: string, clearAll = false) => {
-    let token = getAdminToken() || tokenInput;
-    if (!token) {
-      const t = prompt("Admin token required to reset cooldown (ADMIN_TOKEN):");
-      if (!t) return;
-      token = t;
-      setTokenInput(t);
-      setAdminToken(t);
-    }
+    const token = needToken("Admin token required to reset cooldown");
+    if (!getCsrfToken() && !token) return;
     setBusy(`p:${provider}`);
     try {
       const r = await fetch("/api/admin/cooldown/reset", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-admin-token": token,
-        },
+        headers: adminPostHeaders(token),
         body: JSON.stringify({ provider, clearAll }),
       });
       if (!r.ok) {
         const txt = await r.text();
-        alert(`Reset failed ${r.status}: ${txt.slice(0, 300)}`);
-        if (r.status === 401) setShowToken(true);
+        alert(
+          `Reset failed ${r.status}: ${txt.slice(0, 300)}` +
+            (r.status === 401 || r.status === 403
+              ? " — sign in on the /admin page first."
+              : ""),
+        );
       } else {
         await refresh();
       }
@@ -65,29 +67,23 @@ export default function CooldownPanel() {
   };
 
   const resetModel = async (model_id: number) => {
-    let token = getAdminToken() || tokenInput;
-    if (!token) {
-      const t = prompt("Admin token required to reset cooldown:");
-      if (!t) return;
-      token = t;
-      setTokenInput(t);
-      setAdminToken(t);
-    }
+    const token = needToken("Admin token required to reset cooldown");
+    if (!getCsrfToken() && !token) return;
     setBusy(`m:${model_id}`);
     try {
       const r = await fetch("/api/admin/cooldown/reset", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-admin-token": token,
-        },
+        headers: adminPostHeaders(token),
         body: JSON.stringify({ model_id }),
       });
       if (!r.ok) {
         const txt = await r.text();
-        alert(`Reset failed ${r.status}: ${txt.slice(0, 300)}`);
-        if (r.status === 401) setShowToken(true);
+        alert(
+          `Reset failed ${r.status}: ${txt.slice(0, 300)}` +
+            (r.status === 401 || r.status === 403
+              ? " — sign in on the /admin page first."
+              : ""),
+        );
       } else {
         await refresh();
       }
@@ -97,14 +93,8 @@ export default function CooldownPanel() {
   };
 
   const resetAll = async () => {
-    let token = getAdminToken() || tokenInput;
-    if (!token) {
-      const t = prompt("Admin token required to reset all cooldowns:");
-      if (!t) return;
-      token = t;
-      setTokenInput(t);
-      setAdminToken(t);
-    }
+    const token = needToken("Admin token required to reset all cooldowns");
+    if (!getCsrfToken() && !token) return;
     if (
       !confirm(
         `Clear all ${providers.length} provider + ${models.length} model cooldowns?`,
@@ -115,11 +105,7 @@ export default function CooldownPanel() {
     try {
       const r = await fetch("/api/admin/cooldown/reset", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-admin-token": token,
-        },
+        headers: adminPostHeaders(token),
         body: JSON.stringify({}),
       });
       if (!r.ok) {
@@ -171,33 +157,9 @@ export default function CooldownPanel() {
 
       {open && (
         <>
-          {showToken || !getAdminToken() ? (
-            <div className="mt-3 flex gap-2 items-center">
-              <input
-                type="password"
-                placeholder="Admin token for reset (saved locally)"
-                value={tokenInput}
-                onChange={(e) => {
-                  setTokenInput(e.target.value);
-                  setAdminToken(e.target.value);
-                }}
-                className="flex-1 rounded bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs"
-              />
-              <button
-                onClick={() => setShowToken(false)}
-                className="text-xs px-2 py-1 rounded bg-zinc-800 border border-zinc-700"
-              >
-                Hide
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowToken(true)}
-              className="mt-2 text-[11px] text-zinc-500 hover:text-zinc-300 underline"
-            >
-              Set admin token for reset
-            </button>
-          )}
+          {/* Token entry is gone (SEC-001): the /admin page signs you in with an
+              HttpOnly cookie, and this panel reuses that session automatically.
+              A typed token, if ever needed, is a one-shot prompt — never stored. */}
 
           <div className="mt-3 grid md:grid-cols-2 gap-3">
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2">

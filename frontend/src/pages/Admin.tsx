@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
+import { adminRequest, purgeLegacyToken, setCsrfToken } from "../lib/adminSession";
 
 type AdminModel = {
   id: number;
@@ -27,17 +28,12 @@ type ProviderEndpoint = {
 
 const Playground = lazy(() => import("./admin/Playground"));
 
-const STORAGE_KEY = "modelpulsex_admin_token";
-
-function authHeader(): Record<string, string> {
-  const t = localStorage.getItem(STORAGE_KEY);
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
+// SEC-001: no token in localStorage. The session lives in an HttpOnly cookie
+// the browser attaches automatically; only a CSRF token is held in memory.
+// `authed` is a UI hint, not the source of truth — the server is authoritative,
+// and a 401 on any call flips this back to false.
 export default function Admin() {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(STORAGE_KEY),
-  );
+  const [authed, setAuthed] = useState(false);
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [loginErr, setLoginErr] = useState<string | null>(null);
@@ -61,8 +57,8 @@ export default function Admin() {
   const [bulkProvider, setBulkProvider] = useState("");
   const [tab, setTab] = useState<"control" | "playground">("control");
 
-  const fetchModels = async (tok = token) => {
-    if (!tok) return;
+  const fetchModels = async () => {
+    if (!authed) return;
     setLoading(true);
     setErr(null);
     try {
@@ -71,10 +67,13 @@ export default function Admin() {
       if (q) params.set("q", q);
       if (enabledFilter === "enabled") params.set("enabled", "1");
       if (enabledFilter === "disabled") params.set("enabled", "0");
-      const headers: Record<string, string> = { ...authHeader() };
       const res = await fetch(`/api/admin/models?${params.toString()}`, {
-        headers,
+        ...adminRequest(),
       });
+      if (res.status === 401) {
+        setAuthed(false);
+        throw new Error("session expired — sign in again");
+      }
       if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
       const j = (await res.json()) as { models: AdminModel[] };
       setModels(j.models);
@@ -106,16 +105,19 @@ export default function Admin() {
   };
 
   useEffect(() => {
+    // SEC-001: delete any token a pre-upgrade build persisted. Without this it
+    // would sit readable in localStorage indefinitely, defeating the migration.
+    purgeLegacyToken();
     fetchProviderEndpoints();
   }, []);
 
   useEffect(() => {
-    if (token) fetchModels(token);
-  }, [token]);
+    if (authed) fetchModels();
+  }, [authed]);
 
   // auto-refetch on filter change when authed
   useEffect(() => {
-    if (token) {
+    if (authed) {
       const t = setTimeout(() => fetchModels(), 350);
       return () => clearTimeout(t);
     }
@@ -133,13 +135,16 @@ export default function Admin() {
       });
       const j = (await res.json()) as {
         ok?: boolean;
-        token?: string;
+        csrf_token?: string;
         error?: string;
       };
       if (!res.ok) throw new Error(j.error ?? `${res.status}`);
-      const tok = j.token ?? "";
-      localStorage.setItem(STORAGE_KEY, tok);
-      setToken(tok);
+      // The session token is already in the HttpOnly cookie by now — it is
+      // never in this response and never enters JS. Only the CSRF token does,
+      // and it is held in memory for this tab only.
+      setCsrfToken(j.csrf_token ?? null);
+      setAuthed(true);
+      setPass("");
       setToast("Logged in");
       setTimeout(() => setToast(null), 2500);
     } catch (e2) {
@@ -149,9 +154,14 @@ export default function Admin() {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setToken(null);
+  const logout = async () => {
+    try {
+      await fetch("/api/admin/logout", { ...adminRequest({ method: "POST" }) });
+    } catch {
+      // best-effort: clear client state even if the request failed
+    }
+    setCsrfToken(null);
+    setAuthed(false);
     setModels([]);
     setSelected(new Set());
   };
@@ -159,14 +169,14 @@ export default function Admin() {
   const toggleOne = async (id: number, current: number | null | undefined) => {
     const next = current ? 0 : 1;
     try {
-      const res = await fetch(`/api/admin/models/${id}/toggle`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...authHeader(),
-        } as Record<string, string>,
-        body: JSON.stringify({ enabled: next }),
-      });
+      const res = await fetch(
+        `/api/admin/models/${id}/toggle`,
+        adminRequest({
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled: next }),
+        }),
+      );
       if (!res.ok) throw new Error(await res.text());
       setModels((prev) =>
         prev.map((m) => (m.id === id ? { ...m, benchmark_enabled: next } : m)),
@@ -187,14 +197,14 @@ export default function Admin() {
     }
     setBulkBusy(true);
     try {
-      const res = await fetch("/api/admin/models/bulk", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...authHeader(),
-        } as Record<string, string>,
-        body: JSON.stringify({ ids: Array.from(selected), enabled }),
-      });
+      const res = await fetch(
+        "/api/admin/models/bulk",
+        adminRequest({
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: Array.from(selected), enabled }),
+        }),
+      );
       if (!res.ok) throw new Error(await res.text());
       setModels((prev) =>
         prev.map((m) =>
@@ -215,14 +225,14 @@ export default function Admin() {
   const toggleProvider = async (prov: string, enabled: number) => {
     setBulkBusy(true);
     try {
-      const res = await fetch("/api/admin/models/bulk", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...authHeader(),
-        } as Record<string, string>,
-        body: JSON.stringify({ provider: prov, enabled }),
-      });
+      const res = await fetch(
+        "/api/admin/models/bulk",
+        adminRequest({
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: prov, enabled }),
+        }),
+      );
       if (!res.ok) throw new Error(await res.text());
       await fetchModels();
       setToast(`${enabled ? "Enabled" : "Disabled"} provider ${prov}`);
@@ -272,7 +282,7 @@ export default function Admin() {
     return { total, enabled, disabled, free };
   }, [models]);
 
-  if (!token) {
+  if (!authed) {
     return (
       <div className="max-w-[520px] mx-auto px-4 py-10">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 shadow-xl backdrop-blur">

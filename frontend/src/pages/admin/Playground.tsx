@@ -6,11 +6,15 @@ import {
   saveCustomPreset,
   type PromptPreset,
 } from "./presets";
+import { getCsrfToken } from "../../lib/adminSession";
 
-const TOKEN_KEY = "modelpulsex_admin_token";
+// SEC-001: the admin token is no longer in JS. The session is an HttpOnly
+// cookie the browser sends automatically; only the in-memory CSRF token is
+// attached here. `authHeader` is retained as a name for minimal diff — it
+// returns CSRF headers, not credentials.
 const authHeader = (): Record<string, string> => {
-  const t = localStorage.getItem(TOKEN_KEY);
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  const t = getCsrfToken();
+  return t ? { "X-CSRF-Token": t } : {};
 };
 
 type RegistryEndpoint = {

@@ -3,7 +3,7 @@ import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA } from "../lib/intelligence";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
-import { getAdminToken, setAdminToken } from "./CooldownPanel";
+import { getCsrfToken } from "../lib/adminSession";
 
 type Row = {
   rank: number | null;
@@ -109,24 +109,27 @@ export default function Leaderboard({
   ) => {
     e.stopPropagation();
     if (testState[model_id] === "busy") return;
-    let token = getAdminToken();
-    if (!token) {
+    // SEC-001: the admin session is an HttpOnly cookie the browser attaches by
+    // itself; a typed token is a one-shot Bearer fallback and is never stored.
+    // Previously the token was read from and written to localStorage, so any
+    // injected script or extension could read it.
+    const csrf = getCsrfToken();
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    else {
       const t = prompt(
-        "Admin token required to run a benchmark (ADMIN_TOKEN):",
+        "Admin token required to run a benchmark (used for this request only):",
       );
       if (!t) return;
-      token = t;
-      setAdminToken(t);
+      headers.authorization = `Bearer ${t.trim()}`;
     }
     setTestState((s) => ({ ...s, [model_id]: "busy" }));
     try {
       const r = await fetch("/api/admin/benchmark", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-admin-token": token,
-        },
+        headers,
         body: JSON.stringify({ model_id, benchmark_type: "coding" }),
       });
       if (!r.ok) {
