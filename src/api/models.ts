@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { parseRange } from "../db/queries";
-import { freeHardFilterWhere } from "../providers/registry";
+import { publicModelVisibilityWhere } from "../providers/registry";
 import { isoHoursAgo } from "./shared";
 
 export function modelsRoutes(env: Env) {
@@ -17,24 +17,37 @@ export function modelsRoutes(env: Env) {
       conds.push("p.name=?");
       binds.push(provider);
     }
-    if (!includeInactive) {
-      conds.push("(m.active=1 OR m.free_status='PREVIOUSLY_FREE')");
-    }
-    // Public view: only benchmark_enabled models (disabled kept in DB but hidden from dashboard until re-enabled)
-    // Tolerant fallback if column missing pre-migration
-    conds.push("COALESCE(m.benchmark_enabled,1)=1");
-    // Hard filters from the provider registry (single source): hide polluted rows
-    // immediately, even before discovery cleanup lands.
-    const modelHardFilter = freeHardFilterWhere("p", "m");
-    if (modelHardFilter) conds.push(modelHardFilter.replace(/^ AND /, ""));
+    // Public view gates, shared with every by-id route via
+    // publicModelVisibilityWhere so list and detail cannot drift.
+    // `includeInactive=1` relaxes ONLY the active gate — the benchmark_enabled
+    // and registry hard-filter gates always apply, so it can never be used to
+    // read a disabled or polluted row.
+    conds.push(publicModelVisibilityWhere("p", "m", { includeInactive }));
     if (conds.length) sql += " WHERE " + conds.join(" AND ");
     // FREE first: ASC puts FREE before PAID/PREVIOUSLY_FREE/UNKNOWN alphabetically.
-    sql += " ORDER BY m.free_status ASC, m.last_seen DESC";
+    // Bounded so one unauthenticated request cannot stream the whole catalogue
+    // out of D1.
+    sql += " ORDER BY m.free_status ASC, m.last_seen DESC LIMIT 500";
     const rows = await env.DB.prepare(sql)
       .bind(...binds)
       .all();
     return c.json({ models: rows.results, count: rows.results?.length ?? 0 });
   });
+
+  // Every public by-id route runs the same visibility gate as the list routes.
+  // A hidden model must 404 — identical to a genuinely absent id — so the
+  // response never confirms that a paid/blacklisted row exists. Returns null
+  // when the id is not a public-visible model.
+  const visibleModel = async (id: number): Promise<boolean> => {
+    if (!Number.isInteger(id) || id <= 0) return false;
+    const row = await env.DB.prepare(
+      `SELECT 1 as ok FROM models m JOIN providers p ON p.id=m.provider_id
+       WHERE m.id=? AND ${publicModelVisibilityWhere("p", "m")} LIMIT 1`,
+    )
+      .bind(id)
+      .first<{ ok: number }>();
+    return !!row;
+  };
 
   r.get("/models/:id", async (c) => {
     const id = Number(c.req.param("id"));
@@ -45,11 +58,20 @@ export function modelsRoutes(env: Env) {
       .bind(id)
       .first();
     if (!row) return c.json({ error: "not found" }, 404);
+    if (!(await visibleModel(id)))
+      return c.json({ error: "not found" }, 404);
     return c.json({ model: row });
   });
 
   r.get("/models/:id/history", async (c) => {
     const id = Number(c.req.param("id"));
+    // Reject a malformed id before any query, and gate visibility before
+    // returning the full metric series. Gate first: cheaper, and it avoids
+    // reading history for a row the caller may not see.
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "invalid id" }, 400);
+    if (!(await visibleModel(id)))
+      return c.json({ error: "not found" }, 404);
     const range = c.req.query("range") ?? "7d";
     const benchmark = c.req.query("benchmark") ?? "all";
     const granularity =
@@ -147,6 +169,10 @@ export function modelsRoutes(env: Env) {
     // null-uptime instead of 400. Reject up front like the sibling route.
     if (!Number.isInteger(id) || id <= 0)
       return c.json({ error: "invalid id" }, 400);
+    // Same visibility gate as /models/:id and /models/:id/history: incident
+    // and uptime series for a hidden row must not be publicly readable.
+    if (!(await visibleModel(id)))
+      return c.json({ error: "not found" }, 404);
     // NOTE: batch takes bound (unexecuted) statements; single-row reads come
     // from results[0], not .first().
     const [incidentsRes, total7Res, total24Res, longestRes] =

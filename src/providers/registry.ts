@@ -345,6 +345,33 @@ export function providersWithoutHardFilter(): string[] {
   return PROVIDER_REGISTRY.filter((d) => !d.hardFreeFilter).map((d) => d.name);
 }
 
+/** Visibility gate shared by EVERY public route that reads a single model.
+ *
+ *  The list routes (`/api/models`, `/api/leaderboard`) have always hidden paid,
+ *  inactive, admin-disabled and registry-blacklisted rows. The by-id routes did
+ *  not, so `/api/models/:id` and friends served the full TPS/TTFT/uptime record
+ *  for exactly the rows the rest of the app works to keep hidden — including the
+ *  stealth rows `db/snapshot.ts` evicts from the leaderboard. Public read paths
+ *  now all go through this one predicate so the gate cannot drift per route.
+ *
+ *  Returns a SQL AND-fragment using the supplied `models`/`providers` aliases.
+ *  Admin routes deliberately do NOT use this: admins must still see everything. */
+export function publicModelVisibilityWhere(
+  providerAlias: string,
+  modelAlias: string,
+  opts: { includeInactive?: boolean } = {},
+): string {
+  const hard = freeHardFilterWhere(providerAlias, modelAlias);
+  const active = opts.includeInactive
+    ? ""
+    : `(${modelAlias}.active=1 OR ${modelAlias}.free_status='PREVIOUSLY_FREE') AND `;
+  return (
+    active +
+    `COALESCE(${modelAlias}.benchmark_enabled,1)=1` +
+    (hard ? hard : "")
+  );
+}
+
 /** AND-fragment applying every registered hard filter to a query joining providers+models.
  *  `exclude` omits one provider's filter (used where a caller already special-cases it). */
 export function freeHardFilterWhere(
