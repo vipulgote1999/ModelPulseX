@@ -29,3 +29,6 @@ secrets/
 
 # warden (local-only, not for commit)
 pi-warden.md
+
+# motion-graphics side project (separate toolchain, breaks `npm run lint`)
+videos/

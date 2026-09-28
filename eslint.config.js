@@ -10,6 +10,11 @@ export default tseslint.config(
       "performance_report/**",
       "plan/**",
       "scripts/**",
+      // Motion-graphics side project (Node + canvas render scripts), not the
+      // app toolchain. Untracked and gitignored; linting it kept `npm run lint`
+      // red (23 errors) and therefore CI red. If it ever needs linting, give it
+      // its own config rather than adding Node globals to the app rules.
+      "videos/**",
     ],
   },
   js.configs.recommended,
