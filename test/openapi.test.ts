@@ -28,7 +28,7 @@ describe("openapi spec", () => {
     }
   });
 
-  it("declares bearerAuth security for admin paths", () => {
+  it("declares security for every admin path that requires it", () => {
     const spec = buildOpenApiSpec() as unknown as {
       paths: Record<string, Record<string, { security?: unknown[] }>>;
     };
@@ -36,7 +36,19 @@ describe("openapi spec", () => {
       p.startsWith("/api/admin"),
     );
     expect(adminPaths.length).toBeGreaterThan(0);
+    // login is the credential-exchange endpoint and is unauthenticated by
+    // definition; logout only clears cookies and has nothing to protect. Every
+    // other admin path must declare bearerAuth, otherwise an integrator reads
+    // "no security declared" and ships an unauthenticated client.
+    const unauthenticated = new Set(["/api/admin/login", "/api/admin/logout"]);
     for (const p of adminPaths) {
+      if (unauthenticated.has(p)) {
+        expect(
+          (spec.paths[p]!["post"] as { security?: unknown[] }).security,
+          `${p} must not declare security`,
+        ).toBeUndefined();
+        continue;
+      }
       const methods = spec.paths[p]!;
       for (const m of Object.values(methods)) {
         expect(

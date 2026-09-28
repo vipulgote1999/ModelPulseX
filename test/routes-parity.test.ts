@@ -17,6 +17,7 @@ const EXPECTED = [
   "GET /api/cooldowns",
   "GET /api/timeouts",
   "POST /api/admin/login",
+  "POST /api/admin/logout",
   "GET /api/admin/models",
   "POST /api/admin/models/:id/toggle",
   "POST /api/admin/models/bulk",

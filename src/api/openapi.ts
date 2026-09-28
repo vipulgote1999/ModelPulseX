@@ -313,11 +313,34 @@ export function buildOpenApiSpec() {
       "/api/admin/login": {
         post: {
           summary: "Admin login",
-          security: [{ bearerAuth: [] }],
+          // No `security` here: this is the credential-exchange endpoint and is
+          // unauthenticated by definition. It sets the session via an HttpOnly
+          // cookie, so the token is never returned in the response body.
+          // NOTE: must not name env vars — test/openapi.test.ts asserts the
+          // published spec contains no secret NAMES (an attacker's map of what
+          // to go hunting for). Describe the mechanism, not the variable.
+          description:
+            "Exchanges the admin id + password for an HttpOnly session cookie " +
+            "(mpx_session) plus a JS-readable CSRF token (mpx_csrf) that must be " +
+            "echoed in the X-CSRF-Token header on state-changing admin requests. " +
+            "The session token is never included in the response body.",
           responses: {
-            "200": { description: "Token" },
-            "401": { description: "Unauthorized" },
+            "200": { description: "Session cookie set; csrf_token returned" },
+            "401": { description: "Invalid credentials" },
+            "429": { description: "Too many attempts (5 per 15 min per IP)" },
+            // Must not name the env var — see the note above.
+            "500": {
+              description:
+                "Server session secret unset or below the length policy; not issued",
+            },
           },
+        },
+      },
+      "/api/admin/logout": {
+        post: {
+          summary: "Admin logout",
+          description: "Clears the mpx_session and mpx_csrf cookies.",
+          responses: { "200": { description: "Cookies cleared" } },
         },
       },
       "/api/admin/models": {
