@@ -1,14 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ModelPulseX favicon">
   <defs>
-    <linearGradient id="mpx-f" x1="0" y1="0" x2="1" y2="1">
+    <!-- userSpaceOnUse over the mark's own extent, so both arms share one
+         continuous colour field and the crossing has no seam. See logo.svg. -->
+    <linearGradient id="mpx-f" gradientUnits="userSpaceOnUse" x1="11" y1="11" x2="53" y2="53">
       <stop offset="0" stop-color="#8B5CF6"/>
       <stop offset="1" stop-color="#22D3EE"/>
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="14" fill="#0B0B12"/>
   <g transform="translate(32,32) scale(1.1) translate(-32,-32)">
-  <!-- ring-less bold variant: survives 16px tab bar -->
-  <path d="M19 19 L45 45" fill="none" stroke="url(#mpx-f)" stroke-width="8.4" stroke-linecap="round"/>
-  <path d="M15 45 L26 33 L30 23 L34 35 L49 19" fill="none" stroke="url(#mpx-f)" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- ring-less bold variant: survives 16px tab bar. Filled outlines of the
+       8.4px / 7.2px round-capped, round-joined arm centrelines. -->
+  <path d="M16.03 21.97 L42.03 47.97 A4.2 4.2 0 0 0 47.97 42.03 L21.97 16.03 A4.2 4.2 0 0 0 16.03 21.97 Z" fill="url(#mpx-f)"/>
+  <path d="M17.654 47.433 L28.654 35.433 A3.6 3.6 0 0 0 29.343 34.337 L29.693 33.462 L30.585 36.138 A3.6 3.6 0 0 0 36.626 37.462 L51.626 21.462 A3.6 3.6 0 0 0 46.374 16.538 L35.505 28.131 L33.415 21.862 A3.6 3.6 0 0 0 26.657 21.663 L22.902 31.052 L12.346 42.567 A3.6 3.6 0 0 0 17.654 47.433 Z" fill="url(#mpx-f)"/>
   </g>
 </svg>

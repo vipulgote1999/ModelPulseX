@@ -3,13 +3,22 @@ import { useId } from "react";
 type LogoVariant = "mark" | "full" | "mono";
 
 // v3 geometry (32-grid — AI round-4 solid mark, orbit restored):
-// thick solid X arm + pulse arm (straight diagonal, one sharp first-token
-// spike weaving through the solid arm like a signal crossing a baseline),
+// thick solid X arm + pulse arm (straight diagonal, one first-token spike
+// weaving through the solid arm like a signal crossing a baseline),
 // thin dashed orbit ring. Flat tile, no glow — wordmark stays code-rendered.
-const PULSE_ARM = "M7.5 22.5 L13 16.5 L15 11.5 L17 17.5 L24.5 9.5";
-const CROSS_ARM = "M9.5 9.5 L22.5 22.5";
+//
+// The arms are SOLID FILLED outlines, not strokes: each `d` is the exact stroke
+// outline of that arm's centreline at its v3 weight (4.2 / 3.6), with round caps
+// and round joins. Filling means the mark is plain geometry rather than something
+// a renderer has to paint, and — together with the userSpaceOnUse gradient in the
+// svg below — both arms share one colour field, so where they cross there is no
+// seam, gap, or cutout.
+const PULSE_ARM =
+  "M8.827 23.716 L14.327 17.716 A1.8 1.8 0 0 0 14.671 17.169 L14.846 16.731 L15.292 18.069 A1.8 1.8 0 0 0 18.313 18.731 L25.813 10.731 A1.8 1.8 0 0 0 23.187 8.269 L17.753 14.065 L16.708 10.931 A1.8 1.8 0 0 0 13.329 10.831 L11.451 15.526 L6.173 21.284 A1.8 1.8 0 0 0 8.827 23.716 Z";
+const CROSS_ARM =
+  "M8.015 10.985 L21.015 23.985 A2.1 2.1 0 0 0 23.985 21.015 L10.985 8.015 A2.1 2.1 0 0 0 8.015 10.985 Z";
 
-function MarkPaths({ stroke }: { stroke: string }) {
+function MarkPaths({ fill }: { fill: string }) {
   return (
     // Scaled ~1.1x about center — round-4 airy padding so thick strokes clear the tile
     <g transform="translate(16,16) scale(1.1) translate(-16,-16)">
@@ -18,28 +27,15 @@ function MarkPaths({ stroke }: { stroke: string }) {
         cy="16"
         r="10.5"
         fill="none"
-        stroke={stroke}
+        stroke={fill}
         strokeWidth="1.3"
         strokeLinecap="round"
         opacity="0.55"
         strokeDasharray="56 10"
         transform="rotate(53 16 16)"
       />
-      <path
-        d={CROSS_ARM}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="4.2"
-        strokeLinecap="round"
-      />
-      <path
-        d={PULSE_ARM}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="3.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d={CROSS_ARM} fill={fill} />
+      <path d={PULSE_ARM} fill={fill} />
     </g>
   );
 }
@@ -71,7 +67,17 @@ export default function Logo({
       className="shrink-0"
     >
       <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+        {/* userSpaceOnUse spanning the orbit ring's own extent: the ring is
+            pixel-identical to the old objectBoundingBox mapping, but both arms
+            now read the SAME colour field, so the crossing has no seam. */}
+        <linearGradient
+          id={gradId}
+          gradientUnits="userSpaceOnUse"
+          x1="5.5"
+          y1="5.5"
+          x2="26.5"
+          y2="26.5"
+        >
           <stop offset="0" stopColor="#8B5CF6" />
           <stop offset="1" stopColor="#22D3EE" />
         </linearGradient>
@@ -89,7 +95,7 @@ export default function Logo({
           strokeWidth="1"
         />
       )}
-      <MarkPaths stroke={mono ?? gradient} />
+      <MarkPaths fill={mono ?? gradient} />
     </svg>
   );
 
