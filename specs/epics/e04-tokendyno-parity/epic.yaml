@@ -29,7 +29,7 @@ stories:
     verify: "npm test -- test/api.test.ts test/scoring.test.ts"
   - id: e04s04
     title: Frontend parity — compare-6 shareable URL, models page, model detail, pricing, vs, theme, SEO/JSON-LD, cadence footer
-    status: pending
+    status: completed
     points: 8
     verify: "npm run build && npx playwright test (dashboard-smoke + compare/pricing/model pages)"
   - id: e04s05
