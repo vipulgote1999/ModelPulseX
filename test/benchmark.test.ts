@@ -521,6 +521,114 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
     expect(() => assertSafeApiUrl("not a url")).toThrow(/blocked/);
   });
 
+  describe("benchmark engine hybrid TPS and fresh-session (e04s01 TokenDyno parity)", () => {
+    const twoChunkStream = () => {
+      const enc = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          const push = (obj) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
+          push({ choices: [{ delta: { content: "hi" } }] });
+          push({ choices: [{ delta: { content: " there" } }] });
+          push({ usage: { prompt_tokens: 5, completion_tokens: 100 } });
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+    };
+    const bench = (modelId, extra) => ({
+      provider: "openrouter",
+      providerModelId: modelId,
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "speed", prompt: "probe", max_tokens: 300, timeout_ms: 5000 },
+      ...extra,
+    });
+
+    it("fast bursty streams record wall-clock tps_method", async () => {
+      const mod = await import("../src/benchmark/engine");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } })));
+      const res = await mod.measureBenchmark(bench("test:free"));
+      expect(res.status).toBe("SUCCESS");
+      expect(res.tps_method).toBe("wall-clock");
+      expect(res.tps).not.toBeNull();
+      vi.restoreAllMocks();
+    });
+
+    it("smooth streams record inter-token tps_method", async () => {
+      const mod = await import("../src/benchmark/engine");
+      const enc = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          const push = (obj) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
+          for (let i = 0; i < 9; i++) push({ choices: [{ delta: { content: "tok" + i + " " } }] });
+          push({ usage: { prompt_tokens: 5, completion_tokens: 100 } });
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      let now = 1000;
+      const perfHandle = globalThis.performance;
+      const origNow = perfHandle.now.bind(perfHandle);
+      perfHandle.now = () => (now += 60);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } })));
+      try {
+        const res = await mod.measureBenchmark(bench("test:free"));
+        expect(res.status).toBe("SUCCESS");
+        expect(res.tps_method).toBe("inter-token");
+        expect(res.tps).toBeCloseTo(1000 / 60, 0);
+      } finally {
+        perfHandle.now = origNow;
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("every run carries fresh unique session headers and caller headers win", async () => {
+      const mod = await import("../src/benchmark/engine");
+      const seen = [];
+      vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+        seen.push({ ...init.headers });
+        return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }));
+      await mod.measureBenchmark(bench("test:free"));
+      await mod.measureBenchmark(bench("test:free"));
+      expect(seen.length).toBe(3 - 1);
+      expect(seen[0]["x-benchmark-session"]).toMatch(/^mpx_/);
+      expect(seen[0]["x-opencode-session"]).toMatch(/^ses_/);
+      expect(seen[1]["x-benchmark-session"]).not.toBe(seen[0]["x-benchmark-session"]);
+      expect(seen[1]["x-opencode-session"]).not.toBe(seen[0]["x-opencode-session"]);
+      await mod.measureBenchmark(bench("big-pickle", { extraHeaders: { "x-opencode-session": "ses_fixed", "user-agent": "opencode/test" } }));
+      expect(seen[2]["x-opencode-session"]).toBe("ses_fixed");
+      vi.restoreAllMocks();
+    });
+
+    it("muse-spark models send reasoning effort minimal and others do not", async () => {
+      const mod = await import("../src/benchmark/engine");
+      const bodies = [];
+      vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }));
+      await mod.measureBenchmark(bench("muse-spark-1.3-contributor-free"));
+      await mod.measureBenchmark(bench("gpt-oss-20b"));
+      expect(bodies[0].reasoning).toEqual({ effort: "minimal" });
+      expect(bodies[1].reasoning).toBeUndefined();
+      vi.restoreAllMocks();
+    });
+
+    it("request body is single-turn with no conversation history", async () => {
+      const mod = await import("../src/benchmark/engine");
+      let body = {};
+      vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+        body = JSON.parse(init.body);
+        return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
+      }));
+      await mod.measureBenchmark(bench("test:free"));
+      expect(body.messages.length).toBe(1);
+      expect(body.messages[0].role).toBe("user");
+      vi.restoreAllMocks();
+    });
+  });
+
   it("measureBenchmark records UNKNOWN_ERROR without calling fetch on blocked url", async () => {
     const { measureBenchmark } = await import("../src/benchmark/engine");
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));

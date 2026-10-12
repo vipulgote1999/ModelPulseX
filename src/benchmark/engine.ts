@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import {
   computeGenerationMs,
+  computeHybridTps,
   computeInterTokenLatency,
   computeTPS,
   computeTTFT,
@@ -41,6 +42,26 @@ export class BlockedApiUrlError extends Error {}
 /** Cap retained chunk timestamps — a median over 512 gaps is statistically
  *  indistinguishable from the full stream, and raw runs must stay small. */
 const MAX_CHUNK_SAMPLES = 512;
+
+/** Fresh hex for per-run session ids (e04s01 anti-cache). Prefers WebCrypto,
+ *  falls back to Math.random — uniqueness per run matters, not strength. */
+function freshHex(bytes = 16): string {
+  try {
+    const c = globalThis.crypto as Crypto | undefined;
+    if (c && "getRandomValues" in c) {
+      const buf = new Uint8Array(bytes);
+      c.getRandomValues(buf);
+      return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    if (typeof c?.randomUUID === "function")
+      return c.randomUUID().replace(/-/g, "");
+  } catch {
+    // fall through to Math.random
+  }
+  let s = "";
+  while (s.length < bytes * 2) s += Math.random().toString(16).slice(2);
+  return s.slice(0, bytes * 2);
+}
 
 /** Playground answer cap. 12000 chars ≈ 3000 tokens, comfortably above the
  *  max_tokens ceiling (2048) so the UI shows the full output; the bound only
@@ -138,17 +159,36 @@ export async function measureBenchmark(
   };
   if (opts.benchmark.temperature != null) body.temperature = opts.benchmark.temperature;
   if (opts.benchmark.top_p != null) body.top_p = opts.benchmark.top_p;
+  // Muse Spark Contributor models (e04s01 TokenDyno parity): hidden reasoning
+  // shares the token budget and TPS counts visible text only (reasoning deltas
+  // are already excluded from outputText/chunkTimes above), so run them with
+  // reasoning.effort minimal exactly as TokenDyno does.
+  if (opts.providerModelId.toLowerCase().includes("muse-spark"))
+    body.reasoning = { effort: "minimal" };
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "text/event-stream",
     ...(opts.extraHeaders ?? {}),
   };
+  // Fresh-session anti-cache (e04s01 TokenDyno parity): every run carries a
+  // newly generated session identifier so a session-keyed cache cannot serve
+  // a previous run's completion for this run's identical prompt. The body is
+  // already single-turn with no history. Caller-supplied headers (e.g. Zen's
+  // x-opencode-session) win — never override them. Body-keyed caching remains
+  // a disclosed limitation (see methodology), same as TokenDyno.
+  const lowerExtra = new Set(
+    Object.keys(opts.extraHeaders ?? {}).map((k) => k.toLowerCase()),
+  );
+  if (!lowerExtra.has("x-benchmark-session"))
+    headers["x-benchmark-session"] = `mpx_${freshHex(16)}`;
+  if (!lowerExtra.has("x-opencode-session"))
+    headers["x-opencode-session"] = `ses_${freshHex(16)}`;
   if (opts.apiKey) {
     headers.authorization = `Bearer ${opts.apiKey}`;
     // OpenRouter also likes these but optional
     if (opts.provider === "openrouter") {
-      headers["HTTP-Referer"] = "https://modelpulsex.vipulgote5.workers.dev";
+      headers["HTTP-Referer"] = "https://modelpulsex.pages.dev";
       headers["X-Title"] = "ModelPulseX";
     }
   }
@@ -544,12 +584,28 @@ function finalize(
   // guards single-chunk quantization, not thinking.
   let genForTps = gen;
   if (genForTps != null && genForTps < 20) genForTps = 20;
-  let tps = computeTPS(outputTokens, genForTps);
+  // Hybrid TPS (e04s01 TokenDyno parity): inter-token gaps decide smooth
+  // streams; burst/chunked delivery falls back to wall-clock over the floored
+  // generation window. Gaps derive from the bounded chunkTimes capture.
+  const gaps: number[] = [];
+  if (chunkTimesMs != null) {
+    for (let i = 1; i < chunkTimesMs.length; i++)
+      gaps.push(chunkTimesMs[i]! - chunkTimesMs[i - 1]!);
+  }
+  const hybrid = computeHybridTps({
+    outputTokens,
+    generationMs: genForTps,
+    chunkGapsMs: gaps,
+  });
+  let tps = hybrid.tps;
+  let tpsMethod = hybrid.method;
   // Edge: streaming chunk handled in same tick -> TTFT/generation 0 but status SUCCESS -> clamp to minimal measurable
   if (status === "SUCCESS" && firstMs != null && completedMs != null) {
     if (ttft === 0 || ttft === null) ttft = 1;
-    if ((gen === 0 || gen === null) && outputTokens != null && tps == null)
+    if ((gen === 0 || gen === null) && outputTokens != null && tps == null) {
       tps = computeTPS(outputTokens, 20);
+      tpsMethod = "wall-clock";
+    }
   }
   // if not SUCCESS, null out ttft/tps
   const itlRaw = computeInterTokenLatency(chunkTimesMs ?? []);
@@ -561,6 +617,7 @@ function finalize(
   const ttft_ms = status === "SUCCESS" ? ttft : null;
   const generation_ms = status === "SUCCESS" ? gen : null;
   const tpsVal = status === "SUCCESS" ? tps : null;
+  const tpsMethodVal = status === "SUCCESS" ? tpsMethod : null;
   return {
     request_started_at: startedAtIso,
     first_token_at: firstTokenAtIso,
@@ -570,6 +627,7 @@ function finalize(
     ttft_ms: ttft_ms,
     generation_ms,
     tps: tpsVal,
+    tps_method: tpsMethodVal,
     itl_ms,
     chunk_count,
     status,
