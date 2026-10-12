@@ -80,6 +80,10 @@ export default function App() {
         >
           Methodology
         </button>
+        <span className="block mt-2">
+          Sampling: coding probes on a 5-minute tick · speed probes ~3 per tick ·
+          tier cadence Pro ~10m, Free/Zen ~60m, Go ~30m (priciest ~6h).
+        </span>
       </footer>
     </div>
   );

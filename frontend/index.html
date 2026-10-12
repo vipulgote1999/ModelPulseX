@@ -1,7 +1,17 @@
 <!doctype html>
 <html lang="en" class="dark">
   <head>
+    <script>
+      // prefer persisted theme before first paint (avoids a dark flash)
+      (function () {
+        try {
+          var t = localStorage.getItem("mpx-theme");
+          if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+        } catch (e) { /* private mode: default dark theme applies */ }
+      })();
+    </script>
     <meta charset="UTF-8" />
+    <link rel="canonical" href="https://modelpulsex.pages.dev/" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ModelPulseX — LLM Performance Observatory</title>
     <meta
@@ -22,7 +32,7 @@
     />
     <meta
       property="og:image"
-      content="https://modelpulsex.vipulgote5.workers.dev/api/og.png"
+      content="https://modelpulsex.pages.dev/api/og.png"
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -39,6 +49,35 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
       rel="stylesheet"
     />
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@graph":[{
+      "@type":"Dataset",
+      "name":"ModelPulseX free-LLM performance leaderboard",
+      "description":"Live tokens-per-second, time-to-first-token and reliability measurements across free models from 21 providers, refreshed on a fixed schedule.",
+      "url":"https://modelpulsex.pages.dev/",
+      "creator":{"@type":"Organization","name":"ModelPulseX","url":"https://modelpulsex.pages.dev/"},
+      "measurementTechnique":"Output tokens divided by server-measured generation time (completed minus first token), sampled via streaming chat completions; inter-token timing on smooth streams with a wall-clock fallback.",
+      "variableMeasured":[
+        {"@type":"PropertyValue","name":"tokens per second","unitText":"tok/s"},
+        {"@type":"PropertyValue","name":"time to first token","unitText":"ms"},
+        {"@type":"PropertyValue","name":"24h reliability","unitText":"%"}
+      ],
+      "isAccessibleForFree":true,
+      "distribution":[{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://modelpulsex.pages.dev/api/leaderboard"}]
+    },{
+      "@type":"FAQPage",
+      "mainEntity":[{
+        "@type":"Question","name":"How is tokens per second measured?",
+        "acceptedAnswer":{"@type":"Answer","text":"Tokens per second is generation throughput: output tokens divided by generation time (completed minus first token), excluding the initial wait. Smooth streams use inter-token timing; burst delivery falls back to wall-clock. Time to first token is reported separately."}
+      },{
+        "@type":"Question","name":"How often are models benchmarked?",
+        "acceptedAnswer":{"@type":"Answer","text":"Coding probes run on a five-minute scheduler tick; speed probes ride along every tick. Per-tier cadence keeps spend inside plan limits: about every 10 minutes on pro tiers, 60 on free tiers, 30 on subscription tiers. Cadence affects freshness, never the measurement."}
+      },{
+        "@type":"Question","name":"Are paid models benchmarked?",
+        "acceptedAnswer":{"@type":"Answer","text":"No. Only verified-free models are queued automatically; paid or unknown-pricing models are listed for catalog visibility but never auto-benchmarked."}
+      }]}
+    ]}
+    </script>
     <!-- Tailwind compiled via PostCSS — no CDN runtime -->
   </head>
   <body>
