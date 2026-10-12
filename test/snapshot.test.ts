@@ -50,6 +50,8 @@ function rawRow(
     g_itl_7d: gc,
     ok_7d: ok ?? n,
     tot_7d: n,
+    ok_24h: ok ?? n,
+    tot_24h: n,
   };
 }
 
@@ -70,6 +72,7 @@ describe("buildSnapshotRows", () => {
     expect(coding.tps_24h).toBeCloseTo(3);
     expect(coding.tps_1h).toBeCloseTo(3);
     expect(coding.uptime_7d).toBeCloseTo(1);
+    expect(coding.uptime_24h).toBeCloseTo(1);
     expect(coding.error_rate_7d).toBeCloseTo(0);
     expect(coding.sample_count_24h).toBe(6);
     expect(coding.request_count_7d).toBe(6);
@@ -90,6 +93,23 @@ describe("buildSnapshotRows", () => {
     expect(coding.tps_24h).toBeCloseTo(20);
     expect(coding.tps_7d).toBeNull();
     expect(coding.uptime_7d).toBeNull();
+    // 24h gate (3) passes with 3 samples: 2/3 success
+    expect(coding.uptime_24h).toBeCloseTo(2 / 3);
+  });
+
+  it("nulls uptime_24h below the 24h min-sample gate", () => {
+    // 2 samples: 24h gate (3) fails even though all succeeded
+    const rows = buildSnapshotRows({
+      models: [models[0]!],
+      raw: [rawRow(1, "coding", [10, 20])],
+      spark: [],
+      nowIso: new Date().toISOString(),
+    });
+    const coding = rows.find(
+      (r) => r.model_id === 1 && r.benchmark === "coding",
+    )!;
+    expect(coding.uptime_24h).toBeNull();
+    expect(coding.sample_count_24h).toBe(2);
   });
 
   it("merges benchmark types for the all view", () => {

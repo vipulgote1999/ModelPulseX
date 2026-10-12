@@ -22,6 +22,7 @@ type Row = {
   itl_now: number | null;
   itl_7d: number | null;
   uptime_7d: number | null;
+  uptime_24h: number | null;
   error_rate_7d: number | null;
   // null = latest-run overlay row missing (no measurement); the API stopped
   // rendering join-artifact UNKNOWN here in loop-3, so the pill must handle it.
@@ -270,6 +271,13 @@ export default function Leaderboard({
               </th>
               <th
                 className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white"
+                onClick={() => sort("uptime_24h")}
+                title="24h reliability: share of successful runs in the last 24h"
+              >
+                24h Rel
+              </th>
+              <th
+                className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white"
                 onClick={() => sort("uptime_7d")}
               >
                 7d Up
@@ -417,6 +425,9 @@ export default function Leaderboard({
                 </td>
                 <td className="px-2 py-2 text-right mono hidden 2xl:table-cell">
                   {fmtMs(r.itl_now ?? r.itl_7d)}
+                </td>
+                <td className="px-2 py-2 text-right mono hidden lg:table-cell" title={r.sampleCount24h != null ? r.sampleCount24h + " runs in the last 24h" : undefined}>
+                  {r.uptime_24h != null ? (r.uptime_24h * 100).toFixed(1) + "%" : "—"}
                 </td>
                 <td className="px-2 py-2 text-right mono hidden lg:table-cell">
                   {r.uptime_7d != null

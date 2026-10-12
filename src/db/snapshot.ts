@@ -28,6 +28,8 @@ export interface SnapshotRaw {
   g_itl_7d: string | null;
   ok_7d: number | null;
   tot_7d: number | null;
+  ok_24h: number | null;
+  tot_24h: number | null;
 }
 
 export interface SnapshotSpark {
@@ -53,6 +55,7 @@ export interface SnapshotRow {
   ttft_7d: number | null;
   itl_7d: number | null;
   uptime_7d: number | null;
+  uptime_24h: number | null;
   error_rate_7d: number | null;
   sparkline: string;
   sample_count_24h: number;
@@ -118,6 +121,8 @@ export function buildSnapshotRows(input: {
     g_itl_7d: string | null;
     ok_7d: number;
     tot_7d: number;
+    ok_24h: number;
+    tot_24h: number;
   } => {
     const lists =
       bench === "all"
@@ -146,6 +151,8 @@ export function buildSnapshotRows(input: {
       g_itl_7d: cat((r) => r.g_itl_7d),
       ok_7d: sum((r) => r.ok_7d),
       tot_7d: sum((r) => r.tot_7d),
+      ok_24h: sum((r) => r.ok_24h),
+      tot_24h: sum((r) => r.tot_24h),
     };
   };
 
@@ -181,6 +188,8 @@ export function buildSnapshotRows(input: {
       const g = mergedRaw(m.id, bench);
       const uptime_7d =
         g.cnt7 >= MIN_SAMPLES.w7d && g.tot_7d > 0 ? g.ok_7d / g.tot_7d : null;
+      const uptime_24h =
+        g.cnt_24h >= MIN_SAMPLES.w24h && g.tot_24h > 0 ? g.ok_24h / g.tot_24h : null;
       out.push({
         benchmark: bench,
         model_id: m.id,
@@ -197,6 +206,7 @@ export function buildSnapshotRows(input: {
         ttft_7d: gatedRaw(g.g_ttft_7d, g.cnt7, MIN_SAMPLES.w7d),
         itl_7d: gatedRaw(g.g_itl_7d, g.cnt7, MIN_SAMPLES.w7d),
         uptime_7d,
+        uptime_24h,
         error_rate_7d: uptime_7d != null ? 1 - uptime_7d : null,
         sparkline: sparklineFor(m.id, bench),
         sample_count_24h: g.cnt_24h,
@@ -236,6 +246,8 @@ export async function refreshLeaderboardSnapshot(
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_24h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as g_tps_24h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as g_ttft_24h,
+           SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok_24h,
+           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as tot_24h,
            COUNT(*) as cnt7,
            GROUP_CONCAT(tps) as g_tps_7d,
            GROUP_CONCAT(ttft_ms) as g_ttft_7d,
@@ -249,6 +261,8 @@ export async function refreshLeaderboardSnapshot(
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
@@ -277,14 +291,15 @@ export async function refreshLeaderboardSnapshot(
               `INSERT INTO leaderboard_snapshot
                (benchmark, model_id, display_name, provider, provider_model_id, free_status, active,
                 tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
-                uptime_7d, error_rate_7d, sparkline, sample_count_24h, request_count_7d, snapshot_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d, snapshot_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(benchmark, model_id) DO UPDATE SET
                  display_name=excluded.display_name, provider=excluded.provider,
                  provider_model_id=excluded.provider_model_id, free_status=excluded.free_status,
                  active=excluded.active, tps_1h=excluded.tps_1h, tps_24h=excluded.tps_24h,
                  tps_7d=excluded.tps_7d, ttft_1h=excluded.ttft_1h, ttft_24h=excluded.ttft_24h,
                  ttft_7d=excluded.ttft_7d, itl_7d=excluded.itl_7d, uptime_7d=excluded.uptime_7d,
+                 uptime_24h=excluded.uptime_24h,
                  error_rate_7d=excluded.error_rate_7d, sparkline=excluded.sparkline,
                  sample_count_24h=excluded.sample_count_24h, request_count_7d=excluded.request_count_7d,
                  snapshot_at=excluded.snapshot_at`,
@@ -305,6 +320,7 @@ export async function refreshLeaderboardSnapshot(
               r.ttft_7d,
               r.itl_7d,
               r.uptime_7d,
+              r.uptime_24h,
               r.error_rate_7d,
               r.sparkline,
               r.sample_count_24h,

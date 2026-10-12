@@ -202,6 +202,8 @@ export interface LeaderboardRow {
  itl_now: number | null;
  itl_7d: number | null;
  uptime_7d: number | null;
+ /** 24h reliability (TokenDyno successRate24h parity, e04s03); null below MIN_SAMPLES.w24h. */
+ uptime_24h: number | null;
  error_rate_7d: number | null;
  success_rate: number | null;
  status: BenchmarkStatus | "UNKNOWN";

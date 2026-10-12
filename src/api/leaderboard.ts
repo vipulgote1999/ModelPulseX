@@ -253,7 +253,7 @@ export function leaderboardRoutes(env: Env) {
           env.DB.prepare(
             `SELECT benchmark, model_id, display_name, provider, provider_model_id, free_status, active,
                     tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
-                    uptime_7d, error_rate_7d, sparkline, sample_count_24h, request_count_7d
+                    uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d
              FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}`,
           ).bind(...(provider ? [benchmark, provider] : [benchmark])),
           // Overlay coverage: keyed by snapshot model_ids (no benchmark_enabled /
@@ -321,6 +321,7 @@ export function leaderboardRoutes(env: Env) {
             itl_now: entry?.itl ?? null,
             itl_7d: s.itl_7d,
             uptime_7d: s.uptime_7d,
+            uptime_24h: s.uptime_24h ?? null,
             error_rate_7d: s.error_rate_7d,
             success_rate: s.uptime_7d,
             // No overlay hit: the latest-run JSON is absent (filtered model or
@@ -673,6 +674,9 @@ export function leaderboardRoutes(env: Env) {
       const samples7 = Math.max(h.cnt7h ?? 0, raw?.cnt7 ?? 0);
       const uptime_7d: number | null =
         samples7 >= MIN_SAMPLES.w7d ? (h.up_7 ?? raw?.up_7d ?? null) : null;
+      const samples24 = Math.max(h.cnt_24 ?? 0, raw?.cnt24 ?? 0);
+      const uptime_24h: number | null =
+        samples24 >= MIN_SAMPLES.w24h ? (h.up_24 ?? raw?.up_24h ?? null) : null;
       const error_rate: number | null =
         samples7 >= MIN_SAMPLES.w7d ? (h.er_7 ?? raw?.er_7d ?? null) : null;
       const cnt7 = h.cnt7h ?? raw?.cnt7 ?? 0;
@@ -706,6 +710,7 @@ export function leaderboardRoutes(env: Env) {
         itl_now,
         itl_7d,
         uptime_7d,
+        uptime_24h,
         error_rate_7d: error_rate,
         success_rate: uptime_7d,
         status: status as LeaderboardRow["status"],

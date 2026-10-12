@@ -18,6 +18,7 @@ export interface LeaderboardResp {
     ttft_24h: number | null;
     ttft_7d: number | null;
     uptime_7d: number | null;
+    uptime_24h: number | null;
     error_rate_7d: number | null;
     status: string | null;
     last_test: string | null;

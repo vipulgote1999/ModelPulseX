@@ -560,6 +560,7 @@ export default function Dashboard() {
               itl_now: number | null;
               itl_7d: number | null;
               uptime_7d: number | null;
+              uptime_24h: number | null;
               error_rate_7d: number | null;
               status: string;
               last_test: string | null;
