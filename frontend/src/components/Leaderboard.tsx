@@ -349,20 +349,24 @@ export default function Leaderboard({
                     {r.model}
                   </div>
                   {(() => {
+                    // e2e-found: thinking and non-reasoning are independent signals
+                    // (a model can stream thinking traces yet not be a reasoning model),
+                    // so each renders on its own instead of either/or.
                     const meta = getAAMeta(r.model);
-                    if (meta?.thinking === true)
-                      return (
-                        <span title="Supports thinking/reasoning traces" className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-800">
-                          Thinking
-                        </span>
-                      );
-                    if (meta?.reasoningModel === false)
-                      return (
-                        <span title="Not a reasoning model (Artificial Analysis)" className="ml-1 text-[10px] text-zinc-500">
-                          non-reasoning
-                        </span>
-                      );
-                    return null;
+                    return (
+                      <>
+                        {meta?.thinking === true && (
+                          <span title="Supports thinking/reasoning traces" className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-800">
+                            Thinking
+                          </span>
+                        )}
+                        {meta?.reasoningModel === false && (
+                          <span title="Not a reasoning model (Artificial Analysis)" className="ml-1 text-[10px] text-zinc-500">
+                            non-reasoning
+                          </span>
+                        )}
+                      </>
+                    );
                   })()}
                   {!r.active && (
                     <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800">
