@@ -29,4 +29,4 @@ epics:
     title: TokenDyno Parity + Enhancements
     summary: Full TokenDyno feature/support parity (hybrid TPS, 24h reliability, sparklines, compare-6 shareable, models + model detail, pricing, vs, intelligence index, thinking badges, per-tier cadence, fresh-session anti-cache, SEO/JSON-LD, theme) enhanced beyond it (19 providers, dual coding+speed probes, 7d windows, all-provider pricing, scoring profiles) — P2.
     wsjf: 5
-    status: in_progress
+    status: completed

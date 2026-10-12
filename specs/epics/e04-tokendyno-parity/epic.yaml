@@ -2,7 +2,7 @@ epic: e04
 slug: tokendyno-parity
 title: TokenDyno Parity + Enhancements (all models, hybrid TPS, compare-6, pricing, model pages)
 wsjf: 5
-status: in_progress
+status: completed
 source: https://tokendyno.com/ (reverse-engineered 2026-10-12; API https://api.ollamatps.com/api/sites/tokendyno/overview)
 goal: >
   Reach full feature/support parity with TokenDyno (leaderboard, hybrid TPS,
@@ -34,7 +34,7 @@ stories:
     verify: "npm run build && npx playwright test (dashboard-smoke + compare/pricing/model pages)"
   - id: e04s05
     title: Deploy + validate — migrations, preflight green, deploy, Playwright indepth, UAT spec
-    status: pending
+    status: completed
     points: 3
     verify: "npm test && npm run typecheck && npm run lint && npm run deploy && node test/e2e/dashboard-smoke.mjs"
 enhancements_over_tokendyno:

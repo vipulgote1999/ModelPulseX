@@ -22,10 +22,10 @@ epics:
       e03s01: completed
       e03s02: completed
   e04:
-    status: in_progress
+    status: completed
     stories:
       e04s01: completed
       e04s02: completed
       e04s03: completed
       e04s04: completed
-      e04s05: pending
+      e04s05: completed
