@@ -21,6 +21,19 @@ export const WORKLOADS: Record<BenchmarkType, BenchmarkDefinition> = {
     // same sampling conditions.
     top_p: 0.95,
   },
+  // TokenDyno-comparable speed probe (e04s01): identical fixed prompt and
+  // 300-token cap (including reasoning where the provider counts it) so
+  // numbers are directly comparable with TokenDyno's leaderboard. Timeout
+  // 60s covers a full 300-token budget at 5 TPS; slower records TIMEOUT.
+  // Same top_p pin as coding so probes measure identical sampling.
+  speed: {
+    type: "speed",
+    prompt:
+      "Write a 400-word prose explanation of HTTP request routing. Plain text only.",
+    max_tokens: 300,
+    timeout_ms: 60000,
+    top_p: 0.95,
+  },
 };
 
 export function getWorkload(type: BenchmarkType): BenchmarkDefinition {

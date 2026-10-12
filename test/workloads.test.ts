@@ -18,3 +18,15 @@ describe("workload budget floors", () => {
     expect(WORKLOADS.coding.top_p).toBe(0.95);
   });
 });
+
+// TokenDyno-parity speed probe (e04s01): identical prompt + 300-token cap.
+describe("speed workload (TokenDyno parity)", () => {
+  it("uses the fixed HTTP-routing prose prompt with a 300-token cap", () => {
+    expect(WORKLOADS.speed.prompt).toContain("HTTP request routing");
+    expect(WORKLOADS.speed.max_tokens).toBe(300);
+  });
+  it("pins top_p 0.95 and a 60s timeout", () => {
+    expect(WORKLOADS.speed.top_p).toBe(0.95);
+    expect(WORKLOADS.speed.timeout_ms).toBe(60000);
+  });
+});

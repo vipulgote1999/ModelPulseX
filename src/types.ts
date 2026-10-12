@@ -46,9 +46,10 @@ export type ProviderName =
  | "tokenrouter"
  | "ollama";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
-// Single-prompt observatory: every benchmark run uses the coding workload.
-// (medium/short retired — one prompt keeps TPS/TTFT comparable across models.)
-export type BenchmarkType = "coding";
+// Dual-probe observatory (e04s01): coding (quality signal, 4092t) + speed
+// (TokenDyno-comparable throughput probe, 300t, identical prompt+cap).
+// (medium/short retired — these two prompts keep TPS/TTFT comparable.)
+export type BenchmarkType = "coding" | "speed";
 export type BenchmarkStatus =
  | "SUCCESS"
  | "TIMEOUT"
@@ -125,6 +126,8 @@ export interface BenchmarkResult {
  itl_ms: number | null;
  /** Number of content-bearing chunks observed (bounded by MAX_CHUNK_SAMPLES). */
  chunk_count: number | null;
+ /** Hybrid TPS method (e04s01 TokenDyno parity): inter-token for smooth streams, wall-clock fallback for bursts. Optional until migration 0016 lands. */
+ tps_method?: "inter-token" | "wall-clock" | null;
  status: BenchmarkStatus;
  error_type: string | null;
  http_status: number | null;
