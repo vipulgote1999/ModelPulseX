@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
-import { getAA } from "../lib/intelligence";
+import { getAA, getAAMeta } from "../lib/intelligence";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 import { getCsrfToken } from "../lib/adminSession";
 
@@ -333,6 +333,22 @@ export default function Leaderboard({
                   >
                     {r.model}
                   </div>
+                  {(() => {
+                    const meta = getAAMeta(r.model);
+                    if (meta?.thinking === true)
+                      return (
+                        <span title="Supports thinking/reasoning traces" className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-800">
+                          Thinking
+                        </span>
+                      );
+                    if (meta?.reasoningModel === false)
+                      return (
+                        <span title="Not a reasoning model (Artificial Analysis)" className="ml-1 text-[10px] text-zinc-500">
+                          non-reasoning
+                        </span>
+                      );
+                    return null;
+                  })()}
                   {!r.active && (
                     <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800">
                       Previously Free
