@@ -53,6 +53,8 @@ const DISABLED_PROVIDER_DEFAULT = new Set<string>([
   "speka",
   "nexaapi",
   "ninerouter",
+  // e04s02: subscription catalog (Go) is stored, never auto-queued — admin opts models in explicitly.
+  "opencode_go",
 ]);
 
 export async function upsertModel(

@@ -3,6 +3,7 @@ import {
   providersWithoutHardFilter,
   freeHardFilterWhere,
   ACCEPTED_FILTER_GAPS,
+  PROVIDER_REGISTRY,
 } from "../src/providers/registry";
 
 /** Issue #16: `freeHardFilter` is the defence-in-depth layer that hides polluted
@@ -40,7 +41,7 @@ describe("hard free-filter coverage (issue #16)", () => {
   });
 
   it("at least 8 providers now declare a hard filter (was 3 before #16)", () => {
-    const filtered = 19 - providersWithoutHardFilter().length;
+    const filtered = PROVIDER_REGISTRY.length - providersWithoutHardFilter().length;
     expect(filtered).toBeGreaterThanOrEqual(8);
   });
 

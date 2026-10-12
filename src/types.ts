@@ -44,7 +44,8 @@ export type ProviderName =
  | "orcarouter"
  | "ninerouter"
  | "tokenrouter"
- | "ollama";
+ | "ollama"
+ | "opencode_go";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
 // Dual-probe observatory (e04s01): coding (quality signal, 4092t) + speed
 // (TokenDyno-comparable throughput probe, 300t, identical prompt+cap).
@@ -301,6 +302,7 @@ export interface Env {
  BENCH_QUEUE: Queue;
  LIVE_DO: DurableObjectNamespace;
  OPENCODE_API_KEY?: string;
+ OPENCODE_GO_API_KEY?: string;
  OPENROUTER_API_KEY?: string;
  GROQ_API_KEY?: string;
  CEREBRAS_API_KEY?: string;

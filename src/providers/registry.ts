@@ -22,6 +22,7 @@ import { OrcaRouterProvider } from "./orcarouter";
 import { NineRouterProvider } from "./ninerouter";
 import { TokenRouterProvider } from "./tokenrouter";
 import { OllamaProvider } from "./ollama";
+import { OpenCodeGoProvider } from "./opencode-go";
 
 /** Verified free Ollama models — everything else on the public instance requires a subscription.
  *  Shared between the hard filter (queries) and the one-shot data fix. */
@@ -57,6 +58,9 @@ export interface ProviderDescriptor {
     tokensPerDay?: number;
     notes?: string;
   };
+  /** Min minutes between benchmark runs of one model (TokenDyno-style per-tier
+   *  cadence, e04s02). Undefined = LRU-only with no min interval (existing behavior). */
+  cadenceMinutes?: number;
 }
 
 /** Central endpoint table — single source of truth for admin display and provider wiring.
@@ -69,6 +73,11 @@ export const PROVIDER_ENDPOINTS: Record<
     baseUrl: "https://opencode.ai/zen/v1",
     modelsUrl: "https://opencode.ai/zen/v1/models",
     chatUrl: "https://opencode.ai/zen/v1/chat/completions",
+  },
+  opencode_go: {
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    modelsUrl: "https://opencode.ai/zen/go/v1/models",
+    chatUrl: "https://opencode.ai/zen/go/v1/chat/completions",
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
@@ -175,6 +184,7 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     create: (e) => new OpenCodeZenProvider(e),
     ...PROVIDER_ENDPOINTS["opencode_zen"],
     freeTier: { notes: "free models available via Zen" },
+    cadenceMinutes: 60,
   },
   {
     name: "openrouter",
@@ -299,6 +309,14 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     hardFreeFilter: (m) =>
       `${m}.provider_model_id IN (${OLLAMA_FREE_MODELS.map((id) => `'${id}'`).join(",")})`,
     freeTier: { notes: "free tier available" },
+    cadenceMinutes: 60,
+  },
+  {
+    name: "opencode_go",
+    create: (e) => new OpenCodeGoProvider(e),
+    ...PROVIDER_ENDPOINTS["opencode_go"],
+    cadenceMinutes: 30,
+    freeTier: { notes: "subscription $10/mo Go / $40/mo Go Plus; per-model monthly dollar limits; only -free ids are free" },
   },
 ];
 
@@ -338,6 +356,11 @@ export const ACCEPTED_FILTER_GAPS: Record<string, string> = {
   nexaapi: NO_PAYLOAD_SIGNAL,
   orcarouter: NO_PAYLOAD_SIGNAL,
   ninerouter: NO_PAYLOAD_SIGNAL,
+  opencode_go:
+    "subscription gateway: only -free ids are FREE, everything else is UNKNOWN " +
+    "by discovery (never guessed). A suffix-only SQL filter would hide future free " +
+    "ids without the suffix. verifyFree() gates every queued job and the provider " +
+    "is default-disabled (benchmark_enabled=0) until an admin opts a model in.",
 };
 
 /** Provider names that declare no `hardFreeFilter` (computed, for the guard test). */

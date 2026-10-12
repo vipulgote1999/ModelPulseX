@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OpenCodeZenProvider, zenClientHeaders } from "../src/providers/opencode-zen";
 import { OpenRouterProvider } from "../src/providers/openrouter";
+import { OpenCodeGoProvider, SLOW_CADENCE_CAPABILITY } from "../src/providers/opencode-go";
 
 // Mock fetch globally
 function mockModelsResponse(data: unknown) {
@@ -99,5 +100,27 @@ describe("discovery — free filtering", () => {
     const p = new OpenRouterProvider({} as never);
     const ids = (await p.discoverModels()).map((m) => m.provider_model_id);
     expect(ids).not.toContain("model-a");
+  });
+
+  it("Go marks -free ids FREE, everything else UNKNOWN (never guessed)", async () => {
+    const fake = { data: [{ id: "step-5-preview-free" }, { id: "grok-4.6" }, { id: "grok-4.7" }] };
+    vi.stubGlobal("fetch", vi.fn(async () => mockModelsResponse(fake)));
+    const p = new OpenCodeGoProvider({ OPENCODE_GO_API_KEY: "k" } as never);
+    const models = await p.discoverModels();
+    const byId = new Map(models.map((m) => [m.provider_model_id, m]));
+    expect(byId.get("step-5-preview-free")?.free_status).toBe("FREE");
+    expect(byId.get("step-5-preview-free")?.is_free).toBe(true);
+    expect(byId.get("grok-4.6")?.free_status).toBe("UNKNOWN");
+    expect(byId.get("grok-4.7")?.free_status).toBe("UNKNOWN");
+    expect(byId.get("grok-4.7")?.capabilities).toContain(SLOW_CADENCE_CAPABILITY);
+    expect(byId.get("grok-4.6")?.capabilities).not.toContain(SLOW_CADENCE_CAPABILITY);
+  });
+
+  it("Go without a key or on API error returns [] (never fabricate)", async () => {
+    const keyless = new OpenCodeGoProvider({} as never);
+    await expect(keyless.discoverModels()).resolves.toEqual([]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("err", { status: 500 })));
+    const keyed = new OpenCodeGoProvider({ OPENCODE_GO_API_KEY: "k" } as never);
+    await expect(keyed.discoverModels()).resolves.toEqual([]);
   });
 });
