@@ -47,14 +47,16 @@ const MAX_CHUNK_SAMPLES = 512;
  *  falls back to Math.random — uniqueness per run matters, not strength. */
 function freshHex(bytes = 16): string {
   try {
-    const c = globalThis.crypto as Crypto | undefined;
-    if (c && "getRandomValues" in c) {
+    const c = globalThis.crypto as unknown as
+      | { randomUUID?: () => string; getRandomValues?: (b: Uint8Array) => void }
+      | undefined;
+    if (typeof c?.randomUUID === "function")
+      return c.randomUUID().replace(/-/g, "").slice(0, bytes * 2);
+    if (typeof c?.getRandomValues === "function") {
       const buf = new Uint8Array(bytes);
       c.getRandomValues(buf);
       return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
     }
-    if (typeof c?.randomUUID === "function")
-      return c.randomUUID().replace(/-/g, "");
   } catch {
     // fall through to Math.random
   }
