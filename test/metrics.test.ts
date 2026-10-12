@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency, measuredTpsLabel, isRankEligible, assignRanks, MIN_SAMPLES } from "../src/utils/metrics";
+import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency, computeHybridTps, measuredTpsLabel, isRankEligible, assignRanks, MIN_SAMPLES } from "../src/utils/metrics";
 
 describe("metrics", () => {  it("TTFT = first - started", () => {
     expect(computeTTFT(1000, 1120)).toBe(120);
@@ -70,6 +70,46 @@ describe("measuredTpsLabel", () => {
   });
   it("labels a row with a gated-in median as measured", () => {
     expect(measuredTpsLabel(MIN_SAMPLES.w24h, 12.5)).toBe("Measured TPS");
+  });
+});
+
+describe("hybrid TPS (TokenDyno parity e04s01)", () => {
+  // Inter-token path: >= 8 chunks (>= 7 gaps) with mean gap > 50ms.
+  it("picks inter-token timing for smooth streams", () => {
+    const gaps = [60, 70, 65, 80, 75, 62, 68]; // mean ~68.6ms -> ~14.6 TPS
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: gaps });
+    expect(r.method).toBe("inter-token");
+    expect(r.tps).toBeCloseTo(1000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length), 1);
+  });
+  it("falls back to wall-clock when fewer than 8 chunks", () => {
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: [60, 70, 65] });
+    expect(r.method).toBe("wall-clock");
+    expect(r.tps).toBeCloseTo(50);
+  });
+  it("falls back to wall-clock for burst delivery (mean gap <= 50ms)", () => {
+    const gaps = [5, 8, 3, 12, 6, 4, 9]; // burst: gaps meaningless
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: gaps });
+    expect(r.method).toBe("wall-clock");
+    expect(r.tps).toBeCloseTo(50);
+  });
+  it("falls back to wall-clock when no gap evidence", () => {
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: [] });
+    expect(r.method).toBe("wall-clock");
+    expect(r.tps).toBeCloseTo(50);
+  });
+  it("returns null (never fabricates) when tokens or generation missing", () => {
+    expect(computeHybridTps({ outputTokens: null, generationMs: 2000, chunkGapsMs: [60, 70, 65, 80, 75, 62, 68] }).tps).toBeNull();
+    expect(computeHybridTps({ outputTokens: 100, generationMs: null, chunkGapsMs: [60, 70, 65, 80, 75, 62, 68] }).tps).toBeNull();
+  });
+  it("boundary: exactly 7 gaps with mean just above 50ms uses inter-token", () => {
+    const gaps = [51, 51, 51, 51, 51, 51, 51];
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: gaps });
+    expect(r.method).toBe("inter-token");
+  });
+  it("boundary: mean exactly 50ms stays wall-clock", () => {
+    const gaps = [50, 50, 50, 50, 50, 50, 50];
+    const r = computeHybridTps({ outputTokens: 100, generationMs: 2000, chunkGapsMs: gaps });
+    expect(r.method).toBe("wall-clock");
   });
 });
 

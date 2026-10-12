@@ -140,6 +140,31 @@ export function computeInterTokenLatency(chunkTimesMs: number[]): number | null 
   return percentile(gaps, 50);
 }
 
+/** TokenDyno-parity hybrid TPS (e04s01): picks the right measurement per response.
+ *  Inter-token path when the stream is smooth — at least 8 chunks (>= 7 gaps)
+ *  with a mean gap above 50ms: tps = 1000 / mean_gap_ms (decode-phase
+ *  throughput the user experiences while the answer streams in).
+ *  Wall-clock fallback (output_tokens / generation_seconds, TTFT excluded)
+ *  for burst/chunked delivery where inter-token gaps are meaningless.
+ *  Null inputs still yield null — never fabricates. */
+export type TpsMethod = "inter-token" | "wall-clock" | null;
+
+export function computeHybridTps(args: {
+  outputTokens: number | null;
+  generationMs: number | null;
+  chunkGapsMs: number[];
+}): { tps: number | null; method: TpsMethod } {
+  const { outputTokens, generationMs, chunkGapsMs } = args;
+  if (outputTokens == null || generationMs == null || generationMs <= 0)
+    return { tps: null, method: null };
+  const gaps = chunkGapsMs.filter((g) => Number.isFinite(g) && g >= 0);
+  if (gaps.length >= 7) {
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    if (mean > 50) return { tps: 1000 / mean, method: "inter-token" };
+  }
+  return { tps: computeTPS(outputTokens, generationMs), method: "wall-clock" };
+}
+
 // quick uptime from success/total
 export function uptimeRate(success: number, total: number): number | null {
   if (total === 0) return null;
