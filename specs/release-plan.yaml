@@ -24,3 +24,9 @@ epics:
     summary: Provider expansion beyond Zen+OpenRouter delivered — 19 registry descriptors (2 keyless catalogs + 17 keyed providers) with per-provider free gate, concurrency/RPM caps and secrets; plus ops polish — 10-minute aggregates, precomputed leaderboard snapshot, rows-read budget fixes (0011-0013), OpenAPI endpoint, edge caching, CI preflight + secret scan — P2.
     wsjf: 3
     status: completed
+  - id: e04
+    slug: tokendyno-parity
+    title: TokenDyno Parity + Enhancements
+    summary: Full TokenDyno feature/support parity (hybrid TPS, 24h reliability, sparklines, compare-6 shareable, models + model detail, pricing, vs, intelligence index, thinking badges, per-tier cadence, fresh-session anti-cache, SEO/JSON-LD, theme) enhanced beyond it (19 providers, dual coding+speed probes, 7d windows, all-provider pricing, scoring profiles) — P2.
+    wsjf: 5
+    status: in_progress

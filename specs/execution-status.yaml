@@ -21,3 +21,11 @@ epics:
     stories:
       e03s01: completed
       e03s02: completed
+  e04:
+    status: in_progress
+    stories:
+      e04s01: in_progress
+      e04s02: pending
+      e04s03: pending
+      e04s04: pending
+      e04s05: pending
