@@ -29,6 +29,12 @@ export default function Header({
             Dashboard
           </button>
           <button
+            onClick={() => onNavigate("models")}
+            className={`px-3 py-1.5 rounded-md ${current === "models" || current === "model" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+          >
+            Models
+          </button>
+          <button
             onClick={() => onNavigate("docs")}
             className={`px-3 py-1.5 rounded-md ${current === "docs" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
           >
