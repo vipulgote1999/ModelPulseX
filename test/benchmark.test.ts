@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { classifyStatus, assertSafeApiUrl } from "../src/benchmark/engine";
+import type { BenchmarkOpts } from "../src/benchmark/engine";
 import {
   computeTPS,
   computeTTFT,
@@ -526,7 +527,7 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
       const enc = new TextEncoder();
       return new ReadableStream({
         start(controller) {
-          const push = (obj) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
+          const push = (obj: unknown) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
           push({ choices: [{ delta: { content: "hi" } }] });
           push({ choices: [{ delta: { content: " there" } }] });
           push({ usage: { prompt_tokens: 5, completion_tokens: 100 } });
@@ -535,7 +536,7 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
         },
       });
     };
-    const bench = (modelId, extra) => ({
+    const bench = (modelId: string, extra: Record<string, unknown> = {}): BenchmarkOpts => ({
       provider: "openrouter",
       providerModelId: modelId,
       apiUrl: "https://openrouter.ai/api/v1/chat/completions",
@@ -559,7 +560,7 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
       const enc = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          const push = (obj) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
+          const push = (obj: unknown) => controller.enqueue(enc.encode("data: " + JSON.stringify(obj) + "\n\n"));
           for (let i = 0; i < 9; i++) push({ choices: [{ delta: { content: "tok" + i + " " } }] });
           push({ usage: { prompt_tokens: 5, completion_tokens: 100 } });
           controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -584,7 +585,7 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
 
     it("every run carries fresh unique session headers and caller headers win", async () => {
       const mod = await import("../src/benchmark/engine");
-      const seen = [];
+      const seen: Array<Record<string, string>> = [];
       vi.stubGlobal("fetch", vi.fn(async (url, init) => {
         seen.push({ ...init.headers });
         return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
@@ -592,39 +593,39 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
       await mod.measureBenchmark(bench("test:free"));
       await mod.measureBenchmark(bench("test:free"));
       expect(seen.length).toBe(3 - 1);
-      expect(seen[0]["x-benchmark-session"]).toMatch(/^mpx_/);
-      expect(seen[0]["x-opencode-session"]).toMatch(/^ses_/);
-      expect(seen[1]["x-benchmark-session"]).not.toBe(seen[0]["x-benchmark-session"]);
-      expect(seen[1]["x-opencode-session"]).not.toBe(seen[0]["x-opencode-session"]);
+      expect(seen[0]?.["x-benchmark-session"]).toMatch(/^mpx_/);
+      expect(seen[0]?.["x-opencode-session"]).toMatch(/^ses_/);
+      expect(seen[1]?.["x-benchmark-session"]).not.toBe(seen[0]?.["x-benchmark-session"]);
+      expect(seen[1]?.["x-opencode-session"]).not.toBe(seen[0]?.["x-opencode-session"]);
       await mod.measureBenchmark(bench("big-pickle", { extraHeaders: { "x-opencode-session": "ses_fixed", "user-agent": "opencode/test" } }));
-      expect(seen[2]["x-opencode-session"]).toBe("ses_fixed");
+      expect(seen[2]?.["x-opencode-session"]).toBe("ses_fixed");
       vi.restoreAllMocks();
     });
 
     it("muse-spark models send reasoning effort minimal and others do not", async () => {
       const mod = await import("../src/benchmark/engine");
-      const bodies = [];
+      const bodies: Array<Record<string, unknown>> = [];
       vi.stubGlobal("fetch", vi.fn(async (url, init) => {
         bodies.push(JSON.parse(init.body));
         return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
       }));
       await mod.measureBenchmark(bench("muse-spark-1.3-contributor-free"));
       await mod.measureBenchmark(bench("gpt-oss-20b"));
-      expect(bodies[0].reasoning).toEqual({ effort: "minimal" });
-      expect(bodies[1].reasoning).toBeUndefined();
+      expect(bodies[0]?.reasoning).toEqual({ effort: "minimal" });
+      expect(bodies[1]?.reasoning).toBeUndefined();
       vi.restoreAllMocks();
     });
 
     it("request body is single-turn with no conversation history", async () => {
       const mod = await import("../src/benchmark/engine");
-      let body = {};
+      let body: { messages?: Array<{ role?: string }> } = {};
       vi.stubGlobal("fetch", vi.fn(async (url, init) => {
         body = JSON.parse(init.body);
         return new Response(twoChunkStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
       }));
       await mod.measureBenchmark(bench("test:free"));
-      expect(body.messages.length).toBe(1);
-      expect(body.messages[0].role).toBe("user");
+      expect(body.messages?.length).toBe(1);
+      expect(body.messages?.[0]?.role).toBe("user");
       vi.restoreAllMocks();
     });
   });

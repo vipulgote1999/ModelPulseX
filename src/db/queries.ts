@@ -356,7 +356,7 @@ export async function insertBenchmarkRun(
   const stmts: ReturnType<D1Database["prepare"]>[] = [
     db
       .prepare(
-        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         modelId,
@@ -369,6 +369,7 @@ export async function insertBenchmarkRun(
         r.ttft_ms,
         r.generation_ms,
         r.tps,
+        r.tps_method ?? null,
         r.itl_ms,
         r.chunk_count,
         r.status,
@@ -400,10 +401,13 @@ export async function insertBenchmarkRun(
     const res = await db.batch(stmts);
     return res[0]?.meta.last_row_id as number;
   } catch {
-    // Pre-0011 column missing: fall back to insert-only so the run is never lost
+    // Fall back to insert-only so the run is never lost. The statement above
+    // already carries tps_method; on a pre-0016 DB the column is missing and
+    // this retry throws — then insert method-less below.
+    try {
     const ins = await db
       .prepare(
-        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         modelId,
@@ -416,6 +420,7 @@ export async function insertBenchmarkRun(
         r.ttft_ms,
         r.generation_ms,
         r.tps,
+        r.tps_method ?? null,
         r.itl_ms,
         r.chunk_count,
         r.status,
@@ -427,6 +432,34 @@ export async function insertBenchmarkRun(
       )
       .run();
     return ins.meta.last_row_id as number;
+    } catch {
+      const insLegacy = await db
+        .prepare(
+          `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(
+          modelId,
+          r.benchmark_type,
+          r.request_started_at,
+          r.first_token_at,
+          r.request_completed_at,
+          r.input_tokens,
+          r.output_tokens,
+          r.ttft_ms,
+          r.generation_ms,
+          r.tps,
+          r.itl_ms,
+          r.chunk_count,
+          r.status,
+          r.error_type ? r.error_type.slice(0, 500) : null,
+          r.http_status,
+          r.provider,
+          r.model,
+          r.token_estimation_method,
+        )
+        .run();
+      return insLegacy.meta.last_row_id as number;
+    }
   }
 }
 
