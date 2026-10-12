@@ -14,11 +14,14 @@
     "lint": "eslint .",
     "migrate": "wrangler d1 migrations apply DB",
     "migrate:local": "wrangler d1 migrations apply DB --local",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/pages-redirects.mjs clean && wrangler deploy",
+    "deploy:pages": "vite build && node scripts/pages-redirects.mjs write && wrangler pages deploy dist/frontend",
+    "dev:pages": "wrangler pages dev dist/frontend",
     "cf:typegen": "wrangler types",
     "secret-scan": "node scripts/secret-scan.js",
     "test:plans": "node scripts/check-query-plans.mjs",
     "test:e2e": "node test/e2e/dashboard-smoke.mjs",
+    "test:e2e:parity": "node test/e2e/parity-smoke.mjs",
     "security:audit": "npm audit && node scripts/secret-scan.js"
   },
   "dependencies": {
