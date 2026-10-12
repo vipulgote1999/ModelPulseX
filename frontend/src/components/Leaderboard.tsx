@@ -334,7 +334,13 @@ export default function Leaderboard({
                     className="font-medium text-zinc-100 leading-tight truncate max-w-[120px] xl:max-w-[160px]"
                     title={r.display_name}
                   >
-                    {r.display_name}
+                    <a
+                      href={"#/model/" + r.model_id}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:text-cyan-200 hover:underline"
+                    >
+                      {r.display_name}
+                    </a>
                   </div>
                   <div
                     className="text-[11px] text-zinc-500 mono truncate max-w-[120px] xl:max-w-[160px]"
