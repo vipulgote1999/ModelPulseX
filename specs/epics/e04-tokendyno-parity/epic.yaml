@@ -1,0 +1,49 @@
+epic: e04
+slug: tokendyno-parity
+title: TokenDyno Parity + Enhancements (all models, hybrid TPS, compare-6, pricing, model pages)
+wsjf: 5
+status: in_progress
+source: https://tokendyno.com/ (reverse-engineered 2026-10-12; API https://api.ollamatps.com/api/sites/tokendyno/overview)
+goal: >
+  Reach full feature/support parity with TokenDyno (leaderboard, hybrid TPS,
+  TTFT, 24h reliability, sparklines, compare, models, model detail, pricing,
+  vs, methodology, intelligence index, thinking badges, per-tier cadence,
+  fresh-session anti-cache, SEO/JSON-LD, theme) and enhance beyond it
+  (19 providers incl. OpenRouter free fleet vs their 3; coding + speed probes;
+  pricing for all providers; 7d windows vs their 24h).
+stories:
+  - id: e04s01
+    title: Hybrid TPS + fresh-session anti-cache + speed-probe workload (+migration 0016)
+    status: in_progress
+    points: 5
+    verify: "npm test -- test/metrics.test.ts test/benchmark.test.ts test/workloads.test.ts && npm run typecheck"
+  - id: e04s02
+    title: Providers — opencode-go adapter + ollama pro/free tiers + per-tier cadence + muse-spark reasoning minimal
+    status: pending
+    points: 8
+    verify: "npm test -- test/discovery.test.ts test/provider-registry.test.ts test/scheduler-select.test.ts"
+  - id: e04s03
+    title: Intelligence/thinking metadata — AA index expansion, thinking badges, 24h reliability columns, sparklines
+    status: pending
+    points: 5
+    verify: "npm test -- test/api.test.ts test/scoring.test.ts"
+  - id: e04s04
+    title: Frontend parity — compare-6 shareable URL, models page, model detail, pricing, vs, theme, SEO/JSON-LD, cadence footer
+    status: pending
+    points: 8
+    verify: "npm run build && npx playwright test (dashboard-smoke + compare/pricing/model pages)"
+  - id: e04s05
+    title: Deploy + validate — migrations, preflight green, deploy, Playwright indepth, UAT spec
+    status: pending
+    points: 3
+    verify: "npm test && npm run typecheck && npm run lint && npm run deploy && node test/e2e/dashboard-smoke.mjs"
+enhancements_over_tokendyno:
+  - 19 free providers (OpenRouter + Groq + Cerebras + Gemini + Nvidia + SambaNova + Mistral + Agnes + AionLabs + KiloCode + GLHF + NScale + Speka + NexaAPI + OrcaRouter + NineRouter + TokenRouter + Ollama + Zen) vs their 3 (Ollama/Zen/Go)
+  - Dual probes: coding (4092t, quality signal) + speed (300t, TokenDyno-comparable) vs their speed-only
+  - 7d/24h/1h windows + 10m granularity vs their 24h-only reliability
+  - Pricing coverage for all 19 providers, not just Ollama/Go/Zen
+  - Overall scoring profiles (balanced/speed/reliability) beyond raw TPS sort
+non_goals:
+  - Paid-model benchmarking (verifyFree gate stays; Go subscription models benchmarked only where free/credentialed)
+  - Response-body storage (never stored; preview/debug ephemeral only)
+  - Vendor capability scoring (AA index displayed via link, never self-scored)
