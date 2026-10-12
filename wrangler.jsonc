@@ -4,6 +4,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
+  // URL-001 step 5: the public host is the Pages project (modelpulsex.pages.dev),
+  // which reaches this Worker over a service binding. Disabling the workers.dev
+  // route removes the Cloudflare account subdomain from the public URL entirely —
+  // modelpulsex.vipulgote5.workers.dev no longer resolves.
+  // Rollback: delete this line and redeploy.
+  // The `assets` block below is now unreachable (it only served that route); it is
+  // left in place so rollback is a one-line revert. Pages owns the frontend.
+  "workers_dev": false,
   "assets": {
     "directory": "./dist/frontend",
     "not_found_handling": "single-page-application"
@@ -50,7 +58,10 @@
     "MAX_NINEROUTER_CONCURRENCY": "2",
     "MAX_TOKENROUTER_CONCURRENCY": "3",
     "MAX_OLLAMA_CONCURRENCY": "2",
+    "MAX_OLLAMA_PRO_CONCURRENCY": "2",
+    "MAX_OPENCODE_GO_CONCURRENCY": "2",
     "MAX_SAME_MODEL_CONCURRENCY": "1",
+    "SPEED_PROBE_TAKE": "3",
     "AUTO_DISABLE_MAX_DAILY_FAILURES": "10",
     "INCIDENT_THRESHOLD": "3",
     "STALE_ALERT_MINUTES": "30"
@@ -78,5 +89,7 @@
   // wrangler secret put NINEROUTER_API_KEY
   // wrangler secret put TOKENROUTER_API_KEY
   // wrangler secret put OLLAMA_API_KEY
+  // wrangler secret put OLLAMA_PRO_API_KEY   (optional — Pro-tier catalog; falls back to OLLAMA_API_KEY)
+  // wrangler secret put OPENCODE_GO_API_KEY   (optional — Go subscription catalog; without it Go discovery is idle)
   // wrangler secret put ADMIN_TOKEN
 }
