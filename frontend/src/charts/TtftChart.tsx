@@ -70,15 +70,15 @@ export default function TtftChart({
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#a1a1aa" }} />
+            <CartesianGrid stroke="#71717a" strokeDasharray="3 3" />
+            <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#71717a" }} />
             <YAxis
-              tick={{ fontSize: 11, fill: "#a1a1aa" }}
+              tick={{ fontSize: 11, fill: "#71717a" }}
               label={{
                 value: "TTFT ms",
                 angle: -90,
                 position: "insideLeft",
-                fill: "#a1a1aa",
+                fill: "#71717a",
               }}
             />
             <Tooltip

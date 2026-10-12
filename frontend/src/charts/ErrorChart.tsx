@@ -8,15 +8,15 @@ export default function ErrorChart({ series }: { series: Array<{ hour: string; T
       <div className="h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={series}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="hour" tick={{ fontSize: 11, fill: "#a1a1aa" }} />
-            <YAxis tick={{ fontSize: 11, fill: "#a1a1aa" }} />
+            <CartesianGrid stroke="#71717a" strokeDasharray="3 3" />
+            <XAxis dataKey="hour" tick={{ fontSize: 11, fill: "#71717a" }} />
+            <YAxis tick={{ fontSize: 11, fill: "#71717a" }} />
             <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46" }} />
             <Legend />
             <Bar dataKey="TIMEOUT" stackId="e" fill="#fbbf24" />
             <Bar dataKey="RATE_LIMITED" stackId="e" fill="#fb923c" />
             <Bar dataKey="PROVIDER_ERROR" stackId="e" fill="#fb7185" />
-            <Bar dataKey="MODEL_UNAVAILABLE" stackId="e" fill="#a1a1aa" />
+            <Bar dataKey="MODEL_UNAVAILABLE" stackId="e" fill="#71717a" />
             <Bar dataKey="STREAM_ERROR" stackId="e" fill="#a78bfa" />
           </BarChart>
         </ResponsiveContainer>

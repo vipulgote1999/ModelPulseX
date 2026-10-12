@@ -196,19 +196,19 @@ export default function TimeoutChart({ range }: { range: string }) {
         <div className="h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows}>
-              <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+              <CartesianGrid stroke="#71717a" strokeDasharray="3 3" />
               <XAxis
                 dataKey="bucket"
-                tick={{ fontSize: 11, fill: "#a1a1aa" }}
+                tick={{ fontSize: 11, fill: "#71717a" }}
                 interval="preserveStartEnd"
               />
               <YAxis
-                tick={{ fontSize: 11, fill: "#a1a1aa" }}
+                tick={{ fontSize: 11, fill: "#71717a" }}
                 label={{
                   value: "refusals",
                   angle: -90,
                   position: "insideLeft",
-                  fill: "#a1a1aa",
+                  fill: "#71717a",
                 }}
                 allowDecimals={false}
               />

@@ -35,3 +35,82 @@
 /* fonts loaded via preconnect in index.html, fallback system stack */
 body { background:#0a0a0f; color:#e8e8ef; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
 .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
+/* Light theme (e04s04 TokenDyno parity): data-theme="light" flips the zinc
+   surfaces/text/borders plus status pills to light values. Dark is the default
+   (no attribute). Charts use mid-tone neutrals that read on both themes.
+   Solid brand fills (violet/emerald-600 with white text) are untouched.
+   Revert: delete this block plus the Header toggle (dark stays default). */
+[data-theme="light"] { color-scheme: light; }
+[data-theme="light"] body { background: #f4f4f5; }
+[data-theme="light"] body { color: #18181b; }
+[data-theme="light"] .bg-\[\#0a0a0f\] { background-color: #ffffff; }
+[data-theme="light"] .bg-\[\#0a0a0f\]\/80 { background-color: rgba(255,255,255,.85); }
+[data-theme="light"] .bg-zinc-950 { background-color: #fafafa; }
+[data-theme="light"] .bg-zinc-950\/50 { background-color: #fafafa; }
+[data-theme="light"] .bg-zinc-950\/60 { background-color: #fafafa; }
+[data-theme="light"] .bg-zinc-900 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/20 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/30 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/40 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/50 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/60 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/80 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-900\/90 { background-color: #ffffff; }
+[data-theme="light"] .bg-zinc-800 { background-color: #e4e4e7; }
+[data-theme="light"] .bg-zinc-800\/40 { background-color: #e4e4e7; }
+[data-theme="light"] .bg-zinc-800\/60 { background-color: #e4e4e7; }
+[data-theme="light"] .bg-zinc-700 { background-color: #d4d4d8; }
+[data-theme="light"] .bg-emerald-900\/30 { background-color: #d1fae5; }
+[data-theme="light"] .bg-emerald-900\/40 { background-color: #d1fae5; }
+[data-theme="light"] .bg-emerald-950\/30 { background-color: #ecfdf5; }
+[data-theme="light"] .bg-cyan-900\/30 { background-color: #cffafe; }
+[data-theme="light"] .bg-violet-950\/40 { background-color: #ede9fe; }
+[data-theme="light"] .bg-amber-900\/30 { background-color: #fef3c7; }
+[data-theme="light"] .bg-amber-900\/40 { background-color: #fef3c7; }
+[data-theme="light"] .bg-amber-950\/20 { background-color: #fffbeb; }
+[data-theme="light"] .bg-amber-950\/30 { background-color: #fffbeb; }
+[data-theme="light"] .bg-amber-950\/40 { background-color: #fffbeb; }
+[data-theme="light"] .text-zinc-100 { color: #18181b; }
+[data-theme="light"] .text-zinc-200 { color: #27272a; }
+[data-theme="light"] .text-zinc-300 { color: #3f3f46; }
+[data-theme="light"] .text-zinc-400 { color: #52525b; }
+[data-theme="light"] .text-zinc-500 { color: #71717a; }
+[data-theme="light"] .text-zinc-600 { color: #a1a1aa; }
+[data-theme="light"] .text-emerald-200 { color: #065f46; }
+[data-theme="light"] .text-emerald-300 { color: #047857; }
+[data-theme="light"] .text-emerald-400 { color: #059669; }
+[data-theme="light"] .text-violet-200 { color: #5b21b6; }
+[data-theme="light"] .text-violet-300 { color: #6d28d9; }
+[data-theme="light"] .text-cyan-300 { color: #0e7490; }
+[data-theme="light"] .text-amber-200 { color: #92400e; }
+[data-theme="light"] .text-amber-300 { color: #b45309; }
+[data-theme="light"] .text-rose-300 { color: #be123c; }
+[data-theme="light"] .border-zinc-800 { border-color: #e4e4e7; }
+[data-theme="light"] .border-zinc-700 { border-color: #d4d4d8; }
+[data-theme="light"] .border-zinc-500 { border-color: #a1a1aa; }
+[data-theme="light"] .border-emerald-800 { border-color: #a7f3d0; }
+[data-theme="light"] .border-violet-800 { border-color: #ddd6fe; }
+[data-theme="light"] .border-cyan-800 { border-color: #a5f3fc; }
+[data-theme="light"] .border-amber-800 { border-color: #fde68a; }
+[data-theme="light"] .text-white { color: #18181b; }
+[data-theme="light"] .bg-violet-600.text-white { color: #ffffff; }
+[data-theme="light"] .bg-violet-500.text-white { color: #ffffff; }
+[data-theme="light"] .bg-emerald-600.text-white { color: #ffffff; }
+[data-theme="light"] .bg-emerald-500.text-white { color: #ffffff; }
+[data-theme="light"] .bg-zinc-600 { background-color: #a1a1aa; }
+[data-theme="light"] .bg-rose-900\/30 { background-color: #ffe4e6; }
+[data-theme="light"] .bg-rose-900\/40 { background-color: #ffe4e6; }
+[data-theme="light"] .bg-rose-900\/60 { background-color: #fecdd3; }
+[data-theme="light"] .border-rose-800 { border-color: #fecdd3; }
+[data-theme="light"] .bg-violet-900\/30 { background-color: #ede9fe; }
+[data-theme="light"] .bg-violet-900\/40 { background-color: #ede9fe; }
+[data-theme="light"] .bg-violet-900\/60 { background-color: #ddd6fe; }
+[data-theme="light"] .bg-violet-950\/30 { background-color: #ede9fe; }
+[data-theme="light"] .bg-violet-950\/60 { background-color: #ede9fe; }
+[data-theme="light"] .bg-violet-600\/30 { background-color: #ede9fe; }
+[data-theme="light"] .bg-cyan-950\/20 { background-color: #cffafe; }
+[data-theme="light"] .bg-emerald-900\/50 { background-color: #d1fae5; }
+[data-theme="light"] .bg-emerald-900\/60 { background-color: #a7f3d0; }
+[data-theme="light"] .bg-emerald-950\/20 { background-color: #ecfdf5; }
+[data-theme="light"] .bg-emerald-950\/40 { background-color: #ecfdf5; }
+

@@ -97,21 +97,21 @@ export default function TpsChart({
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+            <CartesianGrid stroke="#71717a" strokeDasharray="3 3" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 11, fill: "#a1a1aa" }}
+              tick={{ fontSize: 11, fill: "#71717a" }}
               interval="preserveStartEnd"
             />
             <YAxis
-              tick={{ fontSize: 11, fill: "#a1a1aa" }}
+              tick={{ fontSize: 11, fill: "#71717a" }}
               scale={log ? "log" : "linear"}
               domain={log ? ["auto", "auto"] : [0, "auto"]}
               label={{
                 value: "TPS",
                 angle: -90,
                 position: "insideLeft",
-                fill: "#a1a1aa",
+                fill: "#71717a",
               }}
             />
             <Tooltip
