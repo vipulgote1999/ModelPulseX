@@ -4,7 +4,9 @@ import {
   freeHardFilterWhere,
   ACCEPTED_FILTER_GAPS,
   PROVIDER_REGISTRY,
+  tierIntervalMsFor,
 } from "../src/providers/registry";
+import { SLOW_CADENCE_CAPABILITY } from "../src/providers/opencode-go";
 
 /** Issue #16: `freeHardFilter` is the defence-in-depth layer that hides polluted
  *  (paid/unknown) rows from a FREE leaderboard, but only 3 of 19 descriptors declared
@@ -43,6 +45,16 @@ describe("hard free-filter coverage (issue #16)", () => {
   it("at least 8 providers now declare a hard filter (was 3 before #16)", () => {
     const filtered = PROVIDER_REGISTRY.length - providersWithoutHardFilter().length;
     expect(filtered).toBeGreaterThanOrEqual(8);
+  });
+
+  it("tier cadence resolves per provider with slow-cadence stretch (e04s02)", () => {
+    expect(tierIntervalMsFor("opencode_go", undefined)).toBe(30 * 60_000);
+    expect(tierIntervalMsFor("opencode_go", [SLOW_CADENCE_CAPABILITY])).toBe(360 * 60_000);
+    expect(tierIntervalMsFor("ollama_pro", undefined)).toBe(10 * 60_000);
+    expect(tierIntervalMsFor("ollama", undefined)).toBe(60 * 60_000);
+    expect(tierIntervalMsFor("opencode_zen", undefined)).toBe(60 * 60_000);
+    expect(tierIntervalMsFor("groq", undefined)).toBe(0);
+    expect(tierIntervalMsFor("does_not_exist", undefined)).toBe(0);
   });
 
   it("freeHardFilterWhere guards each filtered provider by name and skips the gaps", () => {

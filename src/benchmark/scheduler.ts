@@ -17,13 +17,14 @@ import {
 } from "../utils/concurrency";
 import {
   selectJobs,
+  withUsageOffset,
   type QueueJob,
   type SelectableModel,
 } from "../utils/scheduler-select";
 import type { BenchmarkType, Env, ProviderName } from "../types";
 import { WORKLOADS } from "./workloads";
 import { providerFor } from "../providers/index";
-import { freeHardFilterWhere } from "../providers/registry";
+import { freeHardFilterWhere, tierIntervalMsFor } from "../providers/registry";
 import {
   setProviderCooldown,
   setModelCooldown,
@@ -143,6 +144,7 @@ export async function scheduleBenchmarks(
   inlineRan: number;
   skippedCooldown: number;
   skippedRPM: number;
+  skippedCadence: number;
   selected: number;
 }> {
   // SAFETY: Env carries provider config as string-typed vars plus an index signature;
@@ -155,7 +157,9 @@ export async function scheduleBenchmarks(
   // (or overruns), the health payload still shows when it began (issue #26).
   const tickStartMs = Date.now();
   await recordScheduleStart(env.DB, tickStartMs);
-  // Single-prompt observatory: no rotation — every cycle benchmarks coding.
+  // Dual-probe observatory (e04s02): every cycle benchmarks coding (primary
+  // quality signal) plus a small speed-probe rotation (TokenDyno-comparable
+  // 300-token throughput probe) selected below.
   const chosenType: BenchmarkType = "coding";
 
   // Smart rotation: order models by least-recently-benchmarked (LRU) so we hit different models each cycle.
@@ -166,7 +170,7 @@ export async function scheduleBenchmarks(
   let active: { results?: SelectableModel[] };
   try {
     active = await env.DB.prepare(
-      `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, m.last_benchmark_at as last_benchmark
+      `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, m.last_benchmark_at as last_benchmark, m.capabilities
        FROM models m JOIN providers p ON p.id=m.provider_id
        WHERE m.active=1 AND COALESCE(m.benchmark_enabled,1)=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
        ORDER BY m.last_benchmark_at ASC NULLS FIRST, p.name, m.display_name`,
@@ -179,7 +183,7 @@ export async function scheduleBenchmarks(
       msg.includes("no such column")
     ) {
       active = await env.DB.prepare(
-        `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, MAX(br.started_at) as last_benchmark
+        `SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, m.capabilities, MAX(br.started_at) as last_benchmark
          FROM models m JOIN providers p ON p.id=m.provider_id
          LEFT JOIN benchmark_runs br ON br.model_id=m.id
          WHERE m.active=1 AND m.free_status='FREE'${freeHardFilterWhere("p", "m")}
@@ -228,7 +232,7 @@ export async function scheduleBenchmarks(
     (modelCooldowns.results ?? []).map((r) => r.model_id),
   );
 
-  const { jobs, skippedCooldown, skippedRPM } = selectJobs(
+  const { jobs, skippedCooldown, skippedRPM, skippedCadence } = selectJobs(
     active.results ?? [],
     {
       maxGlobal: concurrency.maxGlobal,
@@ -238,9 +242,55 @@ export async function scheduleBenchmarks(
       modelCooldowns: modelCooldownSet,
       rpmUsage,
       benchmarkType: chosenType,
+      nowMs: Date.now(),
+      tierIntervalMsFor,
     },
   );
 
+  // Speed-probe rotation (e04s02 TokenDyno parity): a small second pass each
+  // tick benchmarks the TokenDyno-identical 300-token speed probe on the
+  // least-recently-speed-tested models. Per-type last-run comes from
+  // last_now_json (migration 0012); pre-0012 DBs skip speed probes here.
+  // Models-only scan (~150 rows, no benchmark_runs touch) like the coding pass.
+  const rawTake = env.SPEED_PROBE_TAKE;
+  const speedTake =
+    rawTake == null || rawTake === "" ? 3 : Math.max(0, Math.floor(Number(rawTake) || 0));
+  let speedJobs: QueueJob[] = [];
+  let speedSkippedCooldown = 0;
+  let speedSkippedRPM = 0;
+  let speedSkippedCadence = 0;
+  if (speedTake > 0) {
+    try {
+      const speedRows = await env.DB.prepare(
+        "SELECT m.id, m.display_name, m.provider_model_id, p.name as provider, m.capabilities, " +
+        "json_extract(m.last_now_json, '$.speed.at') as last_benchmark " +
+        "FROM models m JOIN providers p ON p.id=m.provider_id " +
+        "WHERE m.active=1 AND COALESCE(m.benchmark_enabled,1)=1 AND m.free_status='FREE'" +
+        freeHardFilterWhere("p", "m") +
+        " ORDER BY last_benchmark ASC NULLS FIRST, p.name, m.display_name",
+      ).all<SelectableModel>();
+      const codingTaken = new Map<string, number>();
+      for (const j of jobs) codingTaken.set(j.provider, (codingTaken.get(j.provider) ?? 0) + 1);
+      const speedSel = selectJobs(speedRows.results ?? [], {
+        maxGlobal: speedTake,
+        capFor: (p) => Math.max(0, capFor(p, concurrency) - (codingTaken.get(p) ?? 0)),
+        rpmLimitFor: (p) => rpmForProvider(p, rpmConfig),
+        providerCooldowns: providerCooldownSet,
+        modelCooldowns: modelCooldownSet,
+        rpmUsage: withUsageOffset(rpmUsage, jobs),
+        benchmarkType: "speed",
+        nowMs: Date.now(),
+        tierIntervalMsFor,
+      });
+      speedJobs = speedSel.jobs;
+      speedSkippedCooldown = speedSel.skippedCooldown;
+      speedSkippedRPM = speedSel.skippedRPM;
+      speedSkippedCadence = speedSel.skippedCadence;
+    } catch (e) {
+      console.warn("speed probe selection skipped", e);
+    }
+  }
+  const allJobs = [...jobs, ...speedJobs];
   // Inline fallback: execute the first N selected jobs inside this cron invocation so
   // baseline coverage survives even if queue delivery stalls (observed in prod Aug 2025).
   // Bounded by INLINE_BUDGET_MS so the tick cannot overrun the 5-minute interval.
@@ -248,12 +298,12 @@ export async function scheduleBenchmarks(
   // last_schedule_at at 01:51 UTC while last_schedule_started_at kept advancing —
   // the completed-tick write was skipped whenever the tick threw before reaching
   // it, so /api/health reported a frozen scheduler with zero error signal.
-  const inlineTake = Math.max(0, Math.min(opts.inlineTake ?? 0, jobs.length));
+  const inlineTake = Math.max(0, Math.min(opts.inlineTake ?? 0, allJobs.length));
   let inlineRan = 0;
   let enqueued = 0;
   try {
     const { ran, rest } = await runInlineBounded(
-      jobs,
+      allJobs,
       inlineTake,
       INLINE_BUDGET_MS,
       (job) => handleBenchJob(env, job),
@@ -289,8 +339,8 @@ export async function scheduleBenchmarks(
       {
         enqueueCount: enqueued,
         inlineCount: inlineRan,
-        skippedCooldown,
-        skippedRpm: skippedRPM,
+        skippedCooldown: skippedCooldown + speedSkippedCooldown,
+        skippedRpm: skippedRPM + speedSkippedRPM,
       },
       tickStartMs,
     );
@@ -299,9 +349,10 @@ export async function scheduleBenchmarks(
   return {
     enqueued,
     inlineRan,
-    skippedCooldown,
-    skippedRPM,
-    selected: jobs.length,
+    skippedCooldown: skippedCooldown + speedSkippedCooldown,
+    skippedRPM: skippedRPM + speedSkippedRPM,
+    skippedCadence: skippedCadence + speedSkippedCadence,
+    selected: allJobs.length,
   };
 }
 

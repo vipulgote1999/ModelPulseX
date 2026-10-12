@@ -22,7 +22,7 @@ import { OrcaRouterProvider } from "./orcarouter";
 import { NineRouterProvider } from "./ninerouter";
 import { TokenRouterProvider } from "./tokenrouter";
 import { OllamaProvider } from "./ollama";
-import { OpenCodeGoProvider } from "./opencode-go";
+import { OpenCodeGoProvider, SLOW_CADENCE_CAPABILITY } from "./opencode-go";
 
 /** Verified free Ollama models — everything else on the public instance requires a subscription.
  *  Shared between the hard filter (queries) and the one-shot data fix. */
@@ -331,6 +331,16 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     freeTier: { notes: "subscription $10/mo Go / $40/mo Go Plus; per-model monthly dollar limits; only -free ids are free" },
   },
 ];
+
+/** Per-tier min-interval cadence in ms (e04s02 TokenDyno parity): registry
+ *  cadenceMinutes per provider; the slow-cadence capability (priciest Go
+ *  models) stretches to 360m. Zero = LRU-only (existing behavior). */
+export function tierIntervalMsFor(provider: string, capabilities: string[] | undefined): number {
+  const minutes = PROVIDER_REGISTRY.find((d) => d.name === provider)?.cadenceMinutes ?? 0;
+  if (minutes <= 0) return 0;
+  if (capabilities?.includes(SLOW_CADENCE_CAPABILITY)) return 360 * 60_000;
+  return minutes * 60_000;
+}
 
 export function freeTierFor(name: string): ProviderDescriptor["freeTier"] | null {
   return PROVIDER_REGISTRY.find((d) => d.name === name)?.freeTier ?? null;

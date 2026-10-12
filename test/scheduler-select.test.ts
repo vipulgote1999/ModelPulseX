@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { selectJobs, type SelectableModel, type SelectionConfig } from "../src/utils/scheduler-select";
+import { selectJobs, withUsageOffset, normalizeCapabilities, type SelectableModel, type SelectionConfig } from "../src/utils/scheduler-select";
 
-function model(id: number, provider: string, last: string | null): SelectableModel {
-  return { id, display_name: `m${id}`, provider_model_id: `pm${id}`, provider, last_benchmark: last };
+function model(id: number, provider: string, last: string | null, caps?: string[] | string | null): SelectableModel {
+  return { id, display_name: `m${id}`, provider_model_id: `pm${id}`, provider, last_benchmark: last, capabilities: caps ?? null };
 }
 
 function cfg(overrides: Partial<SelectionConfig> = {}): SelectionConfig {
@@ -14,6 +14,8 @@ function cfg(overrides: Partial<SelectionConfig> = {}): SelectionConfig {
     modelCooldowns: new Set(),
     rpmUsage: new Map(),
     benchmarkType: "short",
+    nowMs: 1_000_000_000_000,
+    tierIntervalMsFor: () => 0,
     ...overrides,
   };
 }
@@ -81,5 +83,64 @@ describe("scheduler-select — pure job selection", () => {
     const models = Array.from({ length: 10 }, (_, i) => model(i + 1, "groq", null));
     const r = selectJobs(models, cfg({ maxGlobal: 3 }));
     expect(r.jobs).toHaveLength(3);
+  });
+
+  it("skips models benchmarked within their tier interval (counts skippedCadence)", () => {
+    const now = Date.parse("2026-10-12T13:00:00Z");
+    const fresh = "2026-10-12T12:50:00Z"; // 10m ago
+    const stale = "2026-10-12T10:00:00Z"; // 3h ago
+    const models = [model(1, "opencode_go", fresh), model(2, "opencode_go", stale), model(3, "opencode_go", null)];
+    const r = selectJobs(models, cfg({ nowMs: now, tierIntervalMsFor: () => 30 * 60_000 }));
+    expect(r.jobs.map((j) => j.model_id)).toEqual([3, 2]);
+    expect(r.skippedCadence).toBe(1);
+  });
+
+  it("honors slow-cadence capability via the interval callback", () => {
+    const now = Date.parse("2026-10-12T13:00:00Z");
+    const hourAgo = "2026-10-12T12:00:00Z";
+    const models = [
+      model(1, "opencode_go", hourAgo, ["text", "slow-cadence"]),
+      model(2, "opencode_go", hourAgo, ["text"]),
+    ];
+    const r = selectJobs(models, cfg({
+      nowMs: now,
+      tierIntervalMsFor: (_p, caps) => (caps?.includes("slow-cadence") ? 360 * 60_000 : 30 * 60_000),
+    }));
+    expect(r.jobs.map((j) => j.model_id)).toEqual([2]);
+    expect(r.skippedCadence).toBe(1);
+  });
+
+  it("parses D1 JSON-TEXT capabilities for cadence resolution", () => {
+    const now = Date.parse("2026-10-12T13:00:00Z");
+    const hourAgo = "2026-10-12T12:00:00Z";
+    const models = [model(1, "opencode_go", hourAgo, JSON.stringify(["text", "slow-cadence"]))];
+    const r = selectJobs(models, cfg({
+      nowMs: now,
+      tierIntervalMsFor: (_p, caps) => (caps?.includes("slow-cadence") ? 360 * 60_000 : 30 * 60_000),
+    }));
+    expect(r.jobs).toHaveLength(0);
+    expect(r.skippedCadence).toBe(1);
+  });
+
+  it("never skips on unparseable timestamps", () => {
+    const r = selectJobs(
+      [{ ...model(1, "groq", null), last_benchmark: "not-a-date" }],
+      cfg({ nowMs: 1_000_000_000_000, tierIntervalMsFor: () => 60_000 }),
+    );
+    expect(r.jobs).toHaveLength(1);
+    expect(r.skippedCadence).toBe(0);
+  });
+
+  it("withUsageOffset deducts taken jobs from the budget", () => {
+    const usage = withUsageOffset(new Map([["groq", 1]]), [{ provider: "groq" }, { provider: "openrouter" }]);
+    expect(usage.get("groq")).toBe(2);
+    expect(usage.get("openrouter")).toBe(1);
+  });
+
+  it("normalizeCapabilities handles arrays, JSON text, and junk", () => {
+    expect(normalizeCapabilities(["a", "b"])).toEqual(["a", "b"]);
+    expect(normalizeCapabilities(JSON.stringify(["slow-cadence"]))).toEqual(["slow-cadence"]);
+    expect(normalizeCapabilities(null)).toBeUndefined();
+    expect(normalizeCapabilities("{oops")).toBeUndefined();
   });
 });

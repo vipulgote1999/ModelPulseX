@@ -111,6 +111,10 @@ describe("runInlineBounded (issue #26)", () => {
             return stmt;
           },
           all: async () => {
+            // Speed-probe pass (e04s02) issues its own models scan keyed on
+            // last_now_json: this fixture models a tick with no speed-eligible
+            // rows so the heartbeat regression keeps its single-job shape.
+            if (sql.includes("last_now_json")) return { results: [] };
             if (sql.includes("FROM models")) {
               return {
                 results: [
@@ -165,6 +169,62 @@ describe("runInlineBounded (issue #26)", () => {
       skippedCooldown: 0,
       skippedRpm: 0,
     });
+  });
+
+  it("selects speed-probe jobs alongside coding jobs with shared budgets (e04s02)", async () => {
+    const { scheduleBenchmarks } = await import("../src/benchmark/scheduler");
+    const queued: Array<{ model_id: number; benchmark_type: string; provider: string }> = [];
+    const fakeDb = {
+      prepare(sql: string) {
+        const stmt = {
+          bind(..._args: unknown[]) {
+            return stmt;
+          },
+          all: async () => {
+            if (sql.includes("last_now_json")) {
+              return {
+                results: [
+                  { id: 2, display_name: "m2", provider_model_id: "m2", provider: "groq", last_benchmark: null, capabilities: '["text"]' },
+                ],
+              };
+            }
+            if (sql.includes("FROM models")) {
+              return {
+                results: [
+                  { id: 1, display_name: "m1", provider_model_id: "m1", provider: "groq", last_benchmark: null, capabilities: '["text"]' },
+                ],
+              };
+            }
+            if (sql.includes("provider_cooldowns")) return { results: [] };
+            if (sql.includes("model_cooldowns")) return { results: [] };
+            if (sql.includes("FROM benchmark_runs")) return { results: [], meta: { rows_read: 0 } };
+            return { results: [] };
+          },
+          first: async () => {
+            if (sql.includes("RETURNING rows_read")) return { rows_read: 0 };
+            return null;
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+        };
+        return stmt;
+      },
+    };
+    const env = {
+      DB: fakeDb,
+      BENCH_QUEUE: {
+        sendBatch: async (batch: Array<{ body: { model_id: number; benchmark_type: string; provider: string } }>) => {
+          for (const m of batch) queued.push(m.body);
+        },
+      },
+      MAX_GLOBAL_CONCURRENCY: "40",
+      SPEED_PROBE_TAKE: "1",
+    };
+    const res = await scheduleBenchmarks(env as never, { inlineTake: 0 });
+    expect(res.selected).toBe(2);
+    expect(queued).toHaveLength(2);
+    const byId = new Map(queued.map((q) => [q.model_id, q.benchmark_type]));
+    expect(byId.get(1)).toBe("coding");
+    expect(byId.get(2)).toBe("speed");
   });
 
   it("never loses a job: ran + rest always accounts for the input", async () => {

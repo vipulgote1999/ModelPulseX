@@ -12,6 +12,8 @@ export interface SelectableModel {
   provider_model_id: string;
   provider: string;
   last_benchmark: string | null;
+  /** Model capability tags (D1 stores JSON TEXT; tests pass arrays). Normalized by normalizeCapabilities. */
+  capabilities?: string[] | string | null;
 }
 
 export interface QueueJob {
@@ -33,18 +35,54 @@ export interface SelectionConfig {
   /** Provider → benchmark runs started in the current RPM window. */
   rpmUsage: ReadonlyMap<string, number>;
   benchmarkType: string;
+  /** Tick wall-clock (ms) for tier-cadence age computation. */
+  nowMs: number;
+  /** Min ms between two benchmark runs of one model (0 = LRU-only, no min interval). */
+  tierIntervalMsFor(provider: string, capabilities: string[] | undefined): number;
 }
 
 export interface SelectionResult {
   jobs: QueueJob[];
   skippedCooldown: number;
   skippedRPM: number;
+  skippedCadence: number;
+}
+
+/** Normalize the models.capabilities column (JSON TEXT in D1, array in tests)
+ *  to a string array for tier-cadence resolution. Unparseable or absent
+ *  yields undefined (no capability-based cadence). */
+export function normalizeCapabilities(caps: unknown): string[] | undefined {
+  if (Array.isArray(caps))
+    return caps.filter((c): c is string => typeof c === "string");
+  if (typeof caps === "string") {
+    try {
+      const v: unknown = JSON.parse(caps);
+      if (Array.isArray(v))
+        return v.filter((c): c is string => typeof c === "string");
+    } catch {
+      // fall through to undefined
+    }
+  }
+  return undefined;
+}
+
+/** Offset an RPM usage snapshot by already-selected jobs (pure). Lets a second
+ *  selection pass (e.g. speed probes after coding jobs) spend from the same
+ *  per-provider budget instead of double-spending it. */
+export function withUsageOffset(
+  usage: ReadonlyMap<string, number>,
+  jobs: Pick<QueueJob, "provider">[],
+): Map<string, number> {
+  const out = new Map<string, number>(usage);
+  for (const j of jobs) out.set(j.provider, (out.get(j.provider) ?? 0) + 1);
+  return out;
 }
 
 export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): SelectionResult {
   const grouped = new Map<string, SelectableModel[]>();
   let skippedCooldown = 0;
   let skippedRPM = 0;
+  let skippedCadence = 0;
 
   for (const r of models) {
     if (cfg.providerCooldowns.has(r.provider)) {
@@ -59,6 +97,20 @@ export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): Sel
     if (used >= cfg.rpmLimitFor(r.provider)) {
       skippedRPM++;
       continue;
+    }
+    // Per-tier min-interval cadence (e04s02 TokenDyno parity): a model
+    // benchmarked more recently than its provider tier allows is skipped for
+    // this tick. Unparseable timestamps are treated as stale (never skip) —
+    // a corrupt clock must not starve a model. Zero interval = LRU-only.
+    if (r.last_benchmark != null) {
+      const interval = cfg.tierIntervalMsFor(r.provider, normalizeCapabilities(r.capabilities));
+      if (interval > 0) {
+        const t = Date.parse(r.last_benchmark);
+        if (Number.isFinite(t) && cfg.nowMs - t < interval) {
+          skippedCadence++;
+          continue;
+        }
+      }
     }
     const arr = grouped.get(r.provider);
     if (arr) arr.push(r);
@@ -143,5 +195,5 @@ export function selectJobs(models: SelectableModel[], cfg: SelectionConfig): Sel
     if (global >= effectiveGlobal) break;
   }
 
-  return { jobs, skippedCooldown, skippedRPM };
+  return { jobs, skippedCooldown, skippedRPM, skippedCadence };
 }
