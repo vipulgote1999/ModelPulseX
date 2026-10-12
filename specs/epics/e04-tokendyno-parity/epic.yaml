@@ -14,12 +14,12 @@ goal: >
 stories:
   - id: e04s01
     title: Hybrid TPS + fresh-session anti-cache + speed-probe workload (+migration 0016)
-    status: in_progress
+    status: completed
     points: 5
     verify: "npm test -- test/metrics.test.ts test/benchmark.test.ts test/workloads.test.ts && npm run typecheck"
   - id: e04s02
     title: Providers — opencode-go adapter + ollama pro/free tiers + per-tier cadence + muse-spark reasoning minimal
-    status: pending
+    status: completed
     points: 8
     verify: "npm test -- test/discovery.test.ts test/provider-registry.test.ts test/scheduler-select.test.ts"
   - id: e04s03

@@ -24,8 +24,8 @@ epics:
   e04:
     status: in_progress
     stories:
-      e04s01: in_progress
-      e04s02: pending
+      e04s01: completed
+      e04s02: completed
       e04s03: pending
       e04s04: pending
       e04s05: pending
