@@ -24,7 +24,7 @@ stories:
     verify: "npm test -- test/discovery.test.ts test/provider-registry.test.ts test/scheduler-select.test.ts"
   - id: e04s03
     title: Intelligence/thinking metadata — AA index expansion, thinking badges, 24h reliability columns, sparklines
-    status: pending
+    status: completed
     points: 5
     verify: "npm test -- test/api.test.ts test/scoring.test.ts"
   - id: e04s04
