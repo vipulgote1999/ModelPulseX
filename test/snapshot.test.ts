@@ -135,10 +135,10 @@ describe("buildSnapshotRows", () => {
       spark: [],
       nowIso: new Date().toISOString(),
     });
-    // 2 models × 2 benchmarks (all + coding)
-    expect(rows.length).toBe(4);
+    // 2 models × 3 benchmarks (all + coding + speed)
+    expect(rows.length).toBe(6);
     const b = rows.filter((r) => r.model_id === 2);
-    expect(b.length).toBe(2);
+    expect(b.length).toBe(3);
     expect(b.every((r) => r.tps_7d == null && r.uptime_7d == null)).toBe(true);
   });
 

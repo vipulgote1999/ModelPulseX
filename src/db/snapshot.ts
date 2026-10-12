@@ -2,7 +2,9 @@ import type { Env } from "../types";
 import { freeHardFilterWhere } from "../providers/registry";
 import { percentile, parseConcatNumbers, MIN_SAMPLES } from "../utils/metrics";
 
-export const SNAPSHOT_BENCHMARKS = ["all", "coding"] as const;
+// e04s02 speed probes get first-class snapshot rows (leaderboard speed view,
+// sparkline history, model pages). "all" merges every concrete type below.
+export const SNAPSHOT_BENCHMARKS = ["all", "coding", "speed"] as const;
 
 export interface SnapshotMeta {
   id: number;
