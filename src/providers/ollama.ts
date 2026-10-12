@@ -43,22 +43,34 @@ const FALLBACK = [
   },
 ];
 
+export type OllamaTier = "free" | "pro";
+
 export class OllamaProvider implements LLMProvider {
-  constructor(private env: Env) {}
+  constructor(
+    private env: Env,
+    private tier: OllamaTier = "free",
+  ) {}
   getProviderName() {
-    return "ollama" as const;
+    return this.tier === "pro" ? ("ollama_pro" as const) : ("ollama" as const);
+  }
+
+  private apiKey(): string | undefined {
+    // Pro tier prefers its own key and falls back to the shared Ollama key;
+    // paid models without any usable key simply fail closed via cooldowns.
+    return this.tier === "pro"
+      ? (this.env.OLLAMA_PRO_API_KEY ?? this.env.OLLAMA_API_KEY)
+      : this.env.OLLAMA_API_KEY;
   }
 
   async discoverModels(): Promise<ModelMetadata[]> {
     try {
       assertSafeApiUrl(MODELS_URL);
 
+      const apiKey = this.apiKey();
       const res = await fetch(MODELS_URL, {
-        headers: this.env.OLLAMA_API_KEY
-          ? { authorization: `Bearer ${this.env.OLLAMA_API_KEY}` }
-          : {},
+        headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {},
       });
-      if (!res.ok) return this.fallback();
+      if (!res.ok) return this.tier === "pro" ? [] : this.fallback();
       const data = (await res.json()) as {
         data?: Array<{ id: string }>;
         models?: Array<{ name: string }>;
@@ -73,6 +85,7 @@ export class OllamaProvider implements LLMProvider {
         .map((m) => m.name)
         .filter(Boolean);
       const ids = idsRaw.length ? idsRaw : idsTags;
+      if (this.tier === "pro") return this.proCatalog(ids);
       if (ids.length === 0) return this.fallback();
       // Only benchmark verified free models — paid/subscription models would always return PROVIDER_ERROR and waste quota
       const freeIds = ids.filter((id) => FREE_OLLAMA_IDS.has(id));
@@ -89,8 +102,29 @@ export class OllamaProvider implements LLMProvider {
         free_status: "FREE" as const,
       }));
     } catch {
-      return this.fallback();
+      return this.tier === "pro" ? [] : this.fallback();
     }
+  }
+
+  // Pro tier: full catalog. Allowlist ids are FREE; everything else on the
+  // public instance requires a subscription (tested 2026-08-23), so it is
+  // marked PAID — stored for cross-tier comparison, never auto-queued
+  // (verifyFree gate + default-disabled provider).
+  private proCatalog(ids: string[]): ModelMetadata[] {
+    return ids.slice(0, 50).map((id) => {
+      const free = FREE_OLLAMA_IDS.has(id);
+      return {
+        provider: "ollama_pro" as const,
+        provider_model_id: id,
+        display_name: id,
+        context_length: 128000,
+        capabilities: ["text"],
+        input_price: free ? "0" : null,
+        output_price: free ? "0" : null,
+        is_free: free,
+        free_status: free ? ("FREE" as const) : ("PAID" as const),
+      };
+    });
   }
 
   private fallback(): ModelMetadata[] {
@@ -117,10 +151,10 @@ export class OllamaProvider implements LLMProvider {
     benchmark: BenchmarkDefinition,
   ): Promise<BenchmarkResult> {
     return measureBenchmark({
-      provider: "ollama",
+      provider: this.getProviderName(),
       providerModelId: model.provider_model_id,
       apiUrl: CHAT_URL,
-      apiKey: this.env.OLLAMA_API_KEY,
+      apiKey: this.apiKey(),
       benchmark,
     });
   }

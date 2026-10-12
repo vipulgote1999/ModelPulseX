@@ -21,6 +21,8 @@ export interface ConcurrencyConfig {
   maxNinerouter: number;
   maxTokenrouter: number;
   maxOllama: number;
+  maxOllamaPro: number;
+  maxOpencodeGo: number;
   maxSameModel: number;
 }
 
@@ -44,6 +46,8 @@ export interface RPMConfig {
   ninerouter: number;
   tokenrouter: number;
   ollama: number;
+  ollama_pro: number;
+  opencode_go: number;
   default: number;
 }
 
@@ -71,6 +75,8 @@ export function getConcurrency(
     maxNinerouter: Number(env.MAX_NINEROUTER_CONCURRENCY) || 2,
     maxTokenrouter: Number(env.MAX_TOKENROUTER_CONCURRENCY) || 3,
     maxOllama: Number(env.MAX_OLLAMA_CONCURRENCY) || 2,
+    maxOllamaPro: Number(env.MAX_OLLAMA_PRO_CONCURRENCY) || 2,
+    maxOpencodeGo: Number(env.MAX_OPENCODE_GO_CONCURRENCY) || 2,
     maxSameModel: Number(env.MAX_SAME_MODEL_CONCURRENCY) || 1,
   };
 }
@@ -105,6 +111,8 @@ export function getRPMConfig(env: Record<string, unknown>): RPMConfig {
     tokenrouter:
       Number(env.RPM_TOKENROUTER) || Number(env.MAX_TOKENROUTER_RPM) || 10,
     ollama: Number(env.RPM_OLLAMA) || Number(env.MAX_OLLAMA_RPM) || 10,
+    ollama_pro: Number(env.RPM_OLLAMA_PRO) || Number(env.MAX_OLLAMA_PRO_RPM) || 10,
+    opencode_go: Number(env.RPM_OPENCODE_GO) || Number(env.MAX_OPENCODE_GO_RPM) || 10,
     default: Number(env.RPM_DEFAULT) || 10,
   };
 }
@@ -147,6 +155,8 @@ const CONCURRENCY_KEYS: Record<string, keyof ConcurrencyConfig> = {
   ninerouter: "maxNinerouter",
   tokenrouter: "maxTokenrouter",
   ollama: "maxOllama",
+  ollama_pro: "maxOllamaPro",
+  opencode_go: "maxOpencodeGo",
 };
 
 /** Per-provider concurrency cap from config; unknown providers fall back to global/4 (min 2). */

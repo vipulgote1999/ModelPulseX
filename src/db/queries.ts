@@ -55,6 +55,8 @@ const DISABLED_PROVIDER_DEFAULT = new Set<string>([
   "ninerouter",
   // e04s02: subscription catalog (Go) is stored, never auto-queued — admin opts models in explicitly.
   "opencode_go",
+  // e04s02: Pro catalog is stored for cross-tier comparison, never auto-queued — admin opts models in explicitly.
+  "ollama_pro",
 ]);
 
 export async function upsertModel(

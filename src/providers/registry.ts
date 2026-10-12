@@ -79,6 +79,11 @@ export const PROVIDER_ENDPOINTS: Record<
     modelsUrl: "https://opencode.ai/zen/go/v1/models",
     chatUrl: "https://opencode.ai/zen/go/v1/chat/completions",
   },
+  ollama_pro: {
+    baseUrl: "https://ollama.com/v1",
+    modelsUrl: "https://ollama.com/v1/models",
+    chatUrl: "https://ollama.com/v1/chat/completions",
+  },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     modelsUrl: "https://openrouter.ai/api/v1/models",
@@ -312,6 +317,13 @@ export const PROVIDER_REGISTRY: ProviderDescriptor[] = [
     cadenceMinutes: 60,
   },
   {
+    name: "ollama_pro",
+    create: (e) => new OllamaProvider(e, "pro"),
+    ...PROVIDER_ENDPOINTS["ollama_pro"],
+    cadenceMinutes: 10,
+    freeTier: { notes: "Pro plan: full catalog; allowlist ids free, rest subscription-gated (PAID)" },
+  },
+  {
     name: "opencode_go",
     create: (e) => new OpenCodeGoProvider(e),
     ...PROVIDER_ENDPOINTS["opencode_go"],
@@ -361,6 +373,11 @@ export const ACCEPTED_FILTER_GAPS: Record<string, string> = {
     "by discovery (never guessed). A suffix-only SQL filter would hide future free " +
     "ids without the suffix. verifyFree() gates every queued job and the provider " +
     "is default-disabled (benchmark_enabled=0) until an admin opts a model in.",
+  ollama_pro:
+    "pro catalog: allowlist ids are FREE, the rest are subscription-gated PAID by " +
+    "discovery (never guessed). A hard allowlist filter would hide operator-enabled " +
+    "Pro models from public views. verifyFree() gates every queued job and the " +
+    "provider is default-disabled until an admin opts models in.",
 };
 
 /** Provider names that declare no `hardFreeFilter` (computed, for the guard test). */

@@ -45,6 +45,7 @@ export type ProviderName =
  | "ninerouter"
  | "tokenrouter"
  | "ollama"
+ | "ollama_pro"
  | "opencode_go";
 export type FreeStatus = "FREE" | "PAID" | "UNKNOWN" | "PREVIOUSLY_FREE";
 // Dual-probe observatory (e04s01): coding (quality signal, 4092t) + speed
@@ -321,6 +322,7 @@ export interface Env {
  NINEROUTER_API_KEY?: string;
  TOKENROUTER_API_KEY?: string;
  OLLAMA_API_KEY?: string;
+ OLLAMA_PRO_API_KEY?: string;
  ADMIN_TOKEN?: string;
  ADMIN_ID?: string;
  ADMIN_USERNAME?: string;
@@ -361,6 +363,10 @@ export interface Env {
  MAX_NINEROUTER_CONCURRENCY?: string;
  MAX_TOKENROUTER_CONCURRENCY?: string;
  MAX_OLLAMA_CONCURRENCY?: string;
+ MAX_OLLAMA_PRO_CONCURRENCY?: string;
+ MAX_OPENCODE_GO_CONCURRENCY?: string;
+ /** Max speed-probe jobs selected per tick in addition to coding jobs (default 3; 0 disables speed probes). */
+ SPEED_PROBE_TAKE?: string;
  MAX_SAME_MODEL_CONCURRENCY?: string;
  INCIDENT_THRESHOLD?: string;
  // allow arbitrary provider concurrency envs

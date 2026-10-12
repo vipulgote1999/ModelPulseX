@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OpenCodeZenProvider, zenClientHeaders } from "../src/providers/opencode-zen";
 import { OpenRouterProvider } from "../src/providers/openrouter";
 import { OpenCodeGoProvider, SLOW_CADENCE_CAPABILITY } from "../src/providers/opencode-go";
+import { OllamaProvider } from "../src/providers/ollama";
 
 // Mock fetch globally
 function mockModelsResponse(data: unknown) {
@@ -122,5 +123,34 @@ describe("discovery — free filtering", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("err", { status: 500 })));
     const keyed = new OpenCodeGoProvider({ OPENCODE_GO_API_KEY: "k" } as never);
     await expect(keyed.discoverModels()).resolves.toEqual([]);
+  });
+
+  it("Ollama pro tier returns the full catalog with PAID outside the allowlist", async () => {
+    const fake = { data: [{ id: "gemma4:31b" }, { id: "kimi-k3" }] };
+    vi.stubGlobal("fetch", vi.fn(async () => mockModelsResponse(fake)));
+    const p = new OllamaProvider({ OLLAMA_PRO_API_KEY: "pro" } as never, "pro");
+    expect(p.getProviderName()).toBe("ollama_pro");
+    const models = await p.discoverModels();
+    const byId = new Map(models.map((m) => [m.provider_model_id, m]));
+    expect(byId.get("gemma4:31b")?.free_status).toBe("FREE");
+    expect(byId.get("kimi-k3")?.free_status).toBe("PAID");
+    expect(byId.get("kimi-k3")?.is_free).toBe(false);
+    expect(models.every((m) => m.provider === "ollama_pro")).toBe(true);
+  });
+
+  it("Ollama free tier behavior is unchanged (allowlist only)", async () => {
+    const fake = { data: [{ id: "gemma4:31b" }, { id: "kimi-k3" }] };
+    vi.stubGlobal("fetch", vi.fn(async () => mockModelsResponse(fake)));
+    const p = new OllamaProvider({ OLLAMA_API_KEY: "k" } as never);
+    expect(p.getProviderName()).toBe("ollama");
+    const ids = (await p.discoverModels()).map((m) => m.provider_model_id);
+    expect(ids).toContain("gemma4:31b");
+    expect(ids).not.toContain("kimi-k3");
+  });
+
+  it("Ollama pro on API error returns [] (never fabricate)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("err", { status: 500 })));
+    const p = new OllamaProvider({ OLLAMA_PRO_API_KEY: "pro" } as never, "pro");
+    await expect(p.discoverModels()).resolves.toEqual([]);
   });
 });
