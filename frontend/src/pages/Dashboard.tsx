@@ -105,9 +105,26 @@ export default function Dashboard() {
   }, []);
   useEffect(() => {
     if (!hydratedCompare.current) return;
+    // Never clobber another page's hash: the dashboard owns the compare param
+    // only while its own path is showing (e2e-found: a racing write reset
+    // #/models back to #/ before the route switch committed).
+    const path = window.location.hash.split("?")[0];
+    if (path !== "" && path !== "#/") return;
     const target = formatHash({ page: "dashboard", modelId: null, compare: selected });
     if (window.location.hash !== target) window.location.hash = target;
   }, [selected]);
+  // Same-tab hash navigation (a pasted compare URL without reloading): adopt
+  // the hash selection when it differs. Self-writes compare equal and reuse
+  // the current state reference, so no update loop is possible.
+  useEffect(() => {
+    const onHash = () => {
+      const next = parseHash(window.location.hash).compare;
+      if (next.length > 0) hasAutoSelected.current = true;
+      setSelected((cur) => (cur.join(",") === next.join(",") ? cur : next));
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [providers, setProviders] = useState<Array<{ name: string }>>([]);
 
   useEffect(() => {
