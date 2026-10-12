@@ -8,6 +8,7 @@ const Admin = lazy(() => import("./pages/Admin"));
 const Docs = lazy(() => import("./pages/Docs"));
 const Models = lazy(() => import("./pages/Models"));
 const Pricing = lazy(() => import("./pages/Pricing"));
+const Vs = lazy(() => import("./pages/Vs"));
 const ModelDetail = lazy(() => import("./pages/ModelDetail"));
 
 /** Top-level pages reachable from the nav (model detail is link-only). */
@@ -36,7 +37,7 @@ export default function App() {
   }, []);
   // Pages landing in later e04s04 commits fall back to the dashboard until
   // their route branch exists below (never a dead link: nav only lists live pages).
-  const page = route.page === "vs" ? "dashboard" : route.page;
+  const page = route.page;
   return (
     <div className="min-h-screen overflow-x-clip bg-[#0a0a0f] text-zinc-100">
       <Header onNavigate={navigate} current={route.page} />
@@ -55,6 +56,8 @@ export default function App() {
           <ModelDetail modelId={route.modelId ?? -1} />
         ) : page === "pricing" ? (
           <Pricing />
+        ) : page === "vs" ? (
+          <Vs />
         ) : page === "admin" ? (
           <Admin />
         ) : page === "docs" ? (

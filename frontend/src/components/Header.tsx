@@ -41,6 +41,12 @@ export default function Header({
             Pricing
           </button>
           <button
+            onClick={() => onNavigate("vs")}
+            className={`px-3 py-1.5 rounded-md ${current === "vs" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+          >
+            vs Others
+          </button>
+          <button
             onClick={() => onNavigate("docs")}
             className={`px-3 py-1.5 rounded-md ${current === "docs" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
           >
