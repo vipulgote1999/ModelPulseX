@@ -6,6 +6,7 @@ import Leaderboard from "../components/Leaderboard";
 import RecommendationCards from "../components/RecommendationCards";
 import ChartModelSelector from "../components/ChartModelSelector";
 import CooldownPanel from "../components/CooldownPanel";
+import { parseHash, formatHash, MAX_COMPARE } from "../lib/router";
 
 // Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
 const TpsChart = lazy(() => import("../charts/TpsChart"));
@@ -88,6 +89,25 @@ export default function Dashboard() {
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
   const [selected, setSelected] = useState<number[]>([]);
+
+  // Shareable compare URL (TokenDyno parity): selection hydrates from the
+  // compare hash param on mount and writes back on change. The App owns the
+  // hash path; dashboard owns the compare param. No loops: reads run once,
+  // writes follow state only.
+  const hydratedCompare = useRef(false);
+  useEffect(() => {
+    const initial = parseHash(window.location.hash).compare;
+    if (initial.length > 0) {
+      hasAutoSelected.current = true;
+      setSelected(initial);
+    }
+    hydratedCompare.current = true;
+  }, []);
+  useEffect(() => {
+    if (!hydratedCompare.current) return;
+    const target = formatHash({ page: "dashboard", modelId: null, compare: selected });
+    if (window.location.hash !== target) window.location.hash = target;
+  }, [selected]);
   const [providers, setProviders] = useState<Array<{ name: string }>>([]);
 
   useEffect(() => {
@@ -150,11 +170,11 @@ export default function Dashboard() {
     }
   }, [provider]);
 
-  // chartIds = explicit selection (max 3) else default top-intelligence (so graphs never empty when data exists)
+  // chartIds = explicit selection (max 6) else default top-intelligence (so graphs never empty when data exists)
   // Stale pins (e.g. resolved before fresh rows arrive) are dropped so graphs stay in sync with the filter.
   const chartIds = useMemo(() => {
     const valid = new Set(rows.map((r) => r.model_id));
-    const pinned = selected.filter((id) => valid.has(id)).slice(0, 3);
+    const pinned = selected.filter((id) => valid.has(id)).slice(0, MAX_COMPARE);
     if (pinned.length > 0) return pinned;
     return defaultIds;
   }, [selected, defaultIds, rows]);
@@ -537,7 +557,7 @@ export default function Dashboard() {
 
       <div>
         <div className="text-sm font-semibold mb-2">
-          Live leaderboard — click rows to pin for graph comparison (max 3) ·
+          Live leaderboard — click rows to pin for graph comparison (max 6) ·
           sorted by {String(sort)} · {rows.length} models
         </div>
         <Leaderboard

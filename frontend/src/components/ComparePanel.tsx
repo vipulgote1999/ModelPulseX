@@ -46,7 +46,7 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
   if (!selected.length)
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-sm text-zinc-500">
-        Select 2–4 models from the leaderboard to compare. When the same
+        Select 2–6 models from the leaderboard to compare. When the same
         underlying model exists on both providers (e.g., laguna family) you will
         see a per-provider table with the winner highlighted.
       </div>

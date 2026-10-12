@@ -1,4 +1,5 @@
 import { getAA } from "../lib/intelligence";
+import { MAX_COMPARE } from "../lib/router";
 
 type Row = {
   model_id: number;
@@ -49,16 +50,16 @@ export default function ChartModelSelector({
       }
       next[slot] = v;
     }
-    // compact: remove 0s and keep order, max 3
-    const compact = next.filter((x) => x !== 0).slice(0, 3);
+    // compact: remove 0s and keep order, max 6
+    const compact = next.filter((x) => x !== 0).slice(0, MAX_COMPARE);
     onChange(compact);
   };
 
   const addSlot = () => {
-    if (selected.length >= 3) return;
+    if (selected.length >= MAX_COMPARE) return;
     // pick next best intelligence not yet selected
     const candidate = sortedByIntel.find((r) => !selected.includes(r.model_id));
-    if (candidate) onChange([...selected, candidate.model_id].slice(0, 3));
+    if (candidate) onChange([...selected, candidate.model_id].slice(0, MAX_COMPARE));
   };
 
   const removeSlot = (idx: number) => {
@@ -172,7 +173,7 @@ export default function ChartModelSelector({
         <span className="text-[11px] text-zinc-500 ml-auto">
           {selected.length === 0
             ? `No pins → charts show top 3 for ${providerLabel} automatically`
-            : `${selected.length}/3 selected · click leaderboard rows also toggles (max 3)`}
+            : `${selected.length}/6 selected · click leaderboard rows also toggles (max 6)`}
         </span>
       </div>
     </div>

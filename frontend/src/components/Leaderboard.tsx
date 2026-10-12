@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA, getAAMeta } from "../lib/intelligence";
+import { MAX_COMPARE } from "../lib/router";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 import { getCsrfToken } from "../lib/adminSession";
 
@@ -86,7 +87,7 @@ export default function Leaderboard({
     const cur = selected ?? [];
     const next = cur.includes(id)
       ? cur.filter((x) => x !== id)
-      : [...cur, id].slice(0, 3);
+      : [...cur, id].slice(0, MAX_COMPARE);
     onSelect(next);
   };
 
@@ -605,7 +606,7 @@ export default function Leaderboard({
       </div>
       {rows.length > 0 && (
         <div className="px-3 py-2 text-[11px] text-zinc-500">
-          Click rows to pin for graph comparison (max 3). Play button runs a
+          Click rows to pin for graph comparison (max 6). Play button runs a
           coding benchmark now (needs admin token). Sorted by{" "}
         </div>
       )}

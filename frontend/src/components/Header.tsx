@@ -1,11 +1,12 @@
 import Logo from "./Logo";
+import type { Page } from "../lib/router";
 
 export default function Header({
   onNavigate,
   current,
 }: {
-  onNavigate: (p: "dashboard" | "methodology" | "admin" | "docs") => void;
-  current: string;
+  onNavigate: (p: Exclude<Page, "model">) => void;
+  current: Page;
 }) {
   return (
     <header className="sticky top-0 z-40 backdrop-blur bg-[#0a0a0f]/80 border-b border-zinc-800">
