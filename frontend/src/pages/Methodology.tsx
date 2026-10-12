@@ -164,6 +164,39 @@ export default function Methodology() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">
+          Hybrid TPS, speed probes and sampling cadence
+        </h2>
+        <p className="text-sm">
+          Each run records <b>how</b> its TPS was measured (<code>tps_method</code>):
+          smooth streams (at least 8 chunks with mean gap above 50ms) use inter-token
+          timing (1000 / mean gap), bursty or chunked delivery falls back to wall-clock
+          (output tokens over generation time). TTFT is excluded in both paths.
+        </p>
+        <p className="text-sm">
+          Two probes run side by side. The <b>speed</b> probe is TokenDyno-identical: a fixed
+          HTTP-routing prose prompt capped at 300 tokens. The <b>coding</b> probe keeps our
+          original quality signal (4092-token budget). Muse Spark models run with
+          reasoning.effort minimal and TPS counts visible text only.
+        </p>
+        <p className="text-sm">
+          Every run is a fresh single-turn session: no conversation history plus a newly
+          generated session id per run, so a session-keyed cache cannot serve a previous
+          completion. Caching keyed on the request body itself cannot be ruled out — the
+          same disclosed limitation TokenDyno documents.
+        </p>
+        <p className="text-sm">
+          Sampling cadence protects plan budgets and never affects measurement: Ollama Pro
+          about 10 minutes, Ollama Free and Zen about 60, Go about 30 (priciest models
+          about 6 hours), other providers on least-recently-tested rotation.
+        </p>
+        <p className="text-sm">
+          Intelligence Index scores and thinking flags come from Artificial Analysis via
+          TokenDyno live overview data (CC-BY 4.0, October 2026), linked per model. We run
+          no capability test of our own.
+        </p>
+      </section>
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
+        <h2 className="font-semibold text-white">
           Uptime / downtime / incidents
         </h2>
         <p className="text-sm">

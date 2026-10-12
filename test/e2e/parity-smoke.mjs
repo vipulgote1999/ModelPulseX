@@ -11,6 +11,7 @@
  *
  * Usage: npm run build first, then npm run test:e2e:parity.
  */
+/* global window, document */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
@@ -97,7 +98,7 @@ function historyBody(ids) {
 
 function modelsBody() {
   return {
-    models: MODELS.map((m, i) => ({
+    models: MODELS.map((m) => ({
       id: m.model_id,
       provider_name: m.provider,
       provider_model_id: m.model,
@@ -308,7 +309,6 @@ async function main() {
   console.log("e2e parity smoke — " + baseUrl + " (dist/frontend)");
   mkdirSync(SHOT_DIR, { recursive: true });
   const failures = [];
-  const started = Date.now();
   for (const t of tests) {
     try { await t.fn(); console.log("  ok - " + t.name); }
     catch (e) {
