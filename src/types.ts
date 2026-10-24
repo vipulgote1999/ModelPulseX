@@ -234,6 +234,7 @@ export interface HistoryPoint {
  benchmark_type: BenchmarkType;
  avg_tps: number | null;
  median_tps: number | null;
+ median_e2e_tps: number | null;
  p90_tps: number | null;
  p95_tps: number | null;
  avg_ttft: number | null;
