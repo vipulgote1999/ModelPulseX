@@ -262,10 +262,15 @@ export interface CompareEntry {
  model: string;
  tps_24h: number | null;
  tps_7d: number | null;
+ /** End-to-end throughput medians (whole request, includes TTFT). */
+ e2e_tps_24h: number | null;
+ e2e_tps_7d: number | null;
  ttft_24h: number | null;
  ttft_7d: number | null;
  uptime_7d: number | null;
  error_rate: number | null;
+ /** Median chunks per successful run (7d); <8 means block delivery. */
+ median_chunks_7d: number | null;
  request_count_7d: number;
  winner?: boolean;
 }

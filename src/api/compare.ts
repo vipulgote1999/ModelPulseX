@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { isoHoursAgo } from "./shared";
+import { MIN_SAMPLES, parseConcatNumbers, percentile } from "../utils/metrics";
 import { escapeLikePattern, sanitizeSearchQuery } from "../utils/security";
 import { publicModelVisibilityWhere } from "../providers/registry";
 
@@ -49,7 +50,7 @@ export function compareRoutes(env: Env) {
     // cache object AND forced a fresh origin D1 read for a byte-identical
     // response. Two callers comparing the same models still share an entry.
     const cacheKey = new Request(
-      `${url.origin}${url.pathname}?ids=${ids.join(",")}`,
+      `${url.origin}${url.pathname}?ids=${ids.join(",")}&v=2`,
       { method: "GET" },
     );
     try {
@@ -58,19 +59,39 @@ export function compareRoutes(env: Env) {
     } catch {
       // Cache API unavailable (local dev) — fall through to D1
     }
-    // Single db.batch round-trip (4 independent aggregations, no data deps).
-    const [metasRes, stats7Res, raw24Res, raw7Res] = await env.DB.batch([
+    // Single db.batch round-trip: metadata → snapshot medians → raw 24h → raw 7d.
+    // Snapshot rows are pre-gated at write time; the raw lists are the fallback
+    // for models measured before the snapshot caught up.
+    const [metasRes, snapRes, raw24Res, raw7Res] = await env.DB.batch([
       env.DB.prepare(
         `SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders})`,
       ).bind(...ids),
       env.DB.prepare(
-        `SELECT model_id, avg(median_tps) as tps_7d FROM hourly_model_stats WHERE model_id IN (${placeholders}) AND hour_start >= ? GROUP BY model_id`,
-      ).bind(...ids, isoHoursAgo(168)),
+        `SELECT model_id, tps_24h, tps_7d, e2e_tps_24h, e2e_tps_7d,
+                ttft_24h, ttft_7d, uptime_7d, error_rate_7d, median_chunks_7d
+         FROM leaderboard_snapshot WHERE benchmark='all' AND model_id IN (${placeholders})`,
+      ).bind(...ids),
       env.DB.prepare(
-        `SELECT model_id, avg(tps) as tps_24h, avg(ttft_ms) as ttft_24h FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? AND status='SUCCESS' GROUP BY model_id`,
+        `SELECT model_id,
+                GROUP_CONCAT(tps) as gc_tps,
+                GROUP_CONCAT(e2e_tps) as gc_e2e,
+                GROUP_CONCAT(ttft_ms) as gc_ttft,
+                COUNT(*) as cnt
+         FROM benchmark_runs
+         WHERE model_id IN (${placeholders}) AND started_at >= ?
+         GROUP BY model_id`,
       ).bind(...ids, isoHoursAgo(24)),
       env.DB.prepare(
-        `SELECT model_id, avg(tps) as tps_7d_raw, avg(ttft_ms) as ttft_7d, avg(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as up7, avg(CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END) as er FROM benchmark_runs WHERE model_id IN (${placeholders}) AND started_at >= ? GROUP BY model_id`,
+        `SELECT model_id,
+                GROUP_CONCAT(tps) as gc_tps,
+                GROUP_CONCAT(e2e_tps) as gc_e2e,
+                GROUP_CONCAT(ttft_ms) as gc_ttft,
+                GROUP_CONCAT(CASE WHEN status='SUCCESS' THEN chunk_count END) as gc_chunks,
+                SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok7,
+                COUNT(*) as cnt
+         FROM benchmark_runs
+         WHERE model_id IN (${placeholders}) AND started_at >= ?
+         GROUP BY model_id`,
       ).bind(...ids, isoHoursAgo(168)),
     ]);
     // SAFETY: D1 batch returns untyped rows; SELECT aliases match the shapes below.
@@ -80,21 +101,33 @@ export function compareRoutes(env: Env) {
       display_name: string;
       provider: string;
     }>;
-    const stats7 = (stats7Res?.results ?? []) as Array<{
+    const snaps = (snapRes?.results ?? []) as Array<{
       model_id: number;
+      tps_24h: number | null;
       tps_7d: number | null;
+      e2e_tps_24h: number | null;
+      e2e_tps_7d: number | null;
+      ttft_24h: number | null;
+      ttft_7d: number | null;
+      uptime_7d: number | null;
+      error_rate_7d: number | null;
+      median_chunks_7d: number | null;
     }>;
     const raw24 = (raw24Res?.results ?? []) as Array<{
       model_id: number;
-      tps_24h: number | null;
-      ttft_24h: number | null;
+      gc_tps: string | null;
+      gc_e2e: string | null;
+      gc_ttft: string | null;
+      cnt: number | null;
     }>;
     const raw7 = (raw7Res?.results ?? []) as Array<{
       model_id: number;
-      tps_7d_raw: number | null;
-      ttft_7d: number | null;
-      up7: number | null;
-      er: number | null;
+      gc_tps: string | null;
+      gc_e2e: string | null;
+      gc_ttft: string | null;
+      gc_chunks: string | null;
+      ok7: number | null;
+      cnt: number | null;
     }>;
 
     const metaMap = new Map<
@@ -102,55 +135,80 @@ export function compareRoutes(env: Env) {
       { provider_model_id: string; display_name: string; provider: string }
     >();
     for (const r of metas) metaMap.set(r.id, r);
-    const s7Map = new Map<number, number | null>();
-    for (const r of stats7) s7Map.set(r.model_id, r.tps_7d);
-    const r24Map = new Map<
-      number,
-      { tps_24h: number | null; ttft_24h: number | null }
-    >();
-    for (const r of raw24)
-      r24Map.set(r.model_id, { tps_24h: r.tps_24h, ttft_24h: r.ttft_24h });
-    const r7Map = new Map<
-      number,
-      {
-        tps_7d_raw: number | null;
-        ttft_7d: number | null;
-        up7: number | null;
-        er: number | null;
-      }
-    >();
-    for (const r of raw7)
-      r7Map.set(r.model_id, {
-        tps_7d_raw: r.tps_7d_raw,
-        ttft_7d: r.ttft_7d,
-        up7: r.up7,
-        er: r.er,
-      });
+    const snapMap = new Map<number, (typeof snaps)[number]>();
+    for (const r of snaps) snapMap.set(r.model_id, r);
+    const r24Map = new Map<number, (typeof raw24)[number]>();
+    for (const r of raw24) r24Map.set(r.model_id, r);
+    const r7Map = new Map<number, (typeof raw7)[number]>();
+    for (const r of raw7) r7Map.set(r.model_id, r);
+
+    const median = (gc: string | null | undefined, cnt: number | null, min: number) =>
+      (cnt ?? 0) >= min ? percentile(parseConcatNumbers(gc), 50) : null;
 
     const out: unknown[] = [];
     for (const id of ids) {
       const mm = metaMap.get(id);
       if (!mm) continue;
-      const r24 = r24Map.get(id);
-      const r7 = r7Map.get(id);
+      const snap = snapMap.get(id);
+      let tps_24h: number | null;
+      let tps_7d: number | null;
+      let e2e_tps_24h: number | null;
+      let e2e_tps_7d: number | null;
+      let ttft_24h: number | null;
+      let ttft_7d: number | null;
+      let uptime_7d: number | null;
+      let error_rate: number | null;
+      let median_chunks_7d: number | null;
+      if (snap) {
+        tps_24h = snap.tps_24h;
+        tps_7d = snap.tps_7d;
+        e2e_tps_24h = snap.e2e_tps_24h;
+        e2e_tps_7d = snap.e2e_tps_7d;
+        ttft_24h = snap.ttft_24h;
+        ttft_7d = snap.ttft_7d;
+        uptime_7d = snap.uptime_7d;
+        error_rate = snap.error_rate_7d;
+        median_chunks_7d = snap.median_chunks_7d;
+      } else {
+        const r24 = r24Map.get(id);
+        const r7 = r7Map.get(id);
+        tps_24h = median(r24?.gc_tps, r24?.cnt ?? null, MIN_SAMPLES.w24h);
+        e2e_tps_24h = median(r24?.gc_e2e, r24?.cnt ?? null, MIN_SAMPLES.w24h);
+        ttft_24h = median(r24?.gc_ttft, r24?.cnt ?? null, MIN_SAMPLES.w24h);
+        tps_7d = median(r7?.gc_tps, r7?.cnt ?? null, MIN_SAMPLES.w7d);
+        e2e_tps_7d = median(r7?.gc_e2e, r7?.cnt ?? null, MIN_SAMPLES.w7d);
+        ttft_7d = median(r7?.gc_ttft, r7?.cnt ?? null, MIN_SAMPLES.w7d);
+        uptime_7d =
+          (r7?.cnt ?? 0) >= MIN_SAMPLES.w7d
+            ? (r7?.ok7 ?? 0) / (r7?.cnt ?? 1)
+            : null;
+        error_rate = uptime_7d == null ? null : 1 - uptime_7d;
+        median_chunks_7d =
+          (r7?.ok7 ?? 0) >= MIN_SAMPLES.w7d
+            ? percentile(parseConcatNumbers(r7?.gc_chunks), 50)
+            : null;
+      }
       out.push({
         model_id: id,
         provider: mm.provider,
         model: mm.provider_model_id,
         display_name: mm.display_name,
-        tps_24h: r24?.tps_24h ?? null,
-        tps_7d: s7Map.get(id) ?? r7?.tps_7d_raw ?? null,
-        ttft_24h: r24?.ttft_24h ?? null,
-        ttft_7d: r7?.ttft_7d ?? null,
-        uptime_7d: r7?.up7 ?? null,
-        error_rate: r7?.er ?? null,
+        tps_24h,
+        tps_7d,
+        e2e_tps_24h,
+        e2e_tps_7d,
+        ttft_24h,
+        ttft_7d,
+        uptime_7d,
+        error_rate,
+        median_chunks_7d,
       });
     }
     let recommended: unknown = null;
     if (out.length >= 2) {
       const sorted = [
-        ...(out as Array<{ tps_7d: number | null; provider: string }>),
-      ].sort((a, b) => (b.tps_7d ?? -1) - (a.tps_7d ?? -1));
+        ...(out as Array<{ e2e_tps_7d: number | null; provider: string }>),
+      ].sort((a, b) => (b.e2e_tps_7d ?? -1) - (a.e2e_tps_7d ?? -1));
       recommended = sorted[0]?.provider ?? null;
     }
     const resp = c.json({ compare: out, recommended_provider: recommended });
