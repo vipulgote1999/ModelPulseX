@@ -6,12 +6,21 @@ session:
   branch: master
   workflow_mode: solo-git
   deployment:
-    # OFFICIAL PROD ENDPOINT. Bare modelpulsex.workers.dev cannot exist —
-    # workers.dev URLs are always <worker>.<account-subdomain>.workers.dev.
-    # Custom domains need a registered zone (this account has none yet).
-    url: https://modelpulsex.vipulgote5.workers.dev
+    # OFFICIAL PROD ENDPOINT since 2026-09-28 (URL-001, complete). The account
+    # subdomain `vipulgote5` cannot be removed from a workers.dev URL — those are
+    # always <worker>.<account-subdomain>.workers.dev — so the public host is a
+    # Pages project instead. Pages serves the SPA and proxies /api/* to the Worker
+    # over a service binding; the Worker keeps cron, the bench-queue consumer, the
+    # DO and all D1 access. See specs/pages-front-door-2026-09-28.md.
+    #
+    # Step 5 is done: `workers_dev: false` is set, so the workers.dev route no
+    # longer serves the app (it now returns a Cloudflare 404 / error 1042).
+    # Rollback: delete that one line in wrangler.jsonc and redeploy.
+    url: https://modelpulsex.pages.dev
+    legacy_url_disabled: https://modelpulsex.vipulgote5.workers.dev
     account_id: ed6fb32a7350321cd036ee4f2f54462a
-    deployed_at: 2026-08-26
+    deployed_at: 2026-10-24
+    worker_version: fd9038b9-fb83-4be5-8da7-5c040dd63b67
   handoff:
     next_skill: null
     summary: >-
