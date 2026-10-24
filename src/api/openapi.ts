@@ -15,7 +15,7 @@ export function buildOpenApiSpec() {
     },
     servers: [
       {
-        url: "https://modelpulsex.vipulgote5.workers.dev",
+        url: "https://modelpulsex.pages.dev",
         description: "Production",
       },
     ],
