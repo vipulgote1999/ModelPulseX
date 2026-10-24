@@ -4,6 +4,7 @@ import type {
   ModelMetadata,
   ProviderName,
 } from "../types";
+import { parseConcatNumbers } from "../utils/metrics";
 
 export async function ensureProvider(
   db: D1Database,
@@ -534,6 +535,7 @@ async function aggregateWindow(
     .prepare(
       `SELECT model_id, benchmark_type,
         GROUP_CONCAT(tps) as tpss,
+        GROUP_CONCAT(e2e_tps) as e2e_tpss,
         GROUP_CONCAT(ttft_ms) as ttfts,
         GROUP_CONCAT(itl_ms) as itls,
         COUNT(*) as cnt,
@@ -547,6 +549,7 @@ async function aggregateWindow(
       model_id: number;
       benchmark_type: BenchmarkType;
       tpss: string | null;
+      e2e_tpss: string | null;
       ttfts: string | null;
       itls: string | null;
       cnt: number;
@@ -593,12 +596,16 @@ async function aggregateWindow(
     const p95_ttft = percentile(ttfts, 95);
     const median_itl = percentile(itls, 50);
     const p90_itl = percentile(itls, 90);
+    // e2e keeps genuine zeros (a measurable but stalled whole request) — the
+    // decode parser above intentionally drops them for the legacy metric.
+    const e2e = parseConcatNumbers(r.e2e_tpss);
+    const median_e2e_tps = percentile(e2e, 50);
     const success_rate = r.cnt ? r.success / r.cnt : 0;
     const uptime = success_rate;
     stmts.push(
       db
         .prepare(
-          `INSERT OR REPLACE INTO ${table} (model_id, ${timeCol}, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          `INSERT OR REPLACE INTO ${table} (model_id, ${timeCol}, benchmark_type, avg_tps, median_tps, p90_tps, p95_tps, avg_ttft, median_ttft, p90_ttft, p95_ttft, median_itl, p90_itl, success_rate, error_rate, uptime, request_count, median_e2e_tps) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           r.model_id,
@@ -618,6 +625,7 @@ async function aggregateWindow(
           1 - success_rate,
           uptime,
           r.cnt,
+          median_e2e_tps,
         ),
     );
   }
