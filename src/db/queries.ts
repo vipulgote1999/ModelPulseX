@@ -360,7 +360,7 @@ export async function insertBenchmarkRun(
   const stmts: ReturnType<D1Database["prepare"]>[] = [
     db
       .prepare(
-        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, e2e_tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         modelId,
@@ -373,6 +373,7 @@ export async function insertBenchmarkRun(
         r.ttft_ms,
         r.generation_ms,
         r.tps,
+        r.e2e_tps,
         r.tps_method ?? null,
         r.itl_ms,
         r.chunk_count,
@@ -392,6 +393,7 @@ export async function insertBenchmarkRun(
         JSON.stringify({
           [r.benchmark_type]: {
             tps: r.tps,
+            e2e: r.e2e_tps,
             ttft: r.ttft_ms,
             itl: r.itl_ms,
             status: r.status,
@@ -411,7 +413,7 @@ export async function insertBenchmarkRun(
     try {
     const ins = await db
       .prepare(
-        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO benchmark_runs (model_id, benchmark_type, started_at, first_token_at, completed_at, input_tokens, output_tokens, ttft_ms, generation_ms, tps, e2e_tps, tps_method, itl_ms, chunk_count, status, error_type, http_status, provider, model, token_estimation_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         modelId,
@@ -424,6 +426,7 @@ export async function insertBenchmarkRun(
         r.ttft_ms,
         r.generation_ms,
         r.tps,
+        r.e2e_tps,
         r.tps_method ?? null,
         r.itl_ms,
         r.chunk_count,

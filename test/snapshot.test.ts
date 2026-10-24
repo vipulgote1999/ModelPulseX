@@ -315,4 +315,14 @@ describe("nowFor", () => {
     expect(nowFor(null, "all")).toBeNull();
     expect(nowFor("{", "short")).toBeNull();
   });
+  it("nowFor carries e2e and old JSON yields null via the reader", () => {
+    const withE2e = JSON.stringify({
+      coding: { tps: 100, e2e: 40, ttft: 200, itl: 5, status: "SUCCESS", at: "2026-10-24T00:00:00.000Z" },
+    });
+    expect(nowFor(withE2e, "coding")?.e2e).toBe(40);
+    const old = JSON.stringify({
+      coding: { tps: 100, ttft: 200, itl: 5, status: "SUCCESS", at: "2026-10-24T00:00:00.000Z" },
+    });
+    expect(nowFor(old, "coding")?.e2e ?? null).toBeNull();
+  });
 });

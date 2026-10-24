@@ -363,6 +363,8 @@ export async function refreshLeaderboardSnapshot(
 
 export interface NowEntry {
   tps: number | null;
+  /** End-to-end TPS; absent on entries written before 0018. Readers use `?? null`. */
+  e2e?: number | null;
   ttft: number | null;
   itl: number | null;
   status: string;
