@@ -9,6 +9,7 @@ allure-results/
 .playwright/
 
 # local artifacts (not for commit)
+.superpowers/
 .codegraph/
 performance_report/
 dump/
