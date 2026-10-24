@@ -40,14 +40,18 @@ function rawRow(
     benchmark_type,
     cnt_1h: n,
     g_tps_1h: gc,
+    g_e2e_1h: gc,
     g_ttft_1h: gc,
     cnt_24h: n,
     g_tps_24h: gc,
+    g_e2e_24h: gc,
     g_ttft_24h: gc,
     cnt7: n,
     g_tps_7d: gc,
+    g_e2e_7d: gc,
     g_ttft_7d: gc,
     g_itl_7d: gc,
+    g_chunks_7d: gc,
     ok_7d: ok ?? n,
     tot_7d: n,
     ok_24h: ok ?? n,
@@ -170,6 +174,42 @@ describe("buildSnapshotRows", () => {
     // single prompt: all view mirrors the coding sparkline, last 24
     expect(JSON.parse(all.sparkline) as number[]).toEqual(Array(24).fill(10));
   });
+
+  it("computes gated e2e medians and chunk median", () => {
+    const rows = buildSnapshotRows({
+      models: [models[0]!],
+      raw: [rawRow(1, "coding", [10, 20, 30, 40, 50, 60])],
+      spark: [], nowIso: new Date().toISOString(),
+    });
+    const coding = rows.find((r) => r.model_id === 1 && r.benchmark === "coding")!;
+    expect(coding.e2e_tps_1h).toBeCloseTo(30);
+    expect(coding.e2e_tps_24h).toBeCloseTo(30);
+    expect(coding.e2e_tps_7d).toBeCloseTo(30);
+    expect(coding.median_chunks_7d).toBeCloseTo(30);
+  });
+
+  it("nulls e2e and chunk medians below their gates", () => {
+    const rows = buildSnapshotRows({
+      models: [models[0]!],
+      raw: [rawRow(1, "coding", [10, 20, 30], 2)],
+      spark: [], nowIso: new Date().toISOString(),
+    });
+    const coding = rows.find((r) => r.model_id === 1 && r.benchmark === "coding")!;
+    expect(coding.e2e_tps_1h).toBeCloseTo(20);
+    expect(coding.e2e_tps_7d).toBeNull();
+    // chunk median gates on SUCCESS count (ok_7d = 2), not total count (3)
+    expect(coding.median_chunks_7d).toBeNull();
+  });
+
+  it("merges e2e values across benchmark types for the all view", () => {
+    const rows = buildSnapshotRows({
+      models: [models[0]!],
+      raw: [rawRow(1, "coding", [100, 100]), rawRow(1, "speed", [300, 300])],
+      spark: [], nowIso: new Date().toISOString(),
+    });
+    const all = rows.find((r) => r.model_id === 1 && r.benchmark === "all")!;
+    expect(all.e2e_tps_1h).toBeCloseTo(100); // lower middle of four values
+  });
 });
 
 describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)", () => {
@@ -228,6 +268,42 @@ describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)
     expect(db.upserted.length).toBeGreaterThan(0);
     expect(db.deleted).toBe(1);
     expect(db.deletedKeys).toEqual(["all:58084"]);
+  });
+});
+
+describe("refreshLeaderboardSnapshot e2e binds", () => {
+  it("binds e2e medians and the chunk median into the upsert", async () => {
+    const upserts: Array<{ sql: string; args: unknown[] }> = [];
+    let reads = 0;
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          sql,
+          args: [] as unknown[],
+          bind(...a: unknown[]) { stmt.args = a; return stmt; },
+          all: async () => ({ results: [] }),
+          first: async () => null,
+          run: async () => ({ meta: { changes: 0 } }),
+        };
+        if (sql.includes("INSERT INTO leaderboard_snapshot")) upserts.push(stmt);
+        return stmt;
+      },
+      batch: async () => {
+        const call = reads++;
+        if (call === 0) return [
+          { results: [{ id: 1, provider_model_id: "a:free", display_name: "A", free_status: "FREE", active: 1, provider: "pa" }] },
+          { results: [rawRow(1, "coding", [10, 20, 30, 40, 50, 60])] },
+          { results: [] },
+        ];
+        return [{ meta: {} }];
+      },
+    };
+    await refreshLeaderboardSnapshot(db as never, Date.now());
+    const all = upserts.find((u) => u.args[0] === "all")!;
+    expect(all.sql).toContain("median_chunks_7d");
+    expect(all.sql).toContain("e2e_tps_7d");
+    // ... e2e_tps_1h, e2e_tps_24h, e2e_tps_7d, median_chunks_7d, snapshot_at
+    expect(all.args.slice(-5)).toEqual([30, 30, 30, 30, expect.any(String)]);
   });
 });
 

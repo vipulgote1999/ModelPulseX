@@ -20,14 +20,18 @@ export interface SnapshotRaw {
   benchmark_type: string;
   cnt_1h: number | null;
   g_tps_1h: string | null;
+  g_e2e_1h: string | null;
   g_ttft_1h: string | null;
   cnt_24h: number | null;
   g_tps_24h: string | null;
+  g_e2e_24h: string | null;
   g_ttft_24h: string | null;
   cnt7: number | null;
   g_tps_7d: string | null;
+  g_e2e_7d: string | null;
   g_ttft_7d: string | null;
   g_itl_7d: string | null;
+  g_chunks_7d: string | null;
   ok_7d: number | null;
   tot_7d: number | null;
   ok_24h: number | null;
@@ -52,6 +56,10 @@ export interface SnapshotRow {
   tps_1h: number | null;
   tps_24h: number | null;
   tps_7d: number | null;
+  e2e_tps_1h: number | null;
+  e2e_tps_24h: number | null;
+  e2e_tps_7d: number | null;
+  median_chunks_7d: number | null;
   ttft_1h: number | null;
   ttft_24h: number | null;
   ttft_7d: number | null;
@@ -113,14 +121,18 @@ export function buildSnapshotRows(input: {
   ): {
     cnt_1h: number;
     g_tps_1h: string | null;
+    g_e2e_1h: string | null;
     g_ttft_1h: string | null;
     cnt_24h: number;
     g_tps_24h: string | null;
+    g_e2e_24h: string | null;
     g_ttft_24h: string | null;
     cnt7: number;
     g_tps_7d: string | null;
+    g_e2e_7d: string | null;
     g_ttft_7d: string | null;
     g_itl_7d: string | null;
+    g_chunks_7d: string | null;
     ok_7d: number;
     tot_7d: number;
     ok_24h: number;
@@ -143,14 +155,18 @@ export function buildSnapshotRows(input: {
     return {
       cnt_1h: sum((r) => r.cnt_1h),
       g_tps_1h: cat((r) => r.g_tps_1h),
+      g_e2e_1h: cat((r) => r.g_e2e_1h),
       g_ttft_1h: cat((r) => r.g_ttft_1h),
       cnt_24h: sum((r) => r.cnt_24h),
       g_tps_24h: cat((r) => r.g_tps_24h),
+      g_e2e_24h: cat((r) => r.g_e2e_24h),
       g_ttft_24h: cat((r) => r.g_ttft_24h),
       cnt7: sum((r) => r.cnt7),
       g_tps_7d: cat((r) => r.g_tps_7d),
+      g_e2e_7d: cat((r) => r.g_e2e_7d),
       g_ttft_7d: cat((r) => r.g_ttft_7d),
       g_itl_7d: cat((r) => r.g_itl_7d),
+      g_chunks_7d: cat((r) => r.g_chunks_7d),
       ok_7d: sum((r) => r.ok_7d),
       tot_7d: sum((r) => r.tot_7d),
       ok_24h: sum((r) => r.ok_24h),
@@ -203,6 +219,12 @@ export function buildSnapshotRows(input: {
         tps_1h: gatedRaw(g.g_tps_1h, g.cnt_1h, MIN_SAMPLES.w1h),
         tps_24h: gatedRaw(g.g_tps_24h, g.cnt_24h, MIN_SAMPLES.w24h),
         tps_7d: gatedRaw(g.g_tps_7d, g.cnt7, MIN_SAMPLES.w7d),
+        e2e_tps_1h: gatedRaw(g.g_e2e_1h, g.cnt_1h, MIN_SAMPLES.w1h),
+        e2e_tps_24h: gatedRaw(g.g_e2e_24h, g.cnt_24h, MIN_SAMPLES.w24h),
+        e2e_tps_7d: gatedRaw(g.g_e2e_7d, g.cnt7, MIN_SAMPLES.w7d),
+        // Chunk median gates on SUCCESS count: only successful runs have a
+        // meaningful chunk count, and the badge is evidence about delivery.
+        median_chunks_7d: gatedRaw(g.g_chunks_7d, g.ok_7d, MIN_SAMPLES.w7d),
         ttft_1h: gatedRaw(g.g_ttft_1h, g.cnt_1h, MIN_SAMPLES.w1h),
         ttft_24h: gatedRaw(g.g_ttft_24h, g.cnt_24h, MIN_SAMPLES.w24h),
         ttft_7d: gatedRaw(g.g_ttft_7d, g.cnt7, MIN_SAMPLES.w7d),
@@ -244,16 +266,20 @@ export async function refreshLeaderboardSnapshot(
           `SELECT model_id, benchmark_type,
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as g_tps_1h,
+           GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as g_e2e_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as g_ttft_1h,
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_24h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as g_tps_24h,
+           GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as g_e2e_24h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as g_ttft_24h,
            SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok_24h,
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as tot_24h,
            COUNT(*) as cnt7,
            GROUP_CONCAT(tps) as g_tps_7d,
+           GROUP_CONCAT(e2e_tps) as g_e2e_7d,
            GROUP_CONCAT(ttft_ms) as g_ttft_7d,
            GROUP_CONCAT(itl_ms) as g_itl_7d,
+           GROUP_CONCAT(CASE WHEN status='SUCCESS' THEN chunk_count END) as g_chunks_7d,
            SUM(CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END) as ok_7d,
            COUNT(*) as tot_7d
          FROM benchmark_runs WHERE started_at >= ?
@@ -263,6 +289,8 @@ export async function refreshLeaderboardSnapshot(
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 1 * 3600 * 1000).toISOString(),
+          new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
           new Date(nowMs - 24 * 3600 * 1000).toISOString(),
@@ -293,8 +321,9 @@ export async function refreshLeaderboardSnapshot(
               `INSERT INTO leaderboard_snapshot
                (benchmark, model_id, display_name, provider, provider_model_id, free_status, active,
                 tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
-                uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d, snapshot_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d,
+                e2e_tps_1h, e2e_tps_24h, e2e_tps_7d, median_chunks_7d, snapshot_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(benchmark, model_id) DO UPDATE SET
                  display_name=excluded.display_name, provider=excluded.provider,
                  provider_model_id=excluded.provider_model_id, free_status=excluded.free_status,
@@ -304,6 +333,8 @@ export async function refreshLeaderboardSnapshot(
                  uptime_24h=excluded.uptime_24h,
                  error_rate_7d=excluded.error_rate_7d, sparkline=excluded.sparkline,
                  sample_count_24h=excluded.sample_count_24h, request_count_7d=excluded.request_count_7d,
+                 e2e_tps_1h=excluded.e2e_tps_1h, e2e_tps_24h=excluded.e2e_tps_24h,
+                 e2e_tps_7d=excluded.e2e_tps_7d, median_chunks_7d=excluded.median_chunks_7d,
                  snapshot_at=excluded.snapshot_at`,
             )
             .bind(
@@ -327,6 +358,10 @@ export async function refreshLeaderboardSnapshot(
               r.sparkline,
               r.sample_count_24h,
               r.request_count_7d,
+              r.e2e_tps_1h,
+              r.e2e_tps_24h,
+              r.e2e_tps_7d,
+              r.median_chunks_7d,
               nowIso,
             ),
         ),
