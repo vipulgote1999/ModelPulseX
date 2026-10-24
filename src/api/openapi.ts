@@ -396,7 +396,45 @@ export function buildOpenApiSpec() {
       "/api/admin/reaggregate": {
         post: {
           summary: "Re-aggregate hourly stats",
+          description:
+            "Accepts { hour?: ISO string, refresh_snapshot?: boolean }. Defaults to the current UTC hour and rejects hours older than 30 days or in the future.",
           security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: false,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    hour: { type: "string", format: "date-time" },
+                    refresh_snapshot: { type: "boolean" },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "Result" } },
+        },
+      },
+      "/api/admin/backfill-e2e": {
+        post: {
+          summary: "Backfill end-to-end TPS from JS timestamps",
+          description:
+            "Recomputes e2e_tps for NULL rows in the last 1–7 days (default 7) using the whole request window. Decode tps is never modified.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: false,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    days: { type: "integer", minimum: 1, maximum: 7 },
+                  },
+                },
+              },
+            },
+          },
           responses: { "200": { description: "Result" } },
         },
       },

@@ -25,6 +25,7 @@ const EXPECTED = [
   "POST /api/admin/benchmark",
   "POST /api/admin/playground/test",
   "POST /api/admin/reaggregate",
+  "POST /api/admin/backfill-e2e",
   "POST /api/admin/cleanup",
   "POST /api/admin/cooldown/reset",
   "POST /api/admin/migrate",

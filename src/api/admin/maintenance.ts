@@ -7,16 +7,104 @@ import {
   clearModelCooldown,
   clearAllCooldownsForProvider,
 } from "../../db/cooldown";
+import { refreshLeaderboardSnapshot } from "../../db/snapshot";
+import { computeE2eTps } from "../../utils/metrics";
 import { isAdmin } from "../shared";
+
+/** Backfill window: 1–7 days, default 7. Anything unparsable keeps the default. */
+export function clampBackfillDays(input: unknown): number {
+  const n = typeof input === "number" ? input : Number(input);
+  if (!Number.isFinite(n)) return 7;
+  return Math.min(7, Math.max(1, Math.floor(n)));
+}
 
 export function adminMaintenanceRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
   r.post("/admin/reaggregate", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
-    const hour = new Date();
-    hour.setUTCMinutes(0, 0, 0);
-    await computeHourlyAggregates(env.DB, hour.toISOString());
-    return c.json({ ok: true, hour: hour.toISOString() });
+    const body = (await c.req.json().catch(() => ({}))) as {
+      hour?: string;
+      refresh_snapshot?: boolean;
+    };
+    const nowHour = new Date();
+    nowHour.setUTCMinutes(0, 0, 0);
+    let hourIso = nowHour.toISOString();
+    if (body.hour !== undefined) {
+      const t = Date.parse(String(body.hour));
+      // 30-day floor matches the hourly retention window; future hours would
+      // aggregate rows that do not exist yet.
+      if (
+        !Number.isFinite(t) ||
+        t < Date.now() - 30 * 86400 * 1000 ||
+        t > Date.now()
+      )
+        return c.json({ error: "invalid hour" }, 400);
+      const h = new Date(t);
+      h.setUTCMinutes(0, 0, 0);
+      hourIso = h.toISOString();
+    }
+    await computeHourlyAggregates(env.DB, hourIso);
+    const snapshot =
+      body.refresh_snapshot === true
+        ? await refreshLeaderboardSnapshot(env.DB)
+        : undefined;
+    return c.json({ ok: true, hour: hourIso, ...(snapshot ? { snapshot } : {}) });
+  });
+
+  // Repairs rows that the old Worker wrote between migration and deploy. The
+  // migration's bulk SQL pass uses julianday (≈0.86 ms precision), which drifts
+  // up to 2.5 TPS on sub-second runs; this route recomputes from JS timestamps.
+  r.post("/admin/backfill-e2e", async (c) => {
+    if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
+    const body = (await c.req.json().catch(() => ({}))) as { days?: unknown };
+    const days = clampBackfillDays(body.days);
+    const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
+    let cursor = 0;
+    let updated = 0;
+    // Page by id so a large repair cannot exceed D1's per-query result bound.
+    for (;;) {
+      const page = await env.DB.prepare(
+        `SELECT id, output_tokens, started_at, completed_at
+         FROM benchmark_runs
+         WHERE id > ? AND e2e_tps IS NULL AND status='SUCCESS' AND output_tokens > 0
+           AND started_at IS NOT NULL AND completed_at IS NOT NULL
+           AND started_at >= ?
+         ORDER BY id LIMIT 500`,
+      )
+        .bind(cursor, since)
+        .all<{
+          id: number;
+          output_tokens: number;
+          started_at: string;
+          completed_at: string;
+        }>();
+      const rows = page.results ?? [];
+      if (rows.length === 0) break;
+      cursor = rows[rows.length - 1]!.id;
+      const stmts: ReturnType<D1Database["prepare"]>[] = [];
+      for (const row of rows) {
+        const startedMs = Date.parse(row.started_at);
+        const completedMs = Date.parse(row.completed_at);
+        if (!Number.isFinite(startedMs) || !Number.isFinite(completedMs)) continue;
+        const e2e = computeE2eTps(row.output_tokens, startedMs, completedMs);
+        if (e2e == null) continue;
+        stmts.push(
+          env.DB.prepare(
+            `UPDATE benchmark_runs SET e2e_tps=? WHERE id=? AND e2e_tps IS NULL`,
+          ).bind(e2e, row.id),
+        );
+      }
+      // D1 caps statements per batch; 50 keeps headroom for bound parameters.
+      for (let i = 0; i < stmts.length; i += 50) {
+        const results = await env.DB.batch(stmts.slice(i, i + 50));
+        updated += results.reduce(
+          (n, res) => n + (res.meta?.changes ?? 0),
+          0,
+        );
+      }
+      if (rows.length < 500) break;
+    }
+    return c.json({ ok: true, updated });
   });
   r.post("/admin/cleanup", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
