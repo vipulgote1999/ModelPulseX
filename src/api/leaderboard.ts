@@ -4,6 +4,7 @@ import { parseRange } from "../db/queries";
 import { scoreLeaderboard } from "../benchmark/scoring";
 import { getSchedulerHealth, alertChannelState } from "../db/health";
 import {
+  e2eSpeed,
   percentile,
   parseConcatNumbers,
   MIN_SAMPLES,
@@ -75,7 +76,7 @@ export function leaderboardRoutes(env: Env) {
       const scored = scoreLeaderboard(rows, profile);
       scored.sort((a, b) => {
         if (sort === "tps")
-          return (b.tps_7d ?? b.tps_now ?? -1) - (a.tps_7d ?? a.tps_now ?? -1);
+          return (e2eSpeed(b) ?? -1) - (e2eSpeed(a) ?? -1);
         if (sort === "ttft")
           return (
             (a.ttft_7d ?? a.ttft_now ?? Infinity) -
@@ -92,6 +93,18 @@ export function leaderboardRoutes(env: Env) {
       const isStale = meta?.last_benchmark
         ? Date.now() - new Date(meta.last_benchmark).getTime() > 18 * 60 * 1000
         : true;
+
+      // Throughput headline: latest measured run, else the 7d median. A
+      // pre-deploy overlay entry has no e2e, and blanking the card until every
+      // model re-runs would misreport a healthy board. The 7d fallback is
+      // measured data; the UI appends `·7d` when it is used.
+      const e2eHeadline = (r: LeaderboardRow) =>
+        r.e2e_tps_now ?? r.e2e_tps_7d;
+      const bestE2e =
+        scored
+          .filter((r) => e2eHeadline(r) != null)
+          .sort((a, b) => (e2eHeadline(b) ?? -1) - (e2eHeadline(a) ?? -1))[0] ??
+        null;
 
       const resp = c.json({
         leaderboard: ordered,
@@ -127,10 +140,8 @@ export function leaderboardRoutes(env: Env) {
               r.last_test &&
               Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000,
           ).length,
-          best_tps:
-            scored
-              .filter((r) => r.tps_now != null)
-              .sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0] ?? null,
+          best_tps: bestE2e,
+          best_e2e_tps: bestE2e,
           best_ttft:
             scored
               .filter((r) => r.ttft_now != null)
@@ -229,6 +240,7 @@ export function leaderboardRoutes(env: Env) {
           free_models: 0,
           online_now: 0,
           best_tps: null,
+          best_e2e_tps: null,
           best_ttft: null,
           benchmarks_24h: metaRow?.benchmarks_24h ?? 0,
         },
@@ -253,6 +265,7 @@ export function leaderboardRoutes(env: Env) {
           env.DB.prepare(
             `SELECT benchmark, model_id, display_name, provider, provider_model_id, free_status, active,
                     tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
+                    e2e_tps_1h, e2e_tps_24h, e2e_tps_7d, median_chunks_7d,
                     uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d
              FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}`,
           ).bind(...(provider ? [benchmark, provider] : [benchmark])),
@@ -314,12 +327,11 @@ export function leaderboardRoutes(env: Env) {
             tps_1h: s.tps_1h,
             tps_24h: s.tps_24h,
             tps_7d: s.tps_7d,
-            // Task 8 wires measured e2e values; null until the snapshot carries them.
-            e2e_tps_now: null,
-            e2e_tps_1h: null,
-            e2e_tps_24h: null,
-            e2e_tps_7d: null,
-            median_chunks_7d: null,
+            e2e_tps_now: entry?.e2e ?? null,
+            e2e_tps_1h: s.e2e_tps_1h,
+            e2e_tps_24h: s.e2e_tps_24h,
+            e2e_tps_7d: s.e2e_tps_7d,
+            median_chunks_7d: s.median_chunks_7d,
             ttft_now: entry?.ttft ?? null,
             ttft_1h: s.ttft_1h,
             ttft_24h: s.ttft_24h,
@@ -376,21 +388,26 @@ export function leaderboardRoutes(env: Env) {
     // rawWindow GROUP_CONCAT scan into ONE GROUP BY pass over benchmark_runs plus an indexed
     // self-join for the latest row's values (cuts ~18k rows_read to ~9k per leaderboard hit).
     // Uses covering indexes: idx_benchmark_runs_model_started_type, idx_hourly_model_hour_type
-    const lastRunSql = `SELECT g.*, br.tps AS now_tps, br.ttft_ms AS now_ttft, br.itl_ms AS now_itl, br.status AS now_status FROM (
+    const lastRunSql = `SELECT g.*, br.tps AS now_tps, br.e2e_tps AS now_e2e, br.ttft_ms AS now_ttft, br.itl_ms AS now_itl, br.status AS now_status FROM (
         SELECT model_id,
           MAX(started_at) as max_ts,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_1h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as gc_e2e_1h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_1h,
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_24h,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as gc_e2e_24h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_24h,
           AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_24h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_7d,
+          GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as gc_e2e_7d,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_7d,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN itl_ms END) as gc_itl_7d,
+          GROUP_CONCAT(CASE WHEN started_at >= ? AND status='SUCCESS' THEN chunk_count END) as gc_chunks_7d,
           AVG(CASE WHEN started_at >= ? THEN CASE WHEN status='SUCCESS' THEN 1 ELSE 0 END END) as up_7d,
           AVG(CASE WHEN started_at >= ? THEN CASE WHEN status!='SUCCESS' THEN 1 ELSE 0 END END) as er_7d,
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
+          SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok7,
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt24,
           count(*) as cnt_all
         FROM benchmark_runs
@@ -402,13 +419,16 @@ export function leaderboardRoutes(env: Env) {
         SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt_1h,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_1h,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_1h,
+        AVG(CASE WHEN hour_start >= ? THEN median_e2e_tps END) as e_1h,
         SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt_24,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_24h,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_24h,
+        AVG(CASE WHEN hour_start >= ? THEN median_e2e_tps END) as e_24h,
         AVG(CASE WHEN hour_start >= ? THEN uptime END) as up_24,
         SUM(CASE WHEN hour_start >= ? THEN request_count ELSE 0 END) as cnt7h,
         AVG(CASE WHEN hour_start >= ? THEN median_tps END) as t_7d,
         AVG(CASE WHEN hour_start >= ? THEN median_ttft END) as tt_7d,
+        AVG(CASE WHEN hour_start >= ? THEN median_e2e_tps END) as e_7d,
         AVG(CASE WHEN hour_start >= ? THEN median_itl END) as itl_7d,
         AVG(CASE WHEN hour_start >= ? THEN uptime END) as up_7,
         AVG(CASE WHEN hour_start >= ? THEN error_rate END) as er_7
@@ -430,16 +450,23 @@ export function leaderboardRoutes(env: Env) {
                             (SELECT max(last_seen) FROM models) as last_discovery,
                             (SELECT count(*) FROM benchmark_runs WHERE started_at >= ?) as benchmarks_24h`;
 
-    // rawLatest binds: gc_tps_1h, gc_ttft_1h, cnt_1h (1h) | gc_tps_24h, gc_ttft_24h, up_24h (24h)
-    //                  | gc_tps_7d, gc_ttft_7d, gc_itl_7d, up_7d, er_7d, cnt7 (7d) | cnt24 (24h)
+    // rawLatest binds: gc_tps_1h, gc_e2e_1h, gc_ttft_1h, cnt_1h (1h) |
+    //                  gc_tps_24h, gc_e2e_24h, gc_ttft_24h, up_24h (24h) |
+    //                  gc_tps_7d, gc_e2e_7d, gc_ttft_7d, gc_itl_7d, gc_chunks_7d,
+    //                  up_7d, er_7d, cnt7, ok7 (7d) | cnt24 (24h)
     //                  then provider subquery + benchmark filter (WHERE-clause order)
     const lastRunBinds: unknown[] = [
       since1h,
       since1h,
       since1h,
+      since1h,
       since24h,
       since24h,
       since24h,
+      since24h,
+      since7dIso,
+      since7dIso,
+      since7dIso,
       since7dIso,
       since7dIso,
       since7dIso,
@@ -451,14 +478,18 @@ export function leaderboardRoutes(env: Env) {
       ...(benchmarkVal ? [benchmarkVal] : []),
     ];
     const hourlyBinds: unknown[] = [
-      // cnt_1h, t_1h, tt_1h | cnt_24, t_24h, tt_24h, up_24 | cnt7h, t_7d, tt_7d, itl_7d, up_7, er_7
+      // cnt_1h, t_1h, tt_1h, e_1h | cnt_24, t_24h, tt_24h, e_24h, up_24 |
+      // cnt7h, t_7d, tt_7d, e_7d, itl_7d, up_7, er_7 then the WHERE window bound.
       since1h,
       since1h,
       since1h,
+      since1h,
       since24h,
       since24h,
       since24h,
       since24h,
+      since24h,
+      since7dIso,
       since7dIso,
       since7dIso,
       since7dIso,
@@ -481,13 +512,16 @@ export function leaderboardRoutes(env: Env) {
       cnt_1h: number | null;
       t_1h: number | null;
       tt_1h: number | null;
+      e_1h: number | null;
       cnt_24: number | null;
       t_24h: number | null;
       tt_24h: number | null;
+      e_24h: number | null;
       up_24: number | null;
       cnt7h: number | null;
       t_7d: number | null;
       tt_7d: number | null;
+      e_7d: number | null;
       itl_7d: number | null;
       up_7: number | null;
       er_7: number | null;
@@ -495,17 +529,22 @@ export function leaderboardRoutes(env: Env) {
     interface RawRow {
       model_id: number;
       gc_tps_1h: string | null;
+      gc_e2e_1h: string | null;
       gc_ttft_1h: string | null;
       cnt_1h: number | null;
       gc_tps_24h: string | null;
+      gc_e2e_24h: string | null;
       gc_ttft_24h: string | null;
       up_24h: number | null;
       gc_tps_7d: string | null;
+      gc_e2e_7d: string | null;
       gc_ttft_7d: string | null;
       gc_itl_7d: string | null;
+      gc_chunks_7d: string | null;
       up_7d: number | null;
       er_7d: number | null;
       cnt7: number | null;
+      ok7: number | null;
       cnt24: number | null;
       cnt_all: number | null;
     }
@@ -524,20 +563,26 @@ export function leaderboardRoutes(env: Env) {
             model_id: number;
             max_ts: string;
             gc_tps_1h: string | null;
+            gc_e2e_1h: string | null;
             gc_ttft_1h: string | null;
             cnt_1h: number | null;
             gc_tps_24h: string | null;
+            gc_e2e_24h: string | null;
             gc_ttft_24h: string | null;
             up_24h: number | null;
             gc_tps_7d: string | null;
+            gc_e2e_7d: string | null;
             gc_ttft_7d: string | null;
             gc_itl_7d: string | null;
+            gc_chunks_7d: string | null;
             up_7d: number | null;
             er_7d: number | null;
             cnt7: number | null;
+            ok7: number | null;
             cnt24: number | null;
             cnt_all: number | null;
             now_tps: number | null;
+            now_e2e: number | null;
             now_ttft: number | null;
             now_itl: number | null;
             now_status: string;
@@ -558,6 +603,7 @@ export function leaderboardRoutes(env: Env) {
       number,
       {
         tps: number | null;
+        e2e: number | null;
         ttft_ms: number | null;
         itl_ms: number | null;
         started_at: string;
@@ -570,6 +616,7 @@ export function leaderboardRoutes(env: Env) {
       rawMap.set(r.model_id, r);
       lastMap.set(r.model_id, {
         tps: r.now_tps,
+        e2e: r.now_e2e,
         ttft_ms: r.now_ttft,
         itl_ms: r.now_itl,
         started_at: r.max_ts,
@@ -597,13 +644,16 @@ export function leaderboardRoutes(env: Env) {
       cnt_1h: null,
       t_1h: null,
       tt_1h: null,
+      e_1h: null,
       cnt_24: null,
       t_24h: null,
       tt_24h: null,
+      e_24h: null,
       up_24: null,
       cnt7h: null,
       t_7d: null,
       tt_7d: null,
+      e_7d: null,
       itl_7d: null,
       up_7: null,
       er_7: null,
@@ -676,6 +726,35 @@ export function leaderboardRoutes(env: Env) {
         raw?.cnt7 ?? null,
         MIN_SAMPLES.w7d,
       );
+      // End-to-end throughput follows the same hourly-median → raw-median
+      // fallback as decode. Ranking reads this chain; decode stays diagnostic.
+      const e2e_tps_1h = gatedMedian(
+        h.e_1h,
+        h.cnt_1h,
+        raw?.gc_e2e_1h ?? null,
+        raw?.cnt_1h ?? null,
+        MIN_SAMPLES.w1h,
+      );
+      const e2e_tps_24h = gatedMedian(
+        h.e_24h,
+        h.cnt_24,
+        raw?.gc_e2e_24h ?? null,
+        raw?.cnt24 ?? null,
+        MIN_SAMPLES.w24h,
+      );
+      const e2e_tps_7d = gatedMedian(
+        h.e_7d,
+        h.cnt7h,
+        raw?.gc_e2e_7d ?? null,
+        raw?.cnt7 ?? null,
+        MIN_SAMPLES.w7d,
+      );
+      // Chunk median is raw-only and gates on SUCCESS count: the badge makes a
+      // claim about delivery, which only successful runs can evidence.
+      const median_chunks_7d =
+        (raw?.ok7 ?? 0) >= MIN_SAMPLES.w7d
+          ? percentile(parseConcatNumbers(raw?.gc_chunks_7d ?? null), 50)
+          : null;
       const itl_now = nowRow?.itl_ms ?? null;
       const samples7 = Math.max(h.cnt7h ?? 0, raw?.cnt7 ?? 0);
       const uptime_7d: number | null =
@@ -710,11 +789,11 @@ export function leaderboardRoutes(env: Env) {
         tps_24h,
         tps_7d,
         // Task 8 wires measured e2e values from raw runs.
-        e2e_tps_now: null,
-        e2e_tps_1h: null,
-        e2e_tps_24h: null,
-        e2e_tps_7d: null,
-        median_chunks_7d: null,
+        e2e_tps_now: nowRow?.e2e ?? null,
+        e2e_tps_1h,
+        e2e_tps_24h,
+        e2e_tps_7d,
+        median_chunks_7d,
         ttft_now: nowRow?.ttft_ms ?? null,
         ttft_1h,
         ttft_24h,

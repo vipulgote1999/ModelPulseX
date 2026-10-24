@@ -39,6 +39,16 @@ describe("api/contracts — D1 schema", () => {
     expect(hook).toContain("last_schedule_ms");
     expect(hook).toContain("alert_channel");
   });
+  it("leaderboard surfaces both throughput metrics and ranks on e2e", () => {
+    // Decode stays visible; end-to-end is what sort/rank/summary read. Pin the
+    // wiring so a later refactor cannot quietly rank block-delivery decode.
+    const lb = readFileSync("src/api/leaderboard.ts", "utf8");
+    for (const field of ["e2e_tps_now", "e2e_tps_1h", "e2e_tps_24h", "e2e_tps_7d", "median_chunks_7d"]) {
+      expect(lb).toContain(field);
+    }
+    expect(lb).toContain("e2eSpeed(");
+    expect(lb).toContain("best_e2e_tps: bestE2e");
+  });
   it("compare parses strict positive-int ids, deduped (batch-3)", () => {
     // Batch-3: map(Number).filter(Boolean) let "1.5"→1, "-1"→-1, "1,1,2"
     // doubled rows through. Pin the strict parse at the source.
