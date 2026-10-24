@@ -149,7 +149,10 @@ export class PerformanceDO implements DurableObject {
     // 127.0.0.1:8787 or a custom CORS_ORIGIN passed the gate but got no ACAO header.
     const origin = _request.headers.get("origin");
     const allowedOrigins = [
-      "https://modelpulsex.vipulgote5.workers.dev",
+      // Public origin (URL-001). The browser reaches the DO through the Pages
+      // front door, so this is the Origin header it presents. The workers.dev
+      // entry was removed in URL-001 step 5, when that route was disabled.
+      "https://modelpulsex.pages.dev",
       "http://localhost:5173",
       "http://127.0.0.1:5173",
       "http://localhost:8787",

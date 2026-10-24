@@ -31,13 +31,13 @@ export function createApi(env: Env) {
     console.error("CORS misconfig:", corsCheck.reason, corsCheck.origins);
   const allowedOrigins = corsCheck.origins.length
     ? corsCheck.origins
-    : (env.CORS_ORIGIN ?? "https://modelpulsex.vipulgote5.workers.dev")
+    : (env.CORS_ORIGIN ?? "https://modelpulsex.pages.dev")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
   if (!corsCheck.valid && allowedOrigins.length === 0) {
     // fallback to default if validation yielded empty
-    allowedOrigins.push("https://modelpulsex.vipulgote5.workers.dev");
+    allowedOrigins.push("https://modelpulsex.pages.dev");
   }
   app.use(
     bodyLimit({

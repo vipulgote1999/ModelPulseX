@@ -25,11 +25,26 @@ describe("PerformanceDO", () => {
     expect(res.status).toBe(403);
   });
 
+  it("rejects the retired workers.dev origin (URL-001 step 5)", async () => {
+    // The whole point of step 5 is that the account subdomain is no longer part of
+    // the public surface. If this ever passes again, the old host was re-admitted.
+    const { do_ } = makeDO();
+    const res = await do_.fetch(
+      new Request("https://live/live", {
+        headers: { ...SSE, origin: "https://modelpulsex.vipulgote5.workers.dev" },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("echoes ACAO for every allowed origin (incl. 127.0.0.1:8787)", async () => {
     // Regression: the gate allowed these origins but the echo used a smaller
     // hardcoded list, so browsers blocked the stream.
     for (const origin of [
-      "https://modelpulsex.vipulgote5.workers.dev",
+      // Public origin since URL-001 (Pages front door). If this regresses, SSE
+      // 403s in production while the rest of the dashboard still looks healthy.
+      "https://modelpulsex.pages.dev",
       "http://127.0.0.1:8787",
       "http://localhost:8787",
     ]) {

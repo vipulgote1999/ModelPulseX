@@ -94,7 +94,7 @@ export function validateCorsConfig(corsOrigin: string | undefined): {
   reason?: string;
   origins: string[];
 } {
-  const raw = corsOrigin ?? "https://modelpulsex.vipulgote5.workers.dev";
+  const raw = corsOrigin ?? "https://modelpulsex.pages.dev";
   const origins = raw
     .split(",")
     .map((s) => s.trim())
