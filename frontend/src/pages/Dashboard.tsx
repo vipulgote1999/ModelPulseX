@@ -403,15 +403,19 @@ export default function Dashboard() {
           const r = rows[0] as unknown as {
             display_name: string;
             provider: string;
+            e2e_tps_now: number | null;
+            e2e_tps_7d: number | null;
             tps_now: number | null;
             tps_7d: number | null;
             ttft_now: number | null;
             ttft_7d: number | null;
             uptime_7d: number | null;
           };
-          // Fall back to 7d medians when the live window has no samples yet
-          // (same rule as the BEST TPS card) — a leader must never show dashes.
-          const tps = r.tps_now ?? r.tps_7d;
+          // End-to-end is the ranked throughput. Fall back to its 7d median
+          // when the live window has no samples yet (same rule as the BEST
+          // END-TO-END TPS card) — a leader must never show dashes.
+          const e2e = r.e2e_tps_now ?? r.e2e_tps_7d;
+          const decode = r.tps_now;
           const ttft = r.ttft_now ?? r.ttft_7d;
           return (
             <div className="rounded-xl border border-violet-800/60 bg-gradient-to-r from-violet-950/50 to-zinc-900/40 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -428,16 +432,17 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex gap-4 text-sm ml-auto">
-                <span title="Measured tokens/sec (live now, else 7d median)">
-                  {tps != null ? (
+                <span title="End-to-end tokens/sec (whole request including TTFT; live now, else 7d median)">
+                  {e2e != null ? (
                     <>
-                      <b className="mono">{tps.toFixed(1)}</b>{" "}
+                      <b className="mono">{e2e.toFixed(1)}</b>{" "}
                       <span className="text-zinc-400 text-xs">
-                        TPS{r.tps_now == null ? " ·7d" : ""}
+                        E2E TPS{r.e2e_tps_now == null ? " ·7d" : ""} · decode{" "}
+                        {decode != null ? decode.toFixed(1) : "—"}
                       </span>
                     </>
                   ) : (
-                    "— TPS"
+                    "— E2E TPS"
                   )}
                 </span>
                 <span title="Time to first token (live now, else 7d median)">
@@ -480,6 +485,14 @@ export default function Dashboard() {
             best_tps: {
               display_name?: string;
               model?: string;
+              tps_now?: number | null;
+              tps_7d?: number | null;
+            } | null;
+            best_e2e_tps: {
+              display_name?: string;
+              model?: string;
+              e2e_tps_now?: number | null;
+              e2e_tps_7d?: number | null;
               tps_now?: number | null;
               tps_7d?: number | null;
             } | null;
@@ -570,7 +583,7 @@ export default function Dashboard() {
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
         >
           <option value="overall">Overall Score</option>
-          <option value="tps">Fastest (TPS)</option>
+          <option value="tps">Fastest (end-to-end TPS)</option>
           <option value="ttft">Lowest TTFT</option>
           <option value="uptime">Most Reliable</option>
         </select>
@@ -586,7 +599,8 @@ export default function Dashboard() {
           <option value="coding">Coding</option>
         </select>
         <span className="text-xs text-zinc-500 ml-auto hidden lg:inline">
-          Measured TPS (not provider-reported) · TTFT = first_token - started ·{" "}
+          End-to-end = whole request including TTFT · Decode = generation window
+          only · medians, not provider-reported ·{" "}
           {range === "1h"
             ? "1h → 10m buckets (6 points)"
             : "range affects charts (hourly aggregates)"}
@@ -601,6 +615,8 @@ export default function Dashboard() {
             model: string;
             provider: string;
             tps_now: number | null;
+            e2e_tps_now: number | null;
+            e2e_tps_7d: number | null;
             ttft_now: number | null;
             uptime_7d: number | null;
             overall_score: number | null;
@@ -665,6 +681,7 @@ export default function Dashboard() {
             display_name: string;
             provider: string;
             tps_now: number | null;
+            e2e_tps_now: number | null;
             overall_score: number | null;
           }>
         }

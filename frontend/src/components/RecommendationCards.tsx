@@ -6,6 +6,9 @@ export default function RecommendationCards({
     model: string;
     provider: string;
     tps_now: number | null;
+    /** End-to-end latest run, with 7d fallback used for selection. */
+    e2e_tps_now: number | null;
+    e2e_tps_7d: number | null;
     ttft_now: number | null;
     uptime_7d: number | null;
     overall_score: number | null;
@@ -16,9 +19,11 @@ export default function RecommendationCards({
     .filter((r) => r.overall_score != null)
     .sort((a, b) => (b.overall_score ?? -1) - (a.overall_score ?? -1));
   const best = sorted[0];
+  // Fastest follows end-to-end throughput (the ranked metric), never decode.
+  const e2eOf = (r: (typeof rows)[number]) => r.e2e_tps_now ?? r.e2e_tps_7d;
   const fastest = [...rows]
-    .filter((r) => r.tps_now != null)
-    .sort((a, b) => (b.tps_now ?? -1) - (a.tps_now ?? -1))[0];
+    .filter((r) => e2eOf(r) != null)
+    .sort((a, b) => (e2eOf(b) ?? -1) - (e2eOf(a) ?? -1))[0];
   const lowest = [...rows]
     .filter((r) => r.ttft_now != null)
     .sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0];
@@ -34,9 +39,11 @@ export default function RecommendationCards({
     },
     {
       icon: "⚡",
-      label: "FASTEST NOW",
+      label: "Fastest now (end-to-end)",
       row: fastest,
-      sub: fastest?.tps_now ? `${fastest.tps_now.toFixed(1)} TPS` : "—",
+      sub: fastest
+        ? `${(fastest.e2e_tps_now ?? fastest.e2e_tps_7d ?? 0).toFixed(1)} E2E TPS${fastest.e2e_tps_now == null ? " ·7d" : ""} · decode ${fastest.tps_now != null ? fastest.tps_now.toFixed(1) : "—"}`
+        : "—",
     },
     {
       icon: "🚀",

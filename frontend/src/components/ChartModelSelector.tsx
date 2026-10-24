@@ -7,6 +7,7 @@ type Row = {
   display_name: string;
   provider: string;
   tps_now: number | null;
+  e2e_tps_now: number | null;
   overall_score?: number | null;
 };
 
@@ -116,8 +117,14 @@ export default function ChartModelSelector({
               {sortedByIntel.map((r) => {
                 const aa = getAA(r.model);
                 const scoreTxt = aa ? ` ★${aa.score.toFixed(1)}` : "";
-                const tpsTxt =
-                  r.tps_now != null ? ` · ${r.tps_now.toFixed(1)} TPS` : "";
+                const e2eTxt =
+                  r.e2e_tps_now != null
+                    ? ` · E2E ${r.e2e_tps_now.toFixed(1)}`
+                    : "";
+                const decodeTxt =
+                  r.e2e_tps_now != null && r.tps_now != null
+                    ? ` · decode ${r.tps_now.toFixed(1)}`
+                    : "";
                 const disabled =
                   selected.includes(r.model_id) &&
                   selected[slot] !== r.model_id;
@@ -135,7 +142,8 @@ export default function ChartModelSelector({
                   >
                     {shortName} · {r.provider}
                     {scoreTxt}
-                    {tpsTxt}
+                    {e2eTxt}
+                    {decodeTxt}
                   </option>
                 );
               })}

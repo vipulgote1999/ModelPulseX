@@ -4,9 +4,19 @@ type Props = {
   summary?: {
     free_models: number;
     online_now: number;
+    /** Legacy alias of the end-to-end leader; kept so old payloads type-check. */
     best_tps: {
       display_name?: string;
       model?: string;
+      tps_now?: number | null;
+      tps_7d?: number | null;
+    } | null;
+    /** End-to-end leader — the only ranked throughput metric. */
+    best_e2e_tps: {
+      display_name?: string;
+      model?: string;
+      e2e_tps_now?: number | null;
+      e2e_tps_7d?: number | null;
       tps_now?: number | null;
       tps_7d?: number | null;
     } | null;
@@ -40,7 +50,18 @@ export default function SummaryCards({ summary, meta, leaderboard }: Props) {
     )
       mostReliable = r;
   }
-  const cards = [
+  // Latest measured run, else the 7d median. The `·7d` marker makes the
+  // fallback explicit; a missing decode value stays "—" rather than reusing
+  // the end-to-end number.
+  const e2eBest = summary?.best_e2e_tps;
+  const e2eValue = e2eBest?.e2e_tps_now ?? e2eBest?.e2e_tps_7d ?? null;
+  const e2eIs7d = e2eBest?.e2e_tps_now == null && e2eBest?.e2e_tps_7d != null;
+  const cards: Array<{
+    label: string;
+    value: string | number;
+    hint: string;
+    sub?: string;
+  }> = [
     {
       label: "FREE MODELS",
       value: summary?.free_models ?? "—",
@@ -52,11 +73,12 @@ export default function SummaryCards({ summary, meta, leaderboard }: Props) {
       hint: "last 10m",
     },
     {
-      label: "BEST TPS",
-      value: fmtTps(
-        summary?.best_tps?.tps_now ?? summary?.best_tps?.tps_7d ?? null,
-      ),
-      hint: summary?.best_tps?.display_name ?? summary?.best_tps?.model ?? "",
+      label: "BEST END-TO-END TPS",
+      value: fmtTps(e2eValue),
+      hint:
+        (e2eBest?.display_name ?? e2eBest?.model ?? "") +
+        (e2eIs7d ? " ·7d" : ""),
+      sub: `decode ${fmtTps(e2eBest?.tps_now ?? null)}`,
     },
     {
       label: "BEST TTFT",
@@ -97,6 +119,9 @@ export default function SummaryCards({ summary, meta, leaderboard }: Props) {
           <div className="text-[11px] text-zinc-500 truncate">
             {c.hint || "\u00A0"}
           </div>
+          {c.sub && (
+            <div className="text-[10px] text-zinc-600 truncate">{c.sub}</div>
+          )}
         </div>
       ))}
     </div>

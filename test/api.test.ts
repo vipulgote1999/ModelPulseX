@@ -73,6 +73,19 @@ describe("api/contracts — D1 schema", () => {
     expect(chart).toContain("Decode");
     expect(chart).toContain("median_e2e_tps");
   });
+  it("supporting surfaces label e2e explicitly", () => {
+    expect(readFileSync("frontend/src/components/SummaryCards.tsx", "utf8"))
+      .toContain("BEST END-TO-END TPS");
+    expect(readFileSync("frontend/src/pages/Dashboard.tsx", "utf8"))
+      .toContain("Fastest (end-to-end TPS)");
+    expect(readFileSync("frontend/src/components/RecommendationCards.tsx", "utf8"))
+      .toContain("Fastest now (end-to-end)");
+    const pg = readFileSync("frontend/src/pages/admin/Playground.tsx", "utf8");
+    expect(pg).toContain('"Decode TPS"');
+    expect(pg).toContain('"End-to-end TPS"');
+    expect(readFileSync("frontend/src/pages/Vs.tsx", "utf8"))
+      .toContain("end-to-end TPS order");
+  });
   it("compare parses strict positive-int ids, deduped (batch-3)", () => {
     // Batch-3: map(Number).filter(Boolean) let "1.5"→1, "-1"→-1, "1,1,2"
     // doubled rows through. Pin the strict parse at the source.

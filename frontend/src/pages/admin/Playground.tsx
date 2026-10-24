@@ -37,6 +37,7 @@ type PlaygroundResult = {
     http_status: number | null;
     ttft_ms: number | null;
     tps: number | null;
+    e2e_tps: number | null;
     generation_ms: number | null;
     itl_ms: number | null;
     chunk_count: number | null;
@@ -790,7 +791,8 @@ export default function Playground() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 ["TTFT ms", result.result.ttft_ms],
-                ["TPS", result.result.tps != null ? result.result.tps.toFixed(1) : null],
+                ["Decode TPS", result.result.tps != null ? result.result.tps.toFixed(1) : null],
+                ["End-to-end TPS", result.result.e2e_tps != null ? result.result.e2e_tps.toFixed(1) : null],
                 ["Generation ms", result.result.generation_ms],
                 ["ITL ms", result.result.itl_ms != null ? result.result.itl_ms.toFixed(1) : null],
                 ["Chunks", result.result.chunk_count],

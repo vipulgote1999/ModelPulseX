@@ -64,7 +64,7 @@ export default function Vs() {
             <p className="font-medium text-zinc-100">How is ModelPulseX different from TokenDyno?</p>
             <p>Both track live speed continuously with comparable methods. ModelPulseX covers 21 free
               providers instead of three, keeps 7-day windows instead of 24-hour ones, adds coding probes
-              next to the speed probe, and scores models on balanced profiles instead of raw TPS order.</p>
+              next to the speed probe, and scores models on balanced profiles instead of end-to-end TPS order.</p>
           </div>
           <div>
             <p className="font-medium text-zinc-100">How is ModelPulseX different from Artificial Analysis?</p>
