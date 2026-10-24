@@ -650,3 +650,40 @@ describe("benchmark engine — outbound URL SSRF guard", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("end-to-end throughput", () => {
+  it("stores end-to-end TPS from request start to completion", async () => {
+    const { measureBenchmark } = await import("../src/benchmark/engine");
+    let now = 1_000_000;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => {
+      const v = now;
+      now += 300;
+      return v;
+    });
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const push = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        push({ choices: [{ delta: { content: "hi" } }] });
+        push({ choices: [{ delta: { content: " there" } }] });
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } })));
+    const res = await measureBenchmark({
+      provider: "openrouter",
+      providerModelId: "test:free",
+      apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: undefined,
+      benchmark: { type: "speed", prompt: "hi", max_tokens: 16, timeout_ms: 5000 },
+    } as never);
+    // start 1_000_000, first token 1_000_300, completion 1_000_600; 2 visible tokens
+    expect(res.e2e_tps).toBe(3.33);
+    expect(res.e2e_tps!).toBeLessThan(res.tps!);
+    spy.mockRestore();
+    vi.restoreAllMocks();
+  });
+});

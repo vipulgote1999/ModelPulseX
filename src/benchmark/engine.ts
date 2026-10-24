@@ -5,6 +5,7 @@ import type {
   BenchmarkStatus,
 } from "../types";
 import {
+  computeE2eTps,
   computeGenerationMs,
   computeHybridTps,
   computeInterTokenLatency,
@@ -620,6 +621,12 @@ function finalize(
   const generation_ms = status === "SUCCESS" ? gen : null;
   const tpsVal = status === "SUCCESS" ? tps : null;
   const tpsMethodVal = status === "SUCCESS" ? tpsMethod : null;
+  // End-to-end throughput: whole request window, TTFT included. Kept separate
+  // from decode `tps`; never written into it.
+  const e2e_tps =
+    status === "SUCCESS"
+      ? computeE2eTps(outputTokens, startedMs, completedMs)
+      : null;
   return {
     request_started_at: startedAtIso,
     first_token_at: firstTokenAtIso,
@@ -630,6 +637,7 @@ function finalize(
     generation_ms,
     tps: tpsVal,
     tps_method: tpsMethodVal,
+    e2e_tps,
     itl_ms,
     chunk_count,
     status,

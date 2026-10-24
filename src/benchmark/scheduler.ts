@@ -401,6 +401,7 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
       ttft_ms: null,
       generation_ms: null,
       tps: null,
+      e2e_tps: null,
       itl_ms: null,
       chunk_count: null,
       status: "UNKNOWN_ERROR" as const,

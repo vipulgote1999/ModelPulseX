@@ -124,6 +124,8 @@ export interface BenchmarkResult {
  ttft_ms: number | null;
  generation_ms: number | null;
  tps: number | null;
+ /** End-to-end throughput: output_tokens / (completed_at - started_at), rounded 2dp. Null unless SUCCESS. */
+ e2e_tps: number | null;
  /** Median gap between consecutive streamed chunks (ms); null unless SUCCESS with >=2 chunks. */
  itl_ms: number | null;
  /** Number of content-bearing chunks observed (bounded by MAX_CHUNK_SAMPLES). */
