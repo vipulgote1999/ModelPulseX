@@ -46,7 +46,7 @@ export default function Docs() {
       </div>
     );
 
-  const base = "https://modelpulsex.vipulgote5.workers.dev";
+  const base = "https://modelpulsex.pages.dev";
   // JSX condenses literal newlines in <pre> to spaces — build code blocks as
   // template strings so each command renders on its own line.
   const quickstart =

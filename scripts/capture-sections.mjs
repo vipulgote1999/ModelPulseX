@@ -2,7 +2,7 @@
 // Usage: node scripts/capture-sections.mjs
 import { chromium } from "playwright";
 
-const baseUrl = "https://modelpulsex.vipulgote5.workers.dev/";
+const baseUrl = "https://modelpulsex.pages.dev/";
 const outDir = "performance_report/landing-capture-prod-01";
 const browser = await chromium.launch({ headless: true });
 const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();

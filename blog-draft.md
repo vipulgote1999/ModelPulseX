@@ -72,7 +72,7 @@ When a model stops being free, I do not make it vanish. It gets a `Previously Fr
 
 ## Try it
 
-The live site is at `https://modelpulsex.vipulgote5.workers.dev`.
+The live site is at `https://modelpulsex.pages.dev`.
 
 If you are picking a free model tonight, do not just take the rank. Open the seven-day TPS and the reliability line. Rank is a summary. The reliability line is the story. I have picked number one before and regretted it because its 1h chart was a cliff.
 

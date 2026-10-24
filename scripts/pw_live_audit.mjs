@@ -3,7 +3,7 @@ import { chromium } from "playwright";
 import fs from "fs";
 import path from "path";
 
-const LIVE = "https://modelpulsex.vipulgote5.workers.dev";
+const LIVE = "https://modelpulsex.pages.dev";
 const OUT = path.join(
   process.cwd(),
   "dump",

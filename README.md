@@ -165,7 +165,7 @@ wrangler secret put OPENROUTER_API_KEY
 wrangler secret put ADMIN_TOKEN
 npm run deploy  # or deploy.bat on Windows
 # verify
-curl https://modelpulsex.vipulgote5.workers.dev/api/health
+curl https://modelpulsex.pages.dev/api/health
 ```
 
 Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_QUEUE`/`bench-queue` + `bench-dlq`, Durable Object `LIVE_DO` (`PerformanceDO`), Crons `*/5 * * * *` + `*/10 * * * *` + `*/30 * * * *` + `0 * * * *`, assets `dist/frontend`.
