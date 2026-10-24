@@ -30,6 +30,18 @@ describe("hash router (e04s04)", () => {
     expect(MAX_COMPARE).toBe(6);
   });
 
+  it("round-trips the leaderboard TPS view", () => {
+    expect(parseHash("#/?tps_view=e2e").tpsView).toBe("e2e");
+    expect(parseHash("#/?tps_view=decode").tpsView).toBe("decode");
+    expect(parseHash("#/?tps_view=junk").tpsView).toBeUndefined();
+    expect(
+      formatHash({ page: "dashboard", modelId: null, compare: [1], tpsView: "e2e" }),
+    ).toBe("#/?compare=1&tps_view=e2e");
+    expect(
+      formatHash({ page: "dashboard", modelId: null, compare: [1], tpsView: "both" }),
+    ).toBe("#/?compare=1");
+  });
+
   it("round-trips hashes", () => {
     expect(formatHash({ page: "dashboard", modelId: null, compare: [1, 2] })).toBe("#/?compare=1,2");
     expect(formatHash({ page: "dashboard", modelId: null, compare: [] })).toBe("#/");

@@ -49,6 +49,16 @@ describe("api/contracts — D1 schema", () => {
     expect(lb).toContain("e2eSpeed(");
     expect(lb).toContain("best_e2e_tps: bestE2e");
   });
+  it("leaderboard renders the exact throughput labels and block badge", () => {
+    // Decode and end-to-end must never appear as one unlabeled number: pin
+    // the exact strings, the chunk badge, and the persisted view param.
+    const ui = readFileSync("frontend/src/components/Leaderboard.tsx", "utf8");
+    expect(ui).toContain("End-to-end TPS (includes TTFT)");
+    expect(ui).toContain("Decode TPS (excludes TTFT)");
+    expect(ui).toContain("Block delivery");
+    expect(ui).toContain("median_chunks_7d");
+    expect(ui).toContain("tps_view");
+  });
   it("compare parses strict positive-int ids, deduped (batch-3)", () => {
     // Batch-3: map(Number).filter(Boolean) let "1.5"→1, "-1"→-1, "1,1,2"
     // doubled rows through. Pin the strict parse at the source.

@@ -13,6 +13,13 @@ export interface LeaderboardResp {
     tps_1h: number | null;
     tps_24h: number | null;
     tps_7d: number | null;
+    /** End-to-end medians (whole request, includes TTFT). */
+    e2e_tps_now: number | null;
+    e2e_tps_1h: number | null;
+    e2e_tps_24h: number | null;
+    e2e_tps_7d: number | null;
+    /** Median chunks per successful run (7d); <8 means block delivery. */
+    median_chunks_7d: number | null;
     ttft_now: number | null;
     ttft_1h: number | null;
     ttft_24h: number | null;
@@ -47,6 +54,8 @@ export interface LeaderboardResp {
     free_models: number;
     online_now: number;
     best_tps: unknown;
+    /** End-to-end throughput leader (the only ranked TPS metric). */
+    best_e2e_tps: unknown;
     best_ttft: unknown;
     benchmarks_24h: number;
   };

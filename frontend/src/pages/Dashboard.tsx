@@ -6,7 +6,7 @@ import Leaderboard from "../components/Leaderboard";
 import RecommendationCards from "../components/RecommendationCards";
 import ChartModelSelector from "../components/ChartModelSelector";
 import CooldownPanel from "../components/CooldownPanel";
-import { parseHash, formatHash, MAX_COMPARE } from "../lib/router";
+import { parseHash, formatHash, MAX_COMPARE, type TpsView } from "../lib/router";
 
 // Lazy-recharts — cuts initial JS by ~250KB (recharts only parsed when charts viewport needed)
 const TpsChart = lazy(() => import("../charts/TpsChart"));
@@ -89,6 +89,11 @@ export default function Dashboard() {
   const [sort, setSort] = useState("overall");
   const [profile, setProfile] = useState("balanced");
   const [selected, setSelected] = useState<number[]>([]);
+  // Decode vs end-to-end is a view preference, not a data fetch: the API
+  // returns both metrics in one payload and the URL keeps the view shareable.
+  const [tpsView, setTpsView] = useState<TpsView>(
+    () => parseHash(window.location.hash).tpsView ?? "both",
+  );
 
   // Shareable compare URL (TokenDyno parity): selection hydrates from the
   // compare hash param on mount and writes back on change. The App owns the
@@ -110,17 +115,25 @@ export default function Dashboard() {
     // #/models back to #/ before the route switch committed).
     const path = window.location.hash.split("?")[0];
     if (path !== "" && path !== "#/") return;
-    const target = formatHash({ page: "dashboard", modelId: null, compare: selected });
+    const target = formatHash({
+      page: "dashboard",
+      modelId: null,
+      compare: selected,
+      tpsView,
+    });
     if (window.location.hash !== target) window.location.hash = target;
-  }, [selected]);
+  }, [selected, tpsView]);
   // Same-tab hash navigation (a pasted compare URL without reloading): adopt
   // the hash selection when it differs. Self-writes compare equal and reuse
   // the current state reference, so no update loop is possible.
   useEffect(() => {
     const onHash = () => {
-      const next = parseHash(window.location.hash).compare;
+      const parsed = parseHash(window.location.hash);
+      const next = parsed.compare;
       if (next.length > 0) hasAutoSelected.current = true;
       setSelected((cur) => (cur.join(",") === next.join(",") ? cur : next));
+      const view = parsed.tpsView ?? "both";
+      setTpsView((cur) => (cur === view ? cur : view));
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -592,6 +605,11 @@ export default function Dashboard() {
               tps_1h: number | null;
               tps_24h: number | null;
               tps_7d: number | null;
+              e2e_tps_now: number | null;
+              e2e_tps_1h: number | null;
+              e2e_tps_24h: number | null;
+              e2e_tps_7d: number | null;
+              median_chunks_7d: number | null;
               ttft_now: number | null;
               ttft_7d: number | null;
               itl_now: number | null;
@@ -606,6 +624,8 @@ export default function Dashboard() {
           }
           onSelect={setSelected}
           selected={selected}
+          tpsView={tpsView}
+          onTpsViewChange={setTpsView}
         />
       </div>
 

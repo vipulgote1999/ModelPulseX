@@ -2,9 +2,74 @@ import { useState, useEffect } from "react";
 import { fmtMs, fmtTps, timeAgo } from "../lib/utils";
 import Sparkline from "./Sparkline";
 import { getAA, getAAMeta } from "../lib/intelligence";
-import { MAX_COMPARE } from "../lib/router";
+import { MAX_COMPARE, type TpsView } from "../lib/router";
 import { useCooldowns, remainingStr } from "../hooks/useCooldowns";
 import { getCsrfToken } from "../lib/adminSession";
+
+// Exact user-facing labels (spec Section 10). Compact headers say "Now / 1h /
+// 24h / 7d"; the full strings live on the group header and toggle tooltips so
+// the two metrics can never be presented as one unlabeled number.
+const E2E_LABEL = "End-to-end TPS (includes TTFT)";
+const DECODE_LABEL = "Decode TPS (excludes TTFT)";
+
+const TPS_WINDOWS = [
+  { label: "Now", decode: "tps_now", e2e: "e2e_tps_now", headClass: "" },
+  { label: "1h", decode: "tps_1h", e2e: "e2e_tps_1h", headClass: "hidden xl:table-cell" },
+  { label: "24h", decode: "tps_24h", e2e: "e2e_tps_24h", headClass: "hidden xl:table-cell" },
+  { label: "7d", decode: "tps_7d", e2e: "e2e_tps_7d", headClass: "" },
+] as const;
+
+function BlockDeliveryBadge({ chunks }: { chunks: number }) {
+  return (
+    <span
+      className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800"
+      title={`Tokens arrive in large blocks, so Decode TPS measures block throughput, not per-token speed. Use End-to-end TPS to compare. (Median ${chunks} chunks per successful run over 7 days; badge threshold <8.)`}
+    >
+      Block delivery
+    </span>
+  );
+}
+
+function TpsValue({
+  e2e,
+  decode,
+  view,
+  primary,
+}: {
+  e2e: number | null;
+  decode: number | null;
+  view: TpsView;
+  primary?: boolean;
+}) {
+  if (view === "decode")
+    return (
+      <span
+        className="text-zinc-400"
+        title="Decode TPS is diagnostic and is not used for ranking."
+      >
+        {fmtTps(decode)}
+      </span>
+    );
+  if (view === "e2e")
+    return (
+      <span className={primary ? "text-zinc-100 font-medium" : "text-zinc-300"}>
+        {fmtTps(e2e)}
+      </span>
+    );
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className={primary ? "text-zinc-100 font-medium" : "text-zinc-200"}>
+        {fmtTps(e2e)}
+      </span>
+      <span className="text-[10px] text-zinc-500" title={DECODE_LABEL}>
+        {fmtTps(decode)}{" "}
+        <span className="rounded bg-zinc-800/80 px-1 text-[9px] uppercase tracking-wide text-zinc-500">
+          decode
+        </span>
+      </span>
+    </span>
+  );
+}
 
 type Row = {
   rank: number | null;
@@ -18,6 +83,13 @@ type Row = {
   tps_1h: number | null;
   tps_24h: number | null;
   tps_7d: number | null;
+  /** End-to-end medians (whole request, includes TTFT). */
+  e2e_tps_now: number | null;
+  e2e_tps_1h: number | null;
+  e2e_tps_24h: number | null;
+  e2e_tps_7d: number | null;
+  /** Median chunks per successful run (7d); <8 means block delivery. */
+  median_chunks_7d: number | null;
   ttft_now: number | null;
   ttft_7d: number | null;
   itl_now: number | null;
@@ -39,10 +111,15 @@ export default function Leaderboard({
   rows,
   onSelect,
   selected,
+  tpsView = "both",
+  onTpsViewChange,
 }: {
   rows: Row[];
   onSelect?: (ids: number[]) => void;
   selected?: number[];
+  /** Throughput view; both renders end-to-end bold with decode underneath. */
+  tpsView?: TpsView;
+  onTpsViewChange?: (view: TpsView) => void;
 }) {
   const [sortKey, setSortKey] = useState<keyof Row | "overall_score">(
     "overall_score",
@@ -225,79 +302,135 @@ export default function Leaderboard({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-zinc-800 bg-zinc-900/70">
+        <div
+          role="group"
+          aria-label="Throughput view"
+          title="Leaderboard throughput view; saved in the URL as tps_view=e2e|decode"
+          className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900 p-0.5 text-[11px]"
+        >
+          {(["both", "e2e", "decode"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onTpsViewChange?.(v)}
+              aria-pressed={tpsView === v}
+              title={
+                v === "both"
+                  ? `Both — ${E2E_LABEL} ranks; ${DECODE_LABEL} is shown underneath`
+                  : v === "e2e"
+                    ? `${E2E_LABEL} — ranked`
+                    : `${DECODE_LABEL} — diagnostic only`
+              }
+              className={`rounded-md px-2 py-1 transition-colors duration-150 ${tpsView === v ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              {v === "both" ? "Both" : v === "e2e" ? "End-to-end" : "Decode"}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] text-zinc-500 hidden sm:inline">
+          {tpsView === "decode"
+            ? "Decode is diagnostic only — ranking uses end-to-end"
+            : "Ranking uses end-to-end throughput"}
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/80 text-[11px] tracking-widest text-zinc-400 border-b border-zinc-800">
             <tr>
-              <th className="text-left px-3 py-2">#</th>
-              <th className="text-left px-3 py-2">Model</th>
-              <th className="text-left px-3 py-2 hidden md:table-cell">
+              <th rowSpan={2} className="text-left px-3 py-2 align-bottom">
+                #
+              </th>
+              <th rowSpan={2} className="text-left px-3 py-2 align-bottom">
+                Model
+              </th>
+              <th
+                rowSpan={2}
+                className="text-left px-3 py-2 align-bottom hidden md:table-cell"
+              >
                 Provider
               </th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-white"
-                onClick={() => sort("tps_now")}
+                colSpan={4}
+                className="text-center px-2 pt-2 pb-1 border-b border-zinc-800/70"
+                aria-label={tpsView === "decode" ? DECODE_LABEL : E2E_LABEL}
+                title={tpsView === "decode" ? DECODE_LABEL : E2E_LABEL}
               >
-                TPS Now
+                Throughput
+                <span className="block text-[10px] font-normal normal-case tracking-normal text-zinc-500">
+                  {tpsView === "decode" ? "Decode TPS" : "End-to-end TPS"}
+                </span>
               </th>
               <th
-                className="text-right px-2 py-2 hidden xl:table-cell cursor-pointer hover:text-white"
-                onClick={() => sort("tps_1h")}
-              >
-                1h
-              </th>
-              <th
-                className="text-right px-2 py-2 hidden xl:table-cell cursor-pointer hover:text-white"
-                onClick={() => sort("tps_24h")}
-              >
-                24h
-              </th>
-              <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-white"
-                onClick={() => sort("tps_7d")}
-              >
-                7d
-              </th>
-              <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-white"
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white"
                 onClick={() => sort("ttft_now")}
               >
                 TTFT
               </th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-white hidden 2xl:table-cell"
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white hidden 2xl:table-cell"
                 onClick={() => sort("itl_now")}
               >
                 ITL
               </th>
               <th
-                className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white"
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
                 onClick={() => sort("uptime_24h")}
                 title="24h reliability: share of successful runs in the last 24h"
               >
                 24h Rel
               </th>
               <th
-                className="text-right px-2 py-2 hidden lg:table-cell cursor-pointer hover:text-white"
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
                 onClick={() => sort("uptime_7d")}
               >
                 7d Up
               </th>
               {showAA && (
-                <th className="text-right px-2 py-2 hidden 2xl:table-cell">
+                <th
+                  rowSpan={2}
+                  className="text-right px-2 py-2 align-bottom hidden 2xl:table-cell"
+                >
                   Intelligence
                 </th>
               )}
-              <th className="text-left px-2 py-2 hidden 2xl:table-cell">
+              <th
+                rowSpan={2}
+                className="text-left px-2 py-2 align-bottom hidden 2xl:table-cell"
+              >
                 Trend (24h)
               </th>
-              <th className="text-right px-2 py-2 hidden sm:table-cell">
+              <th
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom hidden sm:table-cell"
+              >
                 Err%
               </th>
-              <th className="text-left px-2 py-2">Status</th>
-              <th className="text-left px-3 py-2 hidden 2xl:table-cell">
+              <th rowSpan={2} className="text-left px-2 py-2 align-bottom">
+                Status
+              </th>
+              <th
+                rowSpan={2}
+                className="text-left px-3 py-2 align-bottom hidden 2xl:table-cell"
+              >
                 Last Test
               </th>
+            </tr>
+            <tr>
+              {TPS_WINDOWS.map((w) => (
+                <th
+                  key={w.label}
+                  className={`text-right px-2 py-1 cursor-pointer hover:text-white ${w.headClass}`}
+                  onClick={() => sort(tpsView === "decode" ? w.decode : w.e2e)}
+                  title={`${tpsView === "decode" ? DECODE_LABEL : E2E_LABEL} · ${w.label}`}
+                >
+                  {w.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -348,6 +481,11 @@ export default function Leaderboard({
                   >
                     {r.model}
                   </div>
+                  {r.median_chunks_7d != null && r.median_chunks_7d < 8 && (
+                    <div className="mt-0.5">
+                      <BlockDeliveryBadge chunks={r.median_chunks_7d} />
+                    </div>
+                  )}
                   {(() => {
                     // e2e-found: thinking and non-reasoning are independent signals
                     // (a model can stream thinking traces yet not be a reasoning model),
@@ -419,18 +557,19 @@ export default function Leaderboard({
                     );
                   })()}
                 </td>
-                <td className="px-2 py-2 text-right mono font-medium">
-                  {fmtTps(r.tps_now)}
-                </td>
-                <td className="px-2 py-2 text-right mono hidden xl:table-cell text-zinc-400">
-                  {fmtTps(r.tps_1h)}
-                </td>
-                <td className="px-2 py-2 text-right mono hidden xl:table-cell text-zinc-400">
-                  {fmtTps(r.tps_24h)}
-                </td>
-                <td className="px-2 py-2 text-right mono text-zinc-200">
-                  {fmtTps(r.tps_7d)}
-                </td>
+                {TPS_WINDOWS.map((w) => (
+                  <td
+                    key={w.label}
+                    className={`px-2 py-2 text-right mono ${w.headClass}`}
+                  >
+                    <TpsValue
+                      e2e={r[w.e2e]}
+                      decode={r[w.decode]}
+                      view={tpsView}
+                      primary={w.label === "Now" || w.label === "7d"}
+                    />
+                  </td>
+                ))}
                 <td className="px-2 py-2 text-right mono">
                   {fmtMs(r.ttft_now ?? r.ttft_7d)}
                 </td>

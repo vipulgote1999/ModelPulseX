@@ -12,12 +12,16 @@ export type Page =
   | "docs"
   | "admin";
 
+export type TpsView = "both" | "e2e" | "decode";
+
 export interface Route {
   page: Page;
   /** Model id for the model detail page; null otherwise. */
   modelId: number | null;
   /** Compare selection ids (dashboard only); deduped positive ints, max 6. */
   compare: number[];
+  /** Leaderboard throughput view (dashboard only); absent means "both". */
+  tpsView?: TpsView;
 }
 
 /** Max pinned models for comparison (TokenDyno allows 6). */
@@ -41,8 +45,17 @@ export function parseHash(hash: string): Route {
   const path = q < 0 ? h : h.slice(0, q);
   const query = q < 0 ? "" : h.slice(q + 1);
   const params = new URLSearchParams(query);
-  if (path === "" || path === "/")
-    return { page: "dashboard", modelId: null, compare: parseCompareIds(params.get("compare")) };
+  if (path === "" || path === "/") {
+    const route: Route = {
+      page: "dashboard",
+      modelId: null,
+      compare: parseCompareIds(params.get("compare")),
+    };
+    const view = params.get("tps_view");
+    // Junk is dropped rather than becoming a third state the UI must explain.
+    if (view === "e2e" || view === "decode") route.tpsView = view;
+    return route;
+  }
   if (path === "/models") return { page: "models", modelId: null, compare: [] };
   if (path === "/pricing") return { page: "pricing", modelId: null, compare: [] };
   if (path === "/vs") return { page: "vs", modelId: null, compare: [] };
@@ -58,8 +71,15 @@ export function parseHash(hash: string): Route {
 }
 
 export function formatHash(route: Route): string {
-  if (route.page === "dashboard")
-    return route.compare.length > 0 ? "#/?compare=" + route.compare.join(",") : "#/";
+  if (route.page === "dashboard") {
+    const parts: string[] = [];
+    if (route.compare.length > 0) parts.push("compare=" + route.compare.join(","));
+    // "both" is the default view, so only an explicit single-metric view
+    // belongs in the URL.
+    if (route.tpsView === "e2e" || route.tpsView === "decode")
+      parts.push("tps_view=" + route.tpsView);
+    return parts.length > 0 ? "#/?" + parts.join("&") : "#/";
+  }
   if (route.page === "model")
     return route.modelId != null ? "#/model/" + route.modelId : "#/";
   return "#/" + route.page;
