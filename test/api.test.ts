@@ -86,6 +86,17 @@ describe("api/contracts — D1 schema", () => {
     expect(readFileSync("frontend/src/pages/Vs.tsx", "utf8"))
       .toContain("end-to-end TPS order");
   });
+  it("methodology states both formulas and the ranking policy", () => {
+    const m = readFileSync("frontend/src/pages/Methodology.tsx", "utf8");
+    expect(m).toContain("Decode TPS (excludes TTFT)");
+    expect(m).toContain("End-to-end TPS (includes TTFT)");
+    expect(m).toContain("completed_at - started_at");
+    expect(m).toContain("2,130");
+    expect(m).toContain("462.7");
+    expect(m).toContain("Block delivery");
+    expect(m).toContain("end-to-end TPS in at least one window");
+    expect(m).toContain("Fastest (0.6 end-to-end TPS weight)");
+  });
   it("compare parses strict positive-int ids, deduped (batch-3)", () => {
     // Batch-3: map(Number).filter(Boolean) let "1.5"→1, "-1"→-1, "1,1,2"
     // doubled rows through. Pin the strict parse at the source.

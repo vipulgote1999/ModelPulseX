@@ -2,8 +2,10 @@ export default function Methodology() {
   // JSX condenses literal newlines in <pre> to spaces — build code blocks as
   // template strings so each line renders on its own line.
   const tpsFormula =
-    "generation_time = completed_at - first_token_at\n" +
-    "TPS = output_tokens / generation_time (seconds)";
+    "Decode TPS (excludes TTFT)\n" +
+    "  = output_tokens / ((completed_at - first_token_at) / 1000)\n\n" +
+    "End-to-end TPS (includes TTFT)\n" +
+    "  = output_tokens / ((completed_at - started_at) / 1000)";
   const apiList =
     "GET /api/providers\n" +
     "GET /api/models?provider=&includeInactive=\n" +
@@ -15,7 +17,7 @@ export default function Methodology() {
     "GET /api/live  (SSE via Durable Object)\n" +
     "GET /api/cooldowns\n" +
     "GET /api/health?freshness=15   → 503 when data older than N min; includes scheduler state + alert_channel\n" +
-    "POST /api/admin/{discover|benchmark|reaggregate|cleanup|migrate|cooldown/reset}  (ADMIN_TOKEN)\n" +
+    "POST /api/admin/{discover|benchmark|reaggregate|backfill-e2e|cleanup|migrate|cooldown/reset}  (ADMIN_TOKEN)\n" +
     "wrangler d1 migrations apply DB --local / --remote\n" +
     "wrangler secret put OPENCODE_API_KEY OPENROUTER_API_KEY ADMIN_TOKEN";
   return (
@@ -33,20 +35,41 @@ export default function Methodology() {
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">
-          How TPS is measured — Measured TPS
+          How TPS is measured — two metrics, one numerator
         </h2>
         <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 mono text-xs">
           {tpsFormula}
         </pre>
         <p className="text-sm">
-          We do NOT use total request duration. We record{" "}
-          <b>request_started_at</b>, <b>first_token_at</b> (first SSE{" "}
-          <code>data:</code> with content), <b>completed_at</b>. If provider
-          supplies <code>usage.completion_tokens</code> we use it and mark{" "}
+          The numerator is identical in both formulas — the same output tokens.
+          Only the denominator differs: decode starts the clock at the first
+          token, so it measures generation after the wait; end-to-end starts at
+          the request, so it matches what a user actually experiences.
+        </p>
+        <p className="text-sm">
+          <b>
+            Measured from our Cloudflare runner. End-to-end includes connection
+            setup, queueing, network, and TTFT.
+          </b>{" "}
+          End-to-end TPS is the <b>only ranked throughput metric</b>; decode is
+          diagnostic and never decides a rank, sort, score, or comparison
+          winner.
+        </p>
+        <p className="text-sm">
+          Worked example from the screenshot run: <b>2,130</b> decode TPS and{" "}
+          <b>462.7</b> end-to-end TPS for the same completion — the gap is the
+          wait before the first token.
+        </p>
+        <p className="text-sm">
+          We record <b>request_started_at</b>, <b>first_token_at</b> (first SSE{" "}
+          <code>data:</code> with content), <b>completed_at</b>. Decode TPS uses{" "}
+          <code>completed_at - first_token_at</code>; end-to-end TPS uses{" "}
+          <code>completed_at - started_at</code>. If provider supplies{" "}
+          <code>usage.completion_tokens</code> we use it and mark{" "}
           <code>Measured TPS</code> with{" "}
           <code>token_estimation_method=provider</code>; otherwise we estimate
           via char/4 heuristic flagged <code>heuristic</code> and clearly
-          indicate estimation.
+          indicate estimation. Both metrics share the token count.
         </p>
         <p className="text-sm">
           Windowed values (1h/24h/7d) are <b>medians (P50)</b> over the window —
@@ -55,13 +78,24 @@ export default function Methodology() {
           “TPS Now” is the single latest measurement and is labeled accordingly.
           Windows need at least <b>2 samples (1h)</b>, <b>3 samples (24h)</b> or{" "}
           <b>5 samples (7d)</b> before a figure is displayed; below that you get
-          “insufficient data” instead of noise. The leaderboard serves these medians
-          from an hourly-refreshed precomputed snapshot (exact raw medians, same
-          gates); live per-hit queries remain as fallback. Hourly aggregates also retain
-          p50/p90/p95 for both TPS and TTFT.
+          “insufficient data” instead of noise. The leaderboard and compare both
+          serve these medians from an hourly-refreshed precomputed snapshot
+          (exact raw medians, same gates); live per-hit queries remain as
+          fallback. Hourly aggregates also retain p50/p90/p95 for both metrics
+          and TTFT.
         </p>
         <p className="text-sm">
-          The TPS figure is labelled per row: <b>Measured TPS</b> (a 24h median
+          <b>Block delivery</b> is informational: when{" "}
+          <code>median_chunks_7d &lt; 8</code> with at least 5 SUCCESS samples,
+          tokens arrive in large blocks, so Decode TPS measures block
+          throughput, not per-token speed. The badge changes no number and no
+          rank; use End-to-end TPS to compare. A missing history hour shows a
+          gap rather than an interpolated line — end-to-end history fills in as
+          each hour is recomputed after deploy, and we never synthesise a
+          measurement.
+        </p>
+        <p className="text-sm">
+          The end-to-end TPS figure is labelled per row: <b>Measured TPS</b> (a 24h median
           from enough samples <i>plus</i> a latest-run measurement backing it),
           <b>Insufficient samples</b> (runs exist but fall below the 3-sample
           24h gate, or the latest-run overlay missed so no measurement backs
@@ -69,9 +103,10 @@ export default function Methodology() {
           <b>Ranking uses the same evidence rule, plus two more gates</b>: a
           model needs at least <b>3 runs in the last 24h</b>, a{" "}
           <b>measured latest-run status</b> (overlay miss → status null →
-          unranked), and <b>TPS in at least one window</b> (failure-only rows
-          with no speed signal stay unranked with null score), so a rank means
-          comparable evidence rather than merely being listed. Models below
+          unranked), and <b>end-to-end TPS in at least one window</b>
+          (failure-only rows with no speed signal stay unranked with null
+          score), so a rank means comparable evidence rather than merely being
+          listed. Models below
           those gates stay visible but are listed last and unranked (shown as
           “—”).
         </p>
@@ -170,7 +205,8 @@ export default function Methodology() {
           Each run records <b>how</b> its TPS was measured (<code>tps_method</code>):
           smooth streams (at least 8 chunks with mean gap above 50ms) use inter-token
           timing (1000 / mean gap), bursty or chunked delivery falls back to wall-clock
-          (output tokens over generation time). TTFT is excluded in both paths.
+          (output tokens over generation time). TTFT is excluded from decode in both
+          paths; end-to-end TPS always keeps the full request window, including TTFT.
         </p>
         <p className="text-sm">
           Two probes run side by side. The <b>speed</b> probe is TokenDyno-identical: a fixed
@@ -215,14 +251,15 @@ export default function Methodology() {
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-3">
         <h2 className="font-semibold text-white">Scoring</h2>
         <pre className="mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3">
-          score = 0.40*tps_score + 0.25*ttft_score + 0.25*reliability_score +
+          score = 0.40*e2e_tps_score + 0.25*ttft_score + 0.25*reliability_score +
           0.10*consistency_score
         </pre>
         <p className="text-sm">
           Normalized across currently active FREE models. Profiles: Balanced
-          (default), Fastest (0.6 TPS), Lowest Latency (0.5 TTFT), Most Reliable
-          (0.55 reliability), Coding (0.35/0.15/0.30/0.20). No LLM calculates
-          scores.
+          (default), Fastest (0.6 end-to-end TPS weight), Lowest Latency (0.5
+          TTFT), Most Reliable (0.55 reliability), Coding
+          (0.35/0.15/0.30/0.20). No LLM calculates scores; the throughput
+          component always normalizes end-to-end, never decode.
         </p>
       </section>
 
