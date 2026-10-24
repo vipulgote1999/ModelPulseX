@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fmtTps } from "../lib/utils";
 
 export default function ComparePanel({ selected }: { selected: number[] }) {
   const [data, setData] = useState<{
@@ -7,10 +8,13 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
       provider: string;
       tps_24h: number | null;
       tps_7d: number | null;
+      e2e_tps_24h: number | null;
+      e2e_tps_7d: number | null;
       ttft_24h: number | null;
       ttft_7d: number | null;
       uptime_7d: number | null;
       error_rate: number | null;
+      median_chunks_7d: number | null;
     }>;
     recommended_provider: string | null;
   } | null>(null);
@@ -65,7 +69,9 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
       </div>
     );
   const rows = data.compare;
-  const best = (k: "tps_7d" | "tps_24h") =>
+  // Ranking and the best-cell highlight follow end-to-end throughput only;
+  // decode stays visible but is never the comparison winner.
+  const best = (k: "e2e_tps_7d" | "e2e_tps_24h") =>
     rows.reduce(
       (b, r) => ((r[k] ?? -1) > (b?.[k] ?? -1) ? r : b),
       rows[0] as (typeof rows)[number],
@@ -83,20 +89,58 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
         <span className="text-xs font-normal text-zinc-400">
           Recommended provider:{" "}
           <b className="text-white">{data.recommended_provider ?? "—"}</b> (by
-          7d TPS)
+          7d end-to-end TPS)
         </span>
       </div>
       <div className="mt-3 overflow-auto">
         <table className="w-full text-sm">
           <thead className="text-[11px] tracking-widest text-zinc-500 border-b border-zinc-800">
             <tr>
-              <th className="text-left px-3 py-2">Provider / Model</th>
-              <th className="text-right px-2 py-2">TPS 24h</th>
-              <th className="text-right px-2 py-2">TPS 7d</th>
-              <th className="text-right px-2 py-2">TTFT 24h</th>
-              <th className="text-right px-2 py-2">TTFT 7d</th>
-              <th className="text-right px-2 py-2">Uptime 7d</th>
-              <th className="text-right px-2 py-2">Err%</th>
+              <th rowSpan={2} className="text-left px-3 py-2 align-bottom">
+                Provider / Model
+              </th>
+              <th
+                colSpan={2}
+                className="text-center px-2 pt-2 pb-1 border-b border-zinc-800/70"
+              >
+                Throughput 24h
+              </th>
+              <th
+                colSpan={2}
+                className="text-center px-2 pt-2 pb-1 border-b border-zinc-800/70"
+              >
+                Throughput 7d
+              </th>
+              <th
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom"
+              >
+                TTFT 24h
+              </th>
+              <th
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom"
+              >
+                TTFT 7d
+              </th>
+              <th
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom"
+              >
+                Uptime 7d
+              </th>
+              <th
+                rowSpan={2}
+                className="text-right px-2 py-2 align-bottom"
+              >
+                Err%
+              </th>
+            </tr>
+            <tr>
+              <th className="text-right px-2 py-1 text-zinc-500">Decode</th>
+              <th className="text-right px-2 py-1 text-zinc-300">End-to-end</th>
+              <th className="text-right px-2 py-1 text-zinc-500">Decode</th>
+              <th className="text-right px-2 py-1 text-zinc-300">End-to-end</th>
             </tr>
           </thead>
           <tbody>
@@ -109,20 +153,37 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
                   {r.display_name}{" "}
                   <span
                     className={`ml-2 text-[11px] px-2 py-0.5 rounded-full border ${winner(r.provider) ? "border-emerald-700 bg-emerald-900/40 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}
+                    title={winner(r.provider) ? "Fastest (end-to-end)" : undefined}
                   >
                     {r.provider}
                     {winner(r.provider) ? " ★" : ""}
                   </span>
+                  {r.median_chunks_7d != null && r.median_chunks_7d < 8 && (
+                    <div className="mt-1">
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800"
+                        title="Tokens arrive in large blocks, so Decode TPS measures block throughput, not per-token speed. Use End-to-end TPS to compare."
+                      >
+                        Block delivery
+                      </span>
+                    </div>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-right mono text-zinc-500">
+                  {fmtTps(r.tps_24h)}
                 </td>
                 <td
-                  className={`px-2 py-2 text-right mono ${best("tps_24h")?.provider === r.provider ? "text-emerald-300 font-semibold" : ""}`}
+                  className={`px-2 py-2 text-right mono ${best("e2e_tps_24h")?.provider === r.provider ? "text-emerald-300 font-semibold" : ""}`}
                 >
-                  {r.tps_24h?.toFixed(1) ?? "—"}
+                  {fmtTps(r.e2e_tps_24h)}
+                </td>
+                <td className="px-2 py-2 text-right mono text-zinc-500">
+                  {fmtTps(r.tps_7d)}
                 </td>
                 <td
-                  className={`px-2 py-2 text-right mono ${best("tps_7d")?.provider === r.provider ? "text-emerald-300 font-semibold" : ""}`}
+                  className={`px-2 py-2 text-right mono ${best("e2e_tps_7d")?.provider === r.provider ? "text-emerald-300 font-semibold" : ""}`}
                 >
-                  {r.tps_7d?.toFixed(1) ?? "—"}
+                  {fmtTps(r.e2e_tps_7d)}
                 </td>
                 <td
                   className={`px-2 py-2 text-right mono ${bestTtft("ttft_24h")?.provider === r.provider ? "text-emerald-300 font-semibold" : ""}`}
@@ -150,9 +211,10 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
         </table>
       </div>
       <div className="mt-2 text-[11px] text-zinc-500">
-        Calculated from actual benchmark data (hourly aggregates + raw). Higher
-        TPS / lower TTFT highlighted. If a model is Previously Free, last 7d
-        aggregates are frozen at last hour.
+        Calculated from actual benchmark data (snapshot medians + raw fallback).
+        Higher end-to-end TPS / lower TTFT highlighted; decode shown for
+        diagnosis. If a model is Previously Free, last 7d aggregates are frozen
+        at last hour.
       </div>
     </div>
   );

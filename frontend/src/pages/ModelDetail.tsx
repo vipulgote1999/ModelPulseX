@@ -24,10 +24,13 @@ type CompareRow = {
   provider: string;
   tps_24h: number | null;
   tps_7d: number | null;
+  e2e_tps_24h: number | null;
+  e2e_tps_7d: number | null;
   ttft_24h: number | null;
   ttft_7d: number | null;
   uptime_7d: number | null;
   error_rate: number | null;
+  median_chunks_7d: number | null;
 };
 
 function fmtTps(v: number | null): string {
@@ -132,13 +135,54 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
 
       {summary != null && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            ["TPS 24h", fmtTps(summary.tps_24h)],
-            ["TPS 7d", fmtTps(summary.tps_7d)],
-            ["TTFT", fmtMs(summary.ttft_24h ?? summary.ttft_7d)],
-            ["Uptime 7d", summary.uptime_7d != null ? (summary.uptime_7d * 100).toFixed(1) + "%" : "—"],
-            ["Error", summary.error_rate != null ? (summary.error_rate * 100).toFixed(1) + "%" : "—"],
-          ].map(([k, v]) => (
+          <div className="rounded-xl border border-emerald-800/70 bg-emerald-950/20 p-3">
+            <div className="text-[10px] tracking-wide text-emerald-300/80">
+              End-to-end TPS (includes TTFT)
+            </div>
+            <div className="text-xl font-semibold text-zinc-100 mono">
+              24h {fmtTps(summary.e2e_tps_24h)}
+            </div>
+            <div className="text-xs text-zinc-400 mono">
+              7d {fmtTps(summary.e2e_tps_7d)}
+            </div>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3">
+            <div className="text-[10px] tracking-wide text-zinc-500">
+              Decode TPS (excludes TTFT)
+            </div>
+            <div className="text-xl font-semibold text-zinc-300 mono">
+              24h {fmtTps(summary.tps_24h)}
+            </div>
+            <div className="text-xs text-zinc-400 mono">
+              7d {fmtTps(summary.tps_7d)}
+            </div>
+            {summary.median_chunks_7d != null &&
+              summary.median_chunks_7d < 8 && (
+                <span
+                  className="mt-1 inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800"
+                  title="Tokens arrive in large blocks, so Decode TPS measures block throughput, not per-token speed. Use End-to-end TPS to compare."
+                >
+                  Block delivery
+                </span>
+              )}
+          </div>
+          {(
+            [
+              ["TTFT", fmtMs(summary.ttft_24h ?? summary.ttft_7d)],
+              [
+                "Uptime 7d",
+                summary.uptime_7d != null
+                  ? (summary.uptime_7d * 100).toFixed(1) + "%"
+                  : "—",
+              ],
+              [
+                "Error",
+                summary.error_rate != null
+                  ? (summary.error_rate * 100).toFixed(1) + "%"
+                  : "—",
+              ],
+            ] as Array<[string, string]>
+          ).map(([k, v]) => (
             <div key={k} className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3">
               <div className="text-[11px] tracking-widest text-zinc-500">{k}</div>
               <div className="text-xl font-semibold text-zinc-100 mono">{v}</div>
@@ -150,7 +194,7 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
       <Suspense fallback={<div className="rounded-xl border border-zinc-800 p-8 text-center text-zinc-500 animate-pulse">Loading charts…</div>}>
         <TpsChart
           range="7d"
-          series={[{ id: model.id, label, points: points.map((p) => ({ hour_start: p.hour_start, median_tps: p.median_tps })) }]}
+          series={[{ id: model.id, label, points: points.map((p) => ({ hour_start: p.hour_start, median_tps: p.median_tps, median_e2e_tps: p.median_e2e_tps })) }]}
         />
         <TtftChart
           range="7d"

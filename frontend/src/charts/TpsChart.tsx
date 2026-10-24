@@ -19,22 +19,39 @@ const COLORS = [
   "#60a5fa",
 ];
 
+type Metric = "both" | "e2e" | "decode";
+type SeriesPoint = {
+  hour_start: string;
+  median_tps: number | null;
+  median_e2e_tps: number | null;
+};
+type Series = { id: number; label: string; points: SeriesPoint[] };
+
+/** Stable row/legend key; also keeps the two metrics visibly separate. */
+function metricKey(label: string, metric: "e2e" | "decode"): string {
+  return `${label} · ${metric === "e2e" ? "End-to-end" : "Decode"}`;
+}
+
 export default function TpsChart({
   series,
   range,
 }: {
-  series: Array<{
-    id: number;
-    label: string;
-    points: Array<{ hour_start: string; median_tps: number | null }>;
-  }>;
+  series: Series[];
   range: string;
 }) {
   const isTenMin = range === "1h";
   // ponytail: auto-log when an outlier (e.g. diffusion 11k vs LLM ~500) would flatten everything; toggle overrides
   const [logOverride, setLogOverride] = useState<boolean | null>(null);
+  // Visible metric: both for a single model, end-to-end for multi-model
+  // comparison (the ranked metric) until the user overrides it.
+  const [metricOverride, setMetricOverride] = useState<Metric | null>(null);
+  const metric: Metric = metricOverride ?? (series.length === 1 ? "both" : "e2e");
+  // Auto-log considers both value sets so switching metric never re-flattens
+  // the scale unexpectedly.
   const allVals = series
-    .flatMap((s) => s.points.map((p) => p.median_tps ?? 0))
+    .flatMap((s) =>
+      s.points.flatMap((p) => [p.median_e2e_tps ?? 0, p.median_tps ?? 0]),
+    )
     .filter((v) => v > 0);
   const autoLog =
     allVals.length > 0 && Math.max(...allVals) / Math.min(...allVals) > 10;
@@ -55,11 +72,17 @@ export default function TpsChart({
     const row: Record<string, unknown> = { time: label };
     for (const s of series) {
       const pt = s.points.find((p) => p.hour_start === t);
-      (row as Record<string, unknown>)[s.label] = pt?.median_tps ?? null;
+      row[metricKey(s.label, "e2e")] = pt?.median_e2e_tps ?? null;
+      row[metricKey(s.label, "decode")] = pt?.median_tps ?? null;
     }
     row._raw = t;
     return row;
   });
+  const visible: Array<"e2e" | "decode"> =
+    metric === "both" ? ["e2e", "decode"] : [metric];
+  const hasE2e = series.some((s) =>
+    s.points.some((p) => p.median_e2e_tps != null),
+  );
 
   if (series.length === 0)
     return (
@@ -71,13 +94,43 @@ export default function TpsChart({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="text-sm font-semibold mb-2 flex items-center justify-between">
+      <div className="text-sm font-semibold mb-2 flex flex-wrap items-center justify-between gap-2">
         <span>
           {isTenMin
-            ? "1-hour TPS (median per 10m) — Measured TPS"
-            : "7-day TPS (median per hour) — Measured TPS"}
+            ? "1-hour TPS (median per 10m)"
+            : "7-day TPS (median per hour)"}{" "}
+          —{" "}
+          {metric === "both"
+            ? "End-to-end vs Decode"
+            : metric === "e2e"
+              ? "End-to-end"
+              : "Decode"}
         </span>
         <span className="text-[11px] text-zinc-500 flex items-center gap-2">
+          <span
+            role="group"
+            aria-label="TPS metric"
+            className="inline-flex rounded border border-zinc-700 overflow-hidden"
+          >
+            {(["both", "e2e", "decode"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMetricOverride(m)}
+                aria-pressed={metric === m}
+                title={
+                  m === "both"
+                    ? "Both — end-to-end solid, decode dashed"
+                    : m === "e2e"
+                      ? "End-to-end TPS (includes TTFT) — ranked"
+                      : "Decode TPS (excludes TTFT) — diagnostic only"
+                }
+                className={`px-1.5 py-0.5 transition-colors ${metric === m ? "bg-zinc-700 text-zinc-100" : "hover:text-zinc-300"}`}
+              >
+                {m === "both" ? "Both" : m === "e2e" ? "End-to-end" : "Decode"}
+              </button>
+            ))}
+          </span>
           <button
             onClick={() => setLogOverride((v) => !(v ?? autoLog))}
             className="px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 hover:text-zinc-300"
@@ -94,6 +147,12 @@ export default function TpsChart({
             : "hourly aggregates • not provider-reported"}
         </span>
       </div>
+      {!hasE2e && metric !== "decode" && (
+        <div className="mb-2 text-[11px] text-amber-400/90">
+          No end-to-end samples in this window yet — decode lines are shown
+          below; history fills in as runs are re-aggregated.
+        </div>
+      )}
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows}>
@@ -123,17 +182,25 @@ export default function TpsChart({
               labelStyle={{ color: "#e4e4e7" }}
             />
             <Legend />
-            {series.map((s, i) => (
-              <Line
-                key={s.id}
-                type="monotone"
-                dataKey={s.label}
-                stroke={COLORS[i % COLORS.length]!}
-                dot={false}
-                strokeWidth={2}
-                connectNulls
-              />
-            ))}
+            {series.flatMap((s, i) =>
+              visible.map((m) => {
+                const key = metricKey(s.label, m);
+                return (
+                  <Line
+                    key={`${s.id}-${m}`}
+                    type="monotone"
+                    dataKey={(row: Record<string, unknown>) => row[key] ?? null}
+                    name={key}
+                    stroke={COLORS[i % COLORS.length]!}
+                    strokeDasharray={m === "decode" ? "4 4" : undefined}
+                    strokeOpacity={m === "decode" ? 0.55 : 1}
+                    dot={false}
+                    strokeWidth={2}
+                    connectNulls
+                  />
+                );
+              }),
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

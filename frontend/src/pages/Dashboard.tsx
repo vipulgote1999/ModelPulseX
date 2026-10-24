@@ -26,17 +26,25 @@ function ChartFallback() {
 
 // DRY helper: deduplicates 4 near-identical useMemo blocks for chart series.
 // SAFETY: history Point rows are untyped D1 JSON; primary/fallback coalescing is intentional.
-function buildMetricSeries<K extends string>(
+function buildMetricSeries<K extends string, E extends string = never>(
   chartIds: number[],
   rows: Array<{ model_id: number; display_name: string; provider: string }>,
   historyData: Record<number, Array<Record<string, unknown>>>,
   primaryField: string,
   fallbackField: string | null,
   outField: K,
+  extra?: {
+    primaryField: string;
+    fallbackField: string | null;
+    outField: E;
+  },
 ): Array<{
   id: number;
   label: string;
-  points: Array<{ hour_start: string } & Record<K, number | null>>;
+  points: Array<
+    { hour_start: string } & Record<K, number | null> &
+      (E extends never ? unknown : Record<E, number | null>)
+  >;
 }> {
   return chartIds
     .map((id) => {
@@ -45,17 +53,29 @@ function buildMetricSeries<K extends string>(
         ? `${meta.display_name.slice(0, 18)} · ${meta.provider}`
         : String(id);
       // SAFETY: D1 JSON hour_start is ISO string; D1 rows are untyped but history API guarantees hour_start present
-      const points = (historyData[id] ?? []).map((p) => ({
-        // SAFETY: history Point rows are untyped D1 JSON; primary/fallback coalescing is intentional per-spec
-        hour_start: p["hour_start"] as string,
-        [outField]:
-          // SAFETY: D1 JSON numeric fields may be null; coalescing primary/fallback is intentional
-          (p[primaryField] as number | null) ??
-          (fallbackField
-            ? // SAFETY: fallback D1 JSON numeric field coalescing same as primary
-              ((p[fallbackField] as number | null) ?? null)
-            : null),
-      })) as Array<{ hour_start: string } & Record<K, number | null>>;
+      const points = (historyData[id] ?? []).map((p) => {
+        const point: Record<string, unknown> = {
+          // SAFETY: history Point rows are untyped D1 JSON; primary/fallback coalescing is intentional per-spec
+          hour_start: p["hour_start"] as string,
+          [outField]:
+            // SAFETY: D1 JSON numeric fields may be null; coalescing primary/fallback is intentional
+            (p[primaryField] as number | null) ??
+            (fallbackField
+              ? // SAFETY: fallback D1 JSON numeric field coalescing same as primary
+                ((p[fallbackField] as number | null) ?? null)
+              : null),
+        };
+        if (extra)
+          point[extra.outField] =
+            (p[extra.primaryField] as number | null) ??
+            (extra.fallbackField
+              ? ((p[extra.fallbackField] as number | null) ?? null)
+              : null);
+        return point;
+      }) as Array<
+        { hour_start: string } & Record<K, number | null> &
+          (E extends never ? unknown : Record<E, number | null>)
+      >;
       return { id, label, points };
     })
     .filter((s) => s.points.length > 0);
@@ -235,6 +255,11 @@ export default function Dashboard() {
       "median_tps",
       "avg_tps",
       "median_tps",
+      {
+        primaryField: "median_e2e_tps",
+        fallbackField: null,
+        outField: "median_e2e_tps",
+      },
     );
   }, [history.data, chartIds, rows]);
 

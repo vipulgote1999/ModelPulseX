@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 type Point = {
   hour_start: string;
   median_tps: number | null;
+  /** Additive end-to-end median (whole request, includes TTFT). */
+  median_e2e_tps: number | null;
   median_ttft: number | null;
   median_itl: number | null;
   success_rate: number | null;
