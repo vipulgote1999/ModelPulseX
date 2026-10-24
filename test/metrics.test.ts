@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency, computeHybridTps, measuredTpsLabel, isRankEligible, assignRanks, MIN_SAMPLES } from "../src/utils/metrics";
+import { computeTPS, computeTTFT, computeGenerationMs, percentile, overallScore, normalizeScores, computeInterTokenLatency, computeHybridTps, measuredTpsLabel, isRankEligible, assignRanks, MIN_SAMPLES, computeE2eTps, e2eSpeed } from "../src/utils/metrics";
 
 describe("metrics", () => {  it("TTFT = first - started", () => {
     expect(computeTTFT(1000, 1120)).toBe(120);
@@ -169,6 +169,52 @@ describe("rank eligibility + assignment", () => {
       { ...row(2, 6, "SUCCESS"), ...tps(100) },
     ]);
     expect(ordered.map((r) => r.model_id)).toEqual([2, 1]);
+    expect(ordered.map((r) => r.rank)).toEqual([1, null]);
+  });
+});
+
+describe("end-to-end TPS (e2e)", () => {
+  it("uses the whole request window and rounds to two decimals", () => {
+    // Screenshot run: 279 tokens, 472 ms TTFT, 131 ms generation.
+    expect(computeE2eTps(279, 1_000_000, 1_000_603)).toBe(462.69);
+    expect(computeE2eTps(100, 1000, 3000)).toBe(50);
+    expect(computeE2eTps(1, 0, 3)).toBe(333.33);
+  });
+
+  it("never fabricates when tokens or elapsed time are unusable", () => {
+    expect(computeE2eTps(null, 0, 1000)).toBeNull();
+    expect(computeE2eTps(0, 0, 1000)).toBeNull();
+    expect(computeE2eTps(10, 1000, 1000)).toBeNull();
+    expect(computeE2eTps(10, 2000, 1000)).toBeNull();
+    expect(computeE2eTps(10, 1000, null)).toBeNull();
+  });
+
+  it("ranks on 7d, then 24h, then the latest run", () => {
+    expect(e2eSpeed({ e2e_tps_7d: 70, e2e_tps_24h: 240, e2e_tps_now: 500 })).toBe(70);
+    expect(e2eSpeed({ e2e_tps_7d: null, e2e_tps_24h: 240, e2e_tps_now: 500 })).toBe(240);
+    expect(e2eSpeed({ e2e_tps_7d: null, e2e_tps_24h: null, e2e_tps_now: 500 })).toBe(500);
+    expect(e2eSpeed({})).toBeNull();
+  });
+});
+
+describe("assignRanks — end-to-end gate", () => {
+  it("sinks a row with decode but no end-to-end value when e2e fields exist", () => {
+    const ordered = assignRanks([
+      { model_id: 1, rank: 0, sampleCount24h: 10, status: "SUCCESS",
+        e2e_tps_7d: null, e2e_tps_24h: null, e2e_tps_now: null, tps_7d: 2000 },
+      { model_id: 2, rank: 0, sampleCount24h: 10, status: "SUCCESS",
+        e2e_tps_7d: 300, e2e_tps_24h: null, e2e_tps_now: null, tps_7d: 400 },
+    ]);
+    expect(ordered.map((r) => r.model_id)).toEqual([2, 1]);
+    expect(ordered.map((r) => r.rank)).toEqual([1, null]);
+  });
+
+  it("keeps legacy fixtures without e2e fields on the decode gate", () => {
+    const ordered = assignRanks([
+      { model_id: 1, rank: 0, sampleCount24h: 10, status: "SUCCESS", tps_7d: 100 },
+      { model_id: 2, rank: 0, sampleCount24h: 10, status: "SUCCESS", tps_7d: null },
+    ]);
+    expect(ordered.map((r) => r.model_id)).toEqual([1, 2]);
     expect(ordered.map((r) => r.rank)).toEqual([1, null]);
   });
 });

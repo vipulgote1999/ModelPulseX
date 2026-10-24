@@ -22,6 +22,21 @@ export function computeTPS(outputTokens: number | null, generationMs: number | n
   return outputTokens / (generationMs / 1000);
 }
 
+// End-to-end TPS = outputTokens / whole-request seconds. Includes TTFT,
+// queueing, and network — the throughput a caller actually experiences.
+// Rounded to 2 decimals; null rather than a guess when inputs are unusable.
+export function computeE2eTps(
+  outputTokens: number | null,
+  startedAtMs: number,
+  completedAtMs: number | null,
+): number | null {
+  if (outputTokens == null || outputTokens <= 0 || completedAtMs == null)
+    return null;
+  const elapsedMs = completedAtMs - startedAtMs;
+  if (elapsedMs <= 0) return null;
+  return Math.round((outputTokens / (elapsedMs / 1000)) * 100) / 100;
+}
+
 // percentile helper exact (sort)
 export function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
@@ -34,6 +49,16 @@ export function percentile(values: number[], p: number): number | null {
  *  data" instead of a number — prevents 1-2-sample spikes from ranking #1 (industry practice:
  *  Artificial Analysis uses sustained medians over trailing windows). */
 export const MIN_SAMPLES = { w1h: 2, w24h: 3, w7d: 5 } as const;
+
+/** Rankings read end-to-end throughput only: 7d median, then 24h, then the
+ *  latest run. Decode TPS is diagnostic and never feeds this chain. */
+export function e2eSpeed(row: {
+  e2e_tps_7d?: number | null;
+  e2e_tps_24h?: number | null;
+  e2e_tps_now?: number | null;
+}): number | null {
+  return row.e2e_tps_7d ?? row.e2e_tps_24h ?? row.e2e_tps_now ?? null;
+}
 
 /** Trust label for the primary TPS figure, derived from the gating outcome (#11).
  *  A constant label on every row tells the reader nothing about the row. */
@@ -87,6 +112,9 @@ export function assignRanks<
     tps_now?: number | null;
     tps_24h?: number | null;
     tps_7d?: number | null;
+    e2e_tps_now?: number | null;
+    e2e_tps_24h?: number | null;
+    e2e_tps_7d?: number | null;
   },
 >(rows: T[]): T[] {
   const ranked: T[] = [];
@@ -102,7 +130,16 @@ export function assignRanks<
     // only rows that actually carry the fields are gated on them.
     const tpsGate =
       "tps_now" in r || "tps_24h" in r || "tps_7d" in r ? hasTps : true;
-    (isRankEligible(r.sampleCount24h, st) && tpsGate ? ranked : unranked).push(
+    // End-to-end is the ranked throughput signal wherever the row carries the
+    // fields. Decode-only rows sink even with a large decode value: block
+    // delivery makes decode incomparable across models. Legacy fixtures with
+    // no e2e properties keep the exact old decode gate.
+    const hasE2eField =
+      "e2e_tps_now" in r || "e2e_tps_24h" in r || "e2e_tps_7d" in r;
+    const hasE2e =
+      r.e2e_tps_now != null || r.e2e_tps_24h != null || r.e2e_tps_7d != null;
+    const speedGate = hasE2eField ? hasE2e : tpsGate;
+    (isRankEligible(r.sampleCount24h, st) && speedGate ? ranked : unranked).push(
       r,
     );
   }
