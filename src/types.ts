@@ -195,6 +195,13 @@ export interface LeaderboardRow {
  tps_1h: number | null;
  tps_24h: number | null;
  tps_7d: number | null;
+ /** End-to-end throughput (whole request, includes TTFT). Ranking metric. */
+ e2e_tps_now: number | null;
+ e2e_tps_1h: number | null;
+ e2e_tps_24h: number | null;
+ e2e_tps_7d: number | null;
+ /** Median content chunks per successful run (7d); <8 flags block delivery. */
+ median_chunks_7d: number | null;
  ttft_now: number | null;
  ttft_1h: number | null;
  ttft_24h: number | null;

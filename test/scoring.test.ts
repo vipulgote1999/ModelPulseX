@@ -4,9 +4,9 @@ import { scoreLeaderboard, recommendationCards } from "../src/benchmark/scoring"
 describe("scoring", () => {
   it("overallScore normalized across active FREE models, profiles reweight", () => {
     const rows = [
-      { model_id: 1, tps_7d: 100, ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
-      { model_id: 2, tps_7d: 50, ttft_7d: 800, uptime_7d: 0.9, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
-      { model_id: 3, tps_7d: 10, ttft_7d: 1500, uptime_7d: 0.8, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 1, tps_7d: 100, e2e_tps_7d: 100, ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 2, tps_7d: 50, e2e_tps_7d: 50, ttft_7d: 800, uptime_7d: 0.9, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 3, tps_7d: 10, e2e_tps_7d: 10, ttft_7d: 1500, uptime_7d: 0.8, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
     ];
     const balanced = scoreLeaderboard(rows, "balanced");
     expect(balanced[0]!.overall_score! > balanced[1]!.overall_score!).toBe(true);
@@ -16,8 +16,8 @@ describe("scoring", () => {
   });
   it("PREVIOUSLY_FREE and inactive excluded from scoring", () => {
     const rows = [
-      { model_id: 1, tps_7d: 100, ttft_7d: 100, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
-      { model_id: 2, tps_7d: 200, ttft_7d: 50, uptime_7d: 0.99, active: false, free_status: "PREVIOUSLY_FREE", status: null } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 1, tps_7d: 100, e2e_tps_7d: 100, ttft_7d: 100, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 2, tps_7d: 200, e2e_tps_7d: 200, ttft_7d: 50, uptime_7d: 0.99, active: false, free_status: "PREVIOUSLY_FREE", status: null } as unknown as import("../src/types").LeaderboardRow,
     ];
     const scored = scoreLeaderboard(rows, "balanced");
     expect(scored.find((r) => r.model_id === 2)?.overall_score).toBeNull();
@@ -27,12 +27,56 @@ describe("scoring", () => {
     // pick with zero coding evidence. Single-coding observatory: all rows are
     // coding rows, so the coding winner IS the overall winner (or null).
     const rows = [
-      { model_id: 2, tps_7d: 50, tps_24h: 50, tps_now: 50, ttft_7d: 800, uptime_7d: 0.9, active: true, free_status: "FREE", status: "SUCCESS", display_name: "zzz-last" } as unknown as import("../src/types").LeaderboardRow,
-      { model_id: 1, tps_7d: 100, tps_24h: 100, tps_now: 100, ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS", display_name: "aaa-first" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 2, tps_7d: 50, tps_24h: 50, tps_now: 50, e2e_tps_7d: 50, e2e_tps_now: 50, ttft_7d: 800, uptime_7d: 0.9, active: true, free_status: "FREE", status: "SUCCESS", display_name: "zzz-last" } as unknown as import("../src/types").LeaderboardRow,
+      { model_id: 1, tps_7d: 100, tps_24h: 100, tps_now: 100, e2e_tps_7d: 100, e2e_tps_now: 100, ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS", display_name: "aaa-first" } as unknown as import("../src/types").LeaderboardRow,
     ];
     const cards = recommendationCards(rows);
     expect(cards.best_coding?.model_id).toBe(cards.best_overall?.model_id);
     expect(cards.best_coding?.model_id).toBe(1);
     expect(recommendationCards([]).best_coding).toBeNull();
+  });
+});
+
+describe("end-to-end scoring", () => {
+  it("ranks on end-to-end, not decode (block delivery loses)", () => {
+    const rows = [
+      { model_id: 1, e2e_tps_7d: 120, e2e_tps_now: 120, tps_7d: 2200,
+        ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" },
+      { model_id: 2, e2e_tps_7d: 320, e2e_tps_now: 320, tps_7d: 400,
+        ttft_7d: 200, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" },
+    ] as unknown as import("../src/types").LeaderboardRow[];
+    const scored = scoreLeaderboard(rows, "balanced");
+    expect(scored.find((r) => r.model_id === 2)!.overall_score!)
+      .toBeGreaterThan(scored.find((r) => r.model_id === 1)!.overall_score!);
+  });
+
+  it("nulls overall_score when only decode exists", () => {
+    const rows = [
+      { model_id: 1, tps_7d: 1000, ttft_7d: 100, uptime_7d: 0.99,
+        active: true, free_status: "FREE", status: "SUCCESS" },
+    ] as unknown as import("../src/types").LeaderboardRow[];
+    expect(scoreLeaderboard(rows)[0]!.overall_score).toBeNull();
+  });
+
+  it("consistency uses e2e_now vs e2e_7d", () => {
+    const base = { ttft_7d: 100, uptime_7d: 0.99, active: true,
+      free_status: "FREE", status: "SUCCESS" };
+    const rows = [
+      { ...base, model_id: 1, e2e_tps_7d: 100, e2e_tps_now: 100 },
+      { ...base, model_id: 2, e2e_tps_7d: 100, e2e_tps_now: 10 },
+    ] as unknown as import("../src/types").LeaderboardRow[];
+    const scored = scoreLeaderboard(rows);
+    expect(scored.find((r) => r.model_id === 1)!.overall_score!)
+      .toBeGreaterThan(scored.find((r) => r.model_id === 2)!.overall_score!);
+  });
+
+  it("fastest_now uses e2e_tps_now", () => {
+    const rows = [
+      { model_id: 1, e2e_tps_now: 120, tps_now: 2000, tps_7d: 100,
+        ttft_7d: 100, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" },
+      { model_id: 2, e2e_tps_now: 300, tps_now: 400, tps_7d: 100,
+        ttft_7d: 100, uptime_7d: 0.99, active: true, free_status: "FREE", status: "SUCCESS" },
+    ] as unknown as import("../src/types").LeaderboardRow[];
+    expect(recommendationCards(rows).fastest_now?.model_id).toBe(2);
   });
 });
