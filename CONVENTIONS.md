@@ -55,7 +55,8 @@ Banned dismissive phrases: "pre-existing", "unrelated to session", "not introduc
 - Never hardcode free-model lists; discover dynamically and skip UNKNOWN pricing.
 - Never benchmark paid/unknown models — verifyFree() before queueing.
 - Never fabricate data; surface observed-data window honestly.
-- Never use total duration for TPS; MUST use generation_time = completed_at - first_token_at.
+- Never use total duration for Decode TPS (tps); MUST use generation_time = completed_at - first_token_at.
+- End-to-end TPS (e2e_tps) MUST use the whole request (completed_at - started_at), MUST be labeled separately, and is the only throughput metric used for ranking. Never write e2e_tps into tps.
 - Never dismiss reproducible gate failures as pre-existing or out of scope.
 - Never proceed on red Preflight — invoke quick-fix or fix-bug first.
 - Never add a provider without limits, adapter, discovery, and dashboard row.

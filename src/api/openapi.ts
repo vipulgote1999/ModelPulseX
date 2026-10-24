@@ -143,7 +143,7 @@ export function buildOpenApiSpec() {
         get: {
           summary: "Leaderboard with medians + gating + sparkline",
           description:
-            "status is null on overlay miss (no latest-run measurement); null-status rows are unranked (rank null) with overall_score null. meta.alert_channel is log-only until ALERT_WEBHOOK_URL is set.",
+            "status is null on overlay miss (no latest-run measurement); null-status rows are unranked (rank null) with overall_score null. meta.alert_channel is log-only until ALERT_WEBHOOK_URL is set. Throughput: tps_* is Decode TPS (excludes TTFT); e2e_tps_* is End-to-end TPS (includes TTFT) and is the only throughput metric used for ranking. median_chunks_7d < 8 means block delivery.",
           parameters: [
             {
               name: "range",
@@ -198,6 +198,8 @@ export function buildOpenApiSpec() {
       "/api/history": {
         get: {
           summary: "Batch history for charts (single request for N models)",
+          description:
+            "median_tps is Decode TPS (excludes TTFT); median_e2e_tps is the additive End-to-end TPS (includes TTFT). Both are medians of the requested window/granularity.",
           parameters: [
             {
               name: "ids",
@@ -242,6 +244,8 @@ export function buildOpenApiSpec() {
       "/api/compare": {
         get: {
           summary: "Compare models side-by-side",
+          description:
+            "Snapshot medians carrying both Decode TPS (excludes TTFT) and End-to-end TPS (includes TTFT). recommended_provider is chosen on e2e_tps_7d; median_chunks_7d < 8 means block delivery.",
           parameters: [
             {
               name: "model",

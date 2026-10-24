@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { buildOpenApiSpec } from "../src/api/openapi";
 
 describe("openapi spec", () => {
@@ -87,5 +88,20 @@ describe("openapi spec", () => {
     expect(desc).toContain("overlay miss");
     expect(desc).toContain("unranked");
     expect(desc).toContain("alert_channel");
+  });
+
+  it("documents decode vs end-to-end", () => {
+    const json = JSON.stringify(buildOpenApiSpec());
+    expect(json).toContain("Decode TPS (excludes TTFT)");
+    expect(json).toContain("End-to-end TPS (includes TTFT)");
+    expect(json).toContain("e2e_tps_7d");
+    expect(json).toContain("median_chunks_7d");
+  });
+
+  it("CONVENTIONS pin both throughput rules", () => {
+    const conventions = readFileSync("CONVENTIONS.md", "utf8");
+    expect(conventions).toContain("Decode TPS");
+    expect(conventions).toContain("End-to-end TPS");
+    expect(conventions).toContain("e2e_tps");
   });
 });
