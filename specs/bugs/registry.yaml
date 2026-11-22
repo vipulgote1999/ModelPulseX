@@ -129,3 +129,10 @@
   scope: frontend/src/components/ChartModelSelector.tsx
   summary: Chart selector supports 3 slots while MAX_COMPARE is 6
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T110000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: package.json
+  summary: deploy:pages omits the Pages project name, so the documented deploy fails
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

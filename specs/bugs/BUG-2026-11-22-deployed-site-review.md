@@ -85,6 +85,14 @@ D1 production queries, and direct API probes.
   `ChartModelSelector` renders only 3 slots and says "pick up to 3 models".
 - Expected: one documented limit (6) everywhere.
 
+### D11 — `npm run deploy:pages` cannot find the Pages project
+
+- The script ran `wrangler pages deploy dist/frontend` with no project name.
+  Wrangler found `wrangler.jsonc` but it has no `pages_build_output_dir`, so it
+  ignored the file and failed with `Missing Pages project name`.
+- The documented deploy command was therefore broken; add
+  `--project-name modelpulsex`.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
