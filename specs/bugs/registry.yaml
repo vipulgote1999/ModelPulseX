@@ -297,3 +297,10 @@
   scope: src/api/leaderboard.ts
   summary: Snapshot leaderboard serves newly hidden models until the hourly sweep
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T134000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: frontend/src/charts/TimeoutChart.tsx
+  summary: Timeout chart turns API failures into "providers are behaving"
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

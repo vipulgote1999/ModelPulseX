@@ -64,14 +64,19 @@ export default function TimeoutChart({ range }: { range: string }) {
       retention_note: string;
     };
   } | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let dead = false;
     const ctl = new AbortController();
+    setFailed(false);
     fetch(`/api/timeouts?range=${encodeURIComponent(range)}`, {
       signal: ctl.signal,
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((j: unknown) => {
         if (!dead) {
           // SAFETY: /api/timeouts shape is owned by src/api/timeouts.ts; narrow to displayed fields
@@ -100,8 +105,10 @@ export default function TimeoutChart({ range }: { range: string }) {
         }
       })
       .catch((e) => {
-        // Abort on range switch is normal — anything else keeps last data.
+        // Abort on range switch is normal — anything else keeps last data but
+        // must not masquerade as "no timeouts" when there is no data yet.
         if ((e as Error)?.name === "AbortError") return;
+        if (!dead) setFailed(true);
       });
     return () => {
       dead = true;
@@ -165,7 +172,11 @@ export default function TimeoutChart({ range }: { range: string }) {
   }, [data, keys, hourly]);
 
   if (!data)
-    return (
+    return failed ? (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500">
+        Could not load timeout history — the API may be busy. Try refreshing.
+      </div>
+    ) : (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500 animate-pulse">
         Loading timeouts…
       </div>

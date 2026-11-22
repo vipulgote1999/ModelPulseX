@@ -292,6 +292,15 @@ D1 production queries, and direct API probes.
   predicate as `/api/models` and the live fallback) and pin it in the
   leaderboard source test.
 
+### D35 — Timeout chart reports an API failure as “providers are behaving”
+
+- Its fetch handler called `r.json()` without checking `r.ok`; a 429/500 error
+  body became an empty dataset, and the chart said “No timeouts recorded in
+  this range — providers are behaving.” A first-load failure also spun on
+  “Loading” forever.
+- Fix: reject non-2xx responses and render a retryable error card when there is
+  no previous data.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
