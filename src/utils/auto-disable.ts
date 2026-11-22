@@ -47,7 +47,10 @@ export function countDayFailures(rows: DayFailureRow[]): {
   let goneHits = 0;
   for (const r of rows) {
     if (r.status === "SUCCESS") continue;
-    failures++;
+    // Rate limiting is an account/provider condition, not evidence that the
+    // model is dead. Counting it towards auto-disable let a shared free-tier
+    // limit permanently disable healthy models until an admin noticed.
+    if (r.status !== "RATE_LIMITED" && r.http_status !== 429) failures++;
     if (
       r.status === "MODEL_UNAVAILABLE" ||
       r.http_status === 404 ||

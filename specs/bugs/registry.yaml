@@ -262,3 +262,10 @@
   scope: src/benchmark/scheduler.ts
   summary: Provider 5xx can shorten an existing provider cooldown to 30s
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T129000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: src/utils/auto-disable.ts
+  summary: Rate-limited runs count toward permanent model auto-disable
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

@@ -19,6 +19,15 @@ describe("auto-disable — 24h failure accounting", () => {
     expect(countDayFailures(rows)).toEqual({ failures: 2, goneHits: 0 });
   });
 
+  it("does not treat rate limiting as a dead-model failure", () => {
+    const rows = [
+      { status: "RATE_LIMITED", http_status: 429 },
+      { status: "PROVIDER_ERROR", http_status: 429 },
+      { status: "SUCCESS" },
+    ];
+    expect(countDayFailures(rows)).toEqual({ failures: 0, goneHits: 0 });
+  });
+
   it("detects gone-model signals (404, not supported, unavailable)", () => {
     expect(isGoneModelErrorText("Model x is not supported")).toBe(true);
     expect(

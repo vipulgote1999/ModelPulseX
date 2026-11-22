@@ -250,6 +250,14 @@ D1 production queries, and direct API probes.
 - Fix: route the 5xx branch through `escalateProviderCooldown`, which only ever
   raises the remaining duration and respects `COOLDOWN_MAX_MS`.
 
+### D30 — Rate limits count toward permanent auto-disable
+
+- `countDayFailures()` counted `RATE_LIMITED`/429 rows as failures, so a shared
+  free-tier limit could accumulate ten “failures” and disable a healthy model
+  until an admin re-enabled it.
+- Fix: exclude rate-limit rows from the dead-model failure count while still
+  tracking gone-model signals; add a unit test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
