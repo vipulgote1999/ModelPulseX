@@ -227,3 +227,10 @@
   scope: src/db/snapshot.ts, src/api/leaderboard.ts
   summary: Throughput medians gate on total runs instead of successful samples
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T124000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/charts/*
+  summary: Charts interpolate missing hours that methodology promises as gaps
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

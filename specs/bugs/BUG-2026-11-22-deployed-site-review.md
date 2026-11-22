@@ -208,6 +208,13 @@ D1 production queries, and direct API probes.
   denominator; the chunk badge already used success counts. Add a placeholder/
   bind parity test for the sweep.
 
+### D25 — Charts interpolate the missing hours the methodology says are gaps
+
+- `TpsChart`, `TtftChart` and `ItlChart` set `connectNulls`, so a missing
+  history hour was drawn as a straight bridge. `/methodology` promises a gap
+  rather than an interpolated line.
+- Fix: drop `connectNulls` and pin the contract in a source test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

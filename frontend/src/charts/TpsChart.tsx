@@ -197,7 +197,6 @@ export default function TpsChart({
                     strokeOpacity={m === "decode" ? 0.55 : 1}
                     dot={false}
                     strokeWidth={2}
-                    connectNulls
                   />
                 );
               }),

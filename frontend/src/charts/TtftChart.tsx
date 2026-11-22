@@ -98,7 +98,6 @@ export default function TtftChart({
                 stroke={COLORS[i % COLORS.length]!}
                 dot={false}
                 strokeWidth={2}
-                connectNulls
               />
             ))}
           </LineChart>

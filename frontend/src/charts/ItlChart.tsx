@@ -27,7 +27,7 @@ export default function ItlChart({ series, range }: { series: Array<{ id: number
             <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 10 }} />
             <Legend />
             {series.map((s, i) => (
-              <Line key={s.id} type="monotone" dataKey={s.label} stroke={COLORS[i % COLORS.length]!} dot={false} strokeWidth={2} connectNulls />
+              <Line key={s.id} type="monotone" dataKey={s.label} stroke={COLORS[i % COLORS.length]!} dot={false} strokeWidth={2} />
             ))}
           </LineChart>
         </ResponsiveContainer>
