@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { parseRange } from "../db/queries";
+import { publicModelVisibilityWhere } from "../providers/registry";
 
 export function historyRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -14,13 +15,34 @@ export function historyRoutes(env: Env) {
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
-    const ids = idsParam
+    const responseGranularity = granularity === "10m" ? "10m" : "hourly";
+    const requestedIds = idsParam
       .split(",")
       .map((s) => Number(s.trim()))
       .filter((n) => Number.isFinite(n) && n > 0)
       .slice(0, 12);
-    if (ids.length === 0)
+    if (requestedIds.length === 0)
       return c.json({ error: "ids required, e.g. ?ids=1,2,3" }, 400);
+    // SEC-002: the batch route must apply the same visibility gate as every
+    // by-id route. Without it, /api/history?ids=<disabled id> returned the full
+    // metric series for rows that /api/models/:id deliberately 404s.
+    const ph0 = requestedIds.map(() => "?").join(",");
+    const visibleRes = await env.DB.prepare(
+      `SELECT m.id FROM models m JOIN providers p ON p.id=m.provider_id
+       WHERE m.id IN (${ph0}) AND ${publicModelVisibilityWhere("p", "m")}`,
+    )
+      .bind(...requestedIds)
+      .all<{ id: number }>();
+    const visible = new Set((visibleRes.results ?? []).map((r) => r.id));
+    const ids = requestedIds.filter((id) => visible.has(id));
+    if (ids.length === 0)
+      return c.json({
+        history: Object.fromEntries(requestedIds.map((id) => [id, []])),
+        range,
+        benchmark,
+        granularity: responseGranularity,
+        meta: { observed_window: since },
+      });
     const placeholders = ids.map(() => "?").join(",");
     const useTenmin = granularity === "10m";
     let sql: string;
@@ -56,9 +78,9 @@ export function historyRoutes(env: Env) {
       } else throw e;
     }
     const byModel: Record<number, unknown[]> = {};
-    for (const id of ids) byModel[id] = [];
+    for (const id of requestedIds) byModel[id] = [];
     for (const r of (rows?.results ?? []) as Array<{ model_id: number } & Record<string, unknown>>) {
-      (byModel[r.model_id] ??= []).push(r);
+      if (byModel[r.model_id] != null) byModel[r.model_id].push(r);
     }
     const emptyIds = ids.filter((id) => (byModel[id] ?? []).length === 0);
     if (emptyIds.length > 0) {
@@ -72,14 +94,14 @@ export function historyRoutes(env: Env) {
       rawSql += " ORDER BY model_id, started_at ASC LIMIT 200";
       const raw = await env.DB.prepare(rawSql).bind(...rawBinds).all();
       for (const r of (raw.results ?? []) as Array<{ model_id: number } & Record<string, unknown>>) {
-        (byModel[r.model_id] ??= []).push(r);
+        if (byModel[r.model_id] != null) byModel[r.model_id].push(r);
       }
     }
     return c.json({
       history: byModel,
       range,
       benchmark,
-      granularity: useTenmin ? "10m" : "hourly",
+      granularity: responseGranularity,
       meta: { observed_window: since },
     });
   });

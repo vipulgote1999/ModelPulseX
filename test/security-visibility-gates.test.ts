@@ -96,6 +96,117 @@ const get = (path: string) =>
   createApi({ CORS_ORIGIN: "https://example.test", DB: dbStub() } as never)
     .request(`https://example.test${path}`);
 
+/** The compare route reads `caches.default` before rendering; Vitest has no
+ *  Worker cache global, so install the same no-op stub the SEC-007 suite uses. */
+function installNoopCache() {
+  (globalThis as unknown as { caches: unknown }).caches = {
+    default: {
+      match: async () => undefined,
+      put: async () => undefined,
+    },
+  };
+}
+
+/** DB stub that actually answers a visibility query with the fixture rows it
+ *  allows, records every statement + bind set, and returns empty aggregates.
+ *  Used to prove the batch routes query only visible ids (SEC-002). */
+function gatedDbStub() {
+  const sql: string[] = [];
+  const bindings: unknown[][] = [];
+  const resultFor = (stmt: string, args: unknown[]): unknown[] => {
+    if (/SELECT m\.id FROM models m JOIN providers p/i.test(stmt))
+      return args
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && passesGate(stmt, MODELS[id]))
+        .map((id) => ({ id }));
+    if (/SELECT m\.id, m\.provider_model_id/i.test(stmt))
+      return args
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && passesGate(stmt, MODELS[id]))
+        .map((id) => ({
+          id,
+          provider_model_id: `model-${id}`,
+          display_name: `model-${id}`,
+          provider: MODELS[id]!.provider,
+        }));
+    return [];
+  };
+  const makeStmt = (stmt: string) => {
+    const obj = {
+      sql: stmt,
+      args: [] as unknown[],
+      bind(...args: unknown[]) {
+        obj.args = args;
+        bindings.push(args);
+        return obj;
+      },
+      async all() {
+        return { results: resultFor(stmt, obj.args) };
+      },
+      async first() {
+        return null;
+      },
+      async run() {
+        return { meta: { changes: 0 } };
+      },
+    };
+    return obj;
+  };
+  return {
+    sql,
+    bindings,
+    prepare(stmt: string) {
+      sql.push(stmt);
+      return makeStmt(stmt);
+    },
+    async batch(stmts: Array<{ sql: string; args?: unknown[] }>) {
+      return stmts.map((s) => ({
+        results: resultFor(s.sql, s.args ?? []),
+      }));
+    },
+  };
+}
+
+describe("GET /api/history (SEC-002)", () => {
+  it("runs the visibility gate before any aggregate query", async () => {
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const res = await app.request("https://example.test/api/history?ids=1,2,3,4");
+    expect(res.status).toBe(200);
+    const gateIdx = db.sql.findIndex((s) =>
+      /SELECT m\.id FROM models m JOIN providers p/i.test(s),
+    );
+    const aggIdx = db.sql.findIndex((s) => /FROM hourly_model_stats/i.test(s));
+    expect(gateIdx).toBeGreaterThanOrEqual(0);
+    expect(aggIdx).toBeGreaterThan(gateIdx);
+    // Hidden ids (inactive 2, disabled 3) must not reach the aggregate binds.
+    const aggBinds = db.bindings[db.bindings.length - 1] ?? [];
+    expect(aggBinds.map(Number)).toContain(1);
+    expect(aggBinds.map(Number)).toContain(4);
+    expect(aggBinds.map(Number)).not.toContain(2);
+    expect(aggBinds.map(Number)).not.toContain(3);
+  });
+
+  it("returns an empty series for hidden ids without confirming they exist", async () => {
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const hidden = await app.request("https://example.test/api/history?ids=2,3");
+    const missing = await app.request("https://example.test/api/history?ids=999");
+    expect(hidden.status).toBe(200);
+    const hiddenBody = (await hidden.json()) as {
+      history: Record<string, unknown[]>;
+    };
+    const missingBody = (await missing.json()) as {
+      history: Record<string, unknown[]>;
+    };
+    // A hidden id looks exactly like an id with no measurements: an empty
+    // series, never a 404/403 that would confirm the row exists.
+    expect(Object.values(hiddenBody.history).every((v) => v.length === 0)).toBe(true);
+    expect(Object.values(missingBody.history).every((v) => v.length === 0)).toBe(true);
+    expect(db.sql.some((s) => /FROM hourly_model_stats|FROM benchmark_runs/.test(s))).toBe(false);
+  });
+});
+
 describe("publicModelVisibilityWhere", () => {
   it("always gates benchmark_enabled", () => {
     expect(publicModelVisibilityWhere("p", "m")).toContain("benchmark_enabled");
@@ -208,6 +319,30 @@ describe("GET /api/compare (SEC-002 + SEC-007)", () => {
     await app.request("https://example.test/api/compare?model=anything");
     const search = db.sql.find((s) => /provider_model_id LIKE/.test(s));
     expect(search).toMatch(/LIMIT\s+\d+/i);
+  });
+
+  it("gates the id-list metas query (SEC-002)", async () => {
+    installNoopCache();
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const res = await app.request("https://example.test/api/compare?models=1,2,3,4");
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as { compare: Array<{ model_id: number }> };
+    // Only the visible fixtures (1 visible, 4 PREVIOUSLY_FREE) survive.
+    expect(j.compare.map((r) => r.model_id)).toEqual([1, 4]);
+    const metas = db.sql.find((s) => /SELECT m\.id, m\.provider_model_id/i.test(s));
+    expect(metas).toContain("benchmark_enabled");
+    expect(metas).toContain("active=1");
+  });
+
+  it("never returns a hidden id even when it is explicitly listed", async () => {
+    installNoopCache();
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const res = await app.request("https://example.test/api/compare?models=2,3,5");
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as { compare: unknown[] };
+    expect(j.compare).toEqual([]);
   });
 });
 

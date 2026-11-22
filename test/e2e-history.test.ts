@@ -12,20 +12,22 @@ function fakeDb() {
           return stmt;
         },
         all: async () => ({
-          results: sql.includes("FROM hourly_model_stats")
-            ? [
-                {
-                  model_id: 1,
-                  hour_start: "2026-10-24T00:00:00.000Z",
-                  median_tps: 800,
-                  median_e2e_tps: 220,
-                  median_ttft: 400,
-                  success_rate: 1,
-                  uptime: 1,
-                  request_count: 5,
-                },
-              ]
-            : [],
+          results: sql.includes("SELECT m.id FROM models")
+            ? [{ id: 1 }]
+            : sql.includes("FROM hourly_model_stats")
+              ? [
+                  {
+                    model_id: 1,
+                    hour_start: "2026-10-24T00:00:00.000Z",
+                    median_tps: 800,
+                    median_e2e_tps: 220,
+                    median_ttft: 400,
+                    success_rate: 1,
+                    uptime: 1,
+                    request_count: 5,
+                  },
+                ]
+              : [],
         }),
       };
       return stmt;

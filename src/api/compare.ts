@@ -64,7 +64,7 @@ export function compareRoutes(env: Env) {
     // for models measured before the snapshot caught up.
     const [metasRes, snapRes, raw24Res, raw7Res] = await env.DB.batch([
       env.DB.prepare(
-        `SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders})`,
+        `SELECT m.id, m.provider_model_id, m.display_name, p.name as provider FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id IN (${placeholders}) AND ${publicModelVisibilityWhere("p", "m")}`,
       ).bind(...ids),
       env.DB.prepare(
         `SELECT model_id, tps_24h, tps_7d, e2e_tps_24h, e2e_tps_7d,
