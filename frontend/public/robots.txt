@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
+Allow: /api/og.png
 Disallow: /api/
 
 Sitemap: https://modelpulsex.pages.dev/sitemap.xml
