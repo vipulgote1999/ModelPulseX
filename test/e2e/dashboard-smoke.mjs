@@ -503,12 +503,17 @@ test("leaderboard renders one row per model", async () => {
       1,
       `row for ${m.display_name}`,
     );
+  const inactiveRow = page.locator("table tbody tr", {
+    hasText: INACTIVE_MODEL.display_name,
+  });
+  assert.equal(await inactiveRow.count(), 1, "previously-free row stays visible");
+  const inactiveText = await inactiveRow.innerText();
   assert.equal(
-    await page.locator("table tbody tr", { hasText: INACTIVE_MODEL.display_name })
-      .count(),
+    (inactiveText.match(/Previously Free/g) ?? []).length,
     1,
-    "previously-free row stays visible",
+    "one Previously Free badge, not a duplicate raw status",
   );
+  assert.doesNotMatch(inactiveText, /PREVIOUSLY_FREE/);
   // TPS Now column value is the measured tps_now, not a placeholder
   const first = await rows.first().innerText();
   assert.match(first, /75\.5/);

@@ -233,6 +233,14 @@ D1 production queries, and direct API probes.
 - Fix: only a real 404 sets `missing`; other failures render “Could not load
   this model” with a Retry button.
 
+### D28 — Previously-free rows show a duplicate status badge
+
+- The leaderboard rendered “Previously Free” for every inactive row and then
+  repeated the raw `PREVIOUSLY_FREE` string beside it; an inactive FREE row
+  would have been mislabeled “Previously Free”.
+- Fix: key the friendly badge on `free_status === "PREVIOUSLY_FREE"` and show
+  the raw status only for other inactive states.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

@@ -248,3 +248,10 @@
   scope: frontend/src/pages/ModelDetail.tsx
   summary: Transient model API errors render as Model not found
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T127000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/components/Leaderboard.tsx
+  summary: Previously-free rows show duplicate and potentially wrong status badges
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

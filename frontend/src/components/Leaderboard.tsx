@@ -524,12 +524,12 @@ export default function Leaderboard({
                       </>
                     );
                   })()}
-                  {!r.active && (
+                  {r.free_status === "PREVIOUSLY_FREE" && (
                     <span className="inline-flex text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800">
                       Previously Free
                     </span>
                   )}
-                  {r.free_status !== "FREE" && r.active === false && (
+                  {r.active === false && r.free_status !== "PREVIOUSLY_FREE" && (
                     <span className="ml-1 text-[10px] text-zinc-500">
                       {r.free_status}
                     </span>
