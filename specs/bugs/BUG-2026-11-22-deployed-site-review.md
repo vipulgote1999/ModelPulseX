@@ -333,6 +333,14 @@ D1 production queries, and direct API probes.
 - Fix: remove the unconditional LIVE claim from the header. The dashboard
   freshness banner (driven by `meta.is_stale`) is the single truthful status.
 
+### D40 — Undelivered rows-read alert silences the rest of the day
+
+- `checkRowsReadBudget` claimed the once-per-day slot before posting. If the
+  webhook failed (or was unset), the slot stayed stamped, so the next tick
+  stayed quiet even though no alert was delivered.
+- Fix: release `alerted_at` on delivery failure so the next tick retries; add
+  a regression test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

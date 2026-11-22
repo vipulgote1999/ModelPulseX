@@ -162,5 +162,20 @@ export async function checkRowsReadBudget(
     `Check new query shapes against scripts/check-query-plans.mjs.`;
   console.error("rows-read budget: " + content);
   const delivered = await postWebhook(env, content);
+  if (!delivered) {
+    // The claim above exists to stop duplicate sends, but an undelivered
+    // alert must not silence the rest of the day. Release the slot so the
+    // next tick retries (matches postWebhook's no-stamp-on-failure rule).
+    try {
+      await db
+        .prepare(
+          `UPDATE rows_read_daily SET alerted_at=NULL WHERE day=? AND alerted_at IS NOT NULL`,
+        )
+        .bind(utcDay(nowMs))
+        .run();
+    } catch (e) {
+      console.warn("rows-read alert release failed", e);
+    }
+  }
   return { measured: today.rows_read, cap, alerted: delivered };
 }

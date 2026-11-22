@@ -131,6 +131,25 @@ describe("rows-read accounting (issue #12)", () => {
     expect(posted[0]).toContain("provider-count");
   });
 
+  it("releases the alert slot when delivery fails so a later tick retries", async () => {
+    const db = stubDb(HIGH_ROW, { changes: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("webhook down");
+      }),
+    );
+    const res = await checkRowsReadBudget(
+      db as never,
+      { ALERT_WEBHOOK_URL: "https://hooks.test/x" },
+      Date.parse("2026-09-10T12:00:00Z"),
+    );
+    expect(res?.alerted).toBe(false);
+    expect(
+      db.writes.some((w) => /SET alerted_at=NULL/.test(w.sql)),
+    ).toBe(true);
+  });
+
   it("stays quiet when another tick already claimed today's alert", async () => {
     // changes: 0 == the `WHERE alerted_at IS NULL` guard matched nothing
     const db = stubDb(HIGH_ROW, { changes: 0 });

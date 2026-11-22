@@ -332,3 +332,10 @@
   scope: frontend/src/components/Header.tsx
   summary: Header shows a LIVE badge regardless of pipeline staleness
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T139000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: src/db/query-cost.ts
+  summary: Failed rows-read alert delivery silences the rest of the day
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
