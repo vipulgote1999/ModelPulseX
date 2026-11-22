@@ -13,10 +13,12 @@ With the Maestro CLI installed:
 maestro test maestro/web
 ```
 
-Or through the Maestro MCP tool with the `chromium` device (the agent uses this):
+Or through the Maestro MCP tool with the `chromium` device (the agent uses
+this). Run one file per call: the MCP browser shares a single tab, so a
+directory run can interleave flows and fail assertions.
 
 ```json
-{ "device_id": "chromium", "dir": "maestro/web" }
+{ "device_id": "chromium", "files": ["maestro/web/dashboard.yaml"] }
 ```
 
 ## Flows
