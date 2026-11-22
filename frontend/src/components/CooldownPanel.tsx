@@ -135,9 +135,11 @@ export default function CooldownPanel() {
           >
             {loading && data == null
               ? "Loading cooldowns…"
-              : hasAny
-                ? `${providers.length} provider • ${models.length} model cooling`
-                : "No active cooldowns"}
+              : data == null
+                ? "Cooldowns unavailable"
+                : hasAny
+                  ? `${providers.length} provider • ${models.length} model cooling`
+                  : "No active cooldowns"}
           </span>
           {open && hasAny && (
             <button
