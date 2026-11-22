@@ -27,7 +27,8 @@ export default tseslint.config(
   },
   {
     // Standalone Node ESM e2e script (test/e2e/*.mjs). Flat config ships no
-    // ambient Node globals, so declare just the ones it uses.
+    // ambient Node globals, so declare just the ones it uses. page.evaluate
+    // callbacks also reference browser globals; declare those too.
     files: ["test/e2e/**/*.mjs"],
     languageOptions: {
       globals: {
@@ -36,6 +37,18 @@ export default tseslint.config(
         console: "readonly",
         process: "readonly",
         setTimeout: "readonly",
+        document: "readonly",
+        getComputedStyle: "readonly",
+      },
+    },
+  },
+  {
+    // Pre-paint theme bootstrap, served as a same-origin static file.
+    files: ["frontend/public/**/*.js"],
+    languageOptions: {
+      globals: {
+        document: "readonly",
+        localStorage: "readonly",
       },
     },
   },
