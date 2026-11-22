@@ -154,6 +154,16 @@ export default function Leaderboard({
       );
     }
   };
+  const sortProps = (k: keyof Row | "overall_score") => ({
+    tabIndex: 0,
+    onClick: () => applySort(k),
+    onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        applySort(k);
+      }
+    },
+  });
   const sorted = [...rows].sort((a, b) => {
     // SAFETY: Row fields are number|null|string; dynamic access needs widening.
     // String columns (model/display_name/provider/status) compare
@@ -382,21 +392,21 @@ export default function Leaderboard({
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white"
-                onClick={() => applySort("ttft_now")}
+                {...sortProps("ttft_now")}
               >
                 TTFT
               </th>
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white hidden 2xl:table-cell"
-                onClick={() => applySort("itl_now")}
+                {...sortProps("itl_now")}
               >
                 ITL
               </th>
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
-                onClick={() => applySort("uptime_24h")}
+                {...sortProps("uptime_24h")}
                 title="24h reliability: share of successful runs in the last 24h"
               >
                 24h Rel
@@ -404,7 +414,7 @@ export default function Leaderboard({
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
-                onClick={() => applySort("uptime_7d")}
+                {...sortProps("uptime_7d")}
               >
                 7d Up
               </th>
@@ -443,7 +453,7 @@ export default function Leaderboard({
                 <th
                   key={w.label}
                   className={`text-right px-2 py-1 cursor-pointer hover:text-white ${w.headClass}`}
-                  onClick={() => applySort(tpsView === "decode" ? w.decode : w.e2e)}
+                  {...sortProps(tpsView === "decode" ? w.decode : w.e2e)}
                   title={`${tpsView === "decode" ? DECODE_LABEL : E2E_LABEL} · ${w.label}`}
                 >
                   {w.label}
