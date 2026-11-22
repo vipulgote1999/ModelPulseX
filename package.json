@@ -6,7 +6,7 @@
   "description": "ModelPulseX — Cloudflare-native LLM Performance Observatory for FREE OpenCode Zen + OpenRouter models",
   "scripts": {
     "dev": "wrangler dev --local --port 8789",
-    "dev:remote": "wrangler dev --port 8789",
+    "dev:remote": "wrangler dev --remote --port 8789",
     "build": "vite build && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
