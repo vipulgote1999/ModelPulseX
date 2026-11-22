@@ -291,9 +291,9 @@ export default function Admin() {
               ◆
             </div>
             <div>
-              <div className="font-semibold leading-none">
+              <h1 className="font-semibold leading-none">
                 Admin — ModelPulseX
-              </div>
+              </h1>
               <div className="text-xs text-zinc-500">
                 Login with ADMIN_ID / ADMIN_PASSWORD (wrangler secret). Token is
                 ADMIN_TOKEN.
@@ -375,9 +375,9 @@ export default function Admin() {
             ◆
           </div>
           <div>
-            <div className="font-semibold tracking-tight">
+            <h1 className="font-semibold tracking-tight">
               Admin — Benchmark Control
-            </div>
+            </h1>
             <div className="text-xs text-zinc-500">
               Keep ALL models stored. Toggle{" "}
               <span className="text-emerald-400">benchmark_enabled</span> per

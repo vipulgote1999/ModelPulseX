@@ -357,6 +357,7 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <h1 className="sr-only">ModelPulseX free LLM performance leaderboard</h1>
       {/* freshness */}
       <div
         className={`rounded-lg border px-3 py-2 text-sm flex flex-wrap gap-3 items-center ${data?.meta.is_stale ? "bg-amber-950/40 border-amber-800 text-amber-200" : "bg-emerald-950/30 border-emerald-800 text-emerald-200"}`}
