@@ -349,6 +349,13 @@ D1 production queries, and direct API probes.
 
 ## Verification
 
+Additional defects (D11–D39) surfaced during the live checks and were fixed in
+the same series: deployment scripts, incident lifecycle, successful-sample
+gating, snapshot data-loss/visibility, SSE per-IP identity, light-theme
+surfaces and hover states, responsive reliability bars, sort wiring, error
+states, SEO assets, and keyboard/landmark accessibility. Each fix has its own
+commit and test where practical.
+
 - `npm test && npm run typecheck && npm run lint`
 - `npm run build && npm run test:e2e`
 - Playwright live sweep (desktop + 390 px + 768 px) against the deployed build
