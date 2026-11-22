@@ -301,6 +301,14 @@ D1 production queries, and direct API probes.
 - Fix: reject non-2xx responses and render a retryable error card when there is
   no previous data.
 
+### D36 — Hash navigation keeps the previous page's scroll position
+
+- The SPA changes `location.hash`; browsers do not scroll to top for that. A
+  model opened from the middle of the leaderboard, or Models opened after
+  scrolling, rendered mid-page with the header/title off-screen.
+- Fix: reset scroll on `page`/`modelId` changes and assert the reset in
+  Playwright.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

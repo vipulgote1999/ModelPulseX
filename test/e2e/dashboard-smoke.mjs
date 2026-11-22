@@ -547,6 +547,20 @@ test("recommendation cards exclude previously-free inactive rows", async () => {
   assert.doesNotMatch(await summaryReliable.innerText(), /Old Free/);
 });
 
+test("navigation resets the scroll position", async () => {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+  await page.evaluate(() => window.scrollTo(0, 2000));
+  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.waitForTimeout(400);
+  assert.ok(
+    (await page.evaluate(() => window.scrollY)) < 50,
+    "a new hash route must start at the top",
+  );
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+});
+
 test("dashboard sort drives the visible table order", async () => {
   const sortSelect = page.locator("select").nth(3);
   await sortSelect.selectOption("tps");

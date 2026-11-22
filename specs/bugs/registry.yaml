@@ -304,3 +304,10 @@
   scope: frontend/src/charts/TimeoutChart.tsx
   summary: Timeout chart turns API failures into "providers are behaving"
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T135000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/App.tsx
+  summary: Hash navigation keeps the previous page's scroll position
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

@@ -25,6 +25,12 @@ export default function App() {
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
+  // Hash navigation does not reset scroll. Without this, opening a model from
+  // the middle of the leaderboard (or switching to Models) lands mid-page with
+  // the header and page title off-screen.
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [route.page, route.modelId]);
   // Nav keeps the dashboard compare selection in the URL when staying on or
   // returning to the dashboard; other pages start clean.
   const navigate = useCallback((page: NavPage) => {
