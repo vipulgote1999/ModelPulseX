@@ -50,7 +50,7 @@ export function compareRoutes(env: Env) {
     // cache object AND forced a fresh origin D1 read for a byte-identical
     // response. Two callers comparing the same models still share an entry.
     const cacheKey = new Request(
-      `${url.origin}${url.pathname}?ids=${ids.join(",")}&v=2`,
+      `${url.origin}${url.pathname}?ids=${ids.join(",")}&v=3`,
       { method: "GET" },
     );
     try {

@@ -50,9 +50,10 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
   if (!selected.length)
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 text-sm text-zinc-500">
-        Select 2–6 models from the leaderboard to compare. When the same
-        underlying model exists on both providers (e.g., laguna family) you will
-        see a per-provider table with the winner highlighted.
+        Select 2–6 models from the leaderboard to compare throughput, TTFT and
+        reliability side by side. When the same underlying model exists on both
+        providers (e.g., the laguna family) the provider column makes the
+        difference visible.
       </div>
     );
   if (failed)
@@ -85,11 +86,10 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
       <div className="text-sm font-semibold flex items-center justify-between">
-        Same-model provider comparison{" "}
+        Model comparison{" "}
         <span className="text-xs font-normal text-zinc-400">
-          Recommended provider:{" "}
-          <b className="text-white">{data.recommended_provider ?? "—"}</b> (by
-          7d end-to-end TPS)
+          Fastest provider (7d end-to-end):{" "}
+          <b className="text-white">{data.recommended_provider ?? "—"}</b>
         </span>
       </div>
       <div className="mt-3 overflow-auto">
