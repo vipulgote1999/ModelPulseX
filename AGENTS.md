@@ -71,7 +71,7 @@ Workers API (adapters/benchmark engine/scoring/aggregation) → D1 (models,runs,
 ## Learned Preferences
 
 - End-of-batch review: after completing any batch of user tasks, run the full-task audit before declaring done — verify every item in source (grep markers with file:line), in the live bundle (dist/ freshness vs HEAD + minified markers), and via green preflight (tests/typecheck/lint). Report a per-item checklist.
-- Deploy flow: `npm run deploy` does NOT build — always run `vite build` first, or frontend changes ship stale.
+- Deploy flow: `npm run deploy` builds the Worker; `npm run deploy:pages` builds and deploys the public Pages front door. Run preflight first; `deploy.bat` runs both.
 
 ## Workspace Facts
 
