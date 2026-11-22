@@ -477,8 +477,17 @@ export default function Leaderboard({
             {sorted.map((r) => (
               <tr
                 key={r.model_id}
+                tabIndex={0}
+                aria-selected={selected?.includes(r.model_id) ?? false}
                 onClick={() => toggle(r.model_id)}
-                className={`border-b border-zinc-800/60 hover:bg-zinc-800/40 cursor-pointer ${selected?.includes(r.model_id) ? "bg-violet-950/30" : ""}`}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle(r.model_id);
+                  }
+                }}
+                className={`border-b border-zinc-800/60 hover:bg-zinc-800/40 cursor-pointer focus-visible:bg-zinc-800/40 ${selected?.includes(r.model_id) ? "bg-violet-950/30" : ""}`}
               >
                 <td
                   className="px-3 py-2 text-zinc-400"
