@@ -578,6 +578,7 @@ export default function Admin() {
           className="min-w-[220px] flex-1 max-w-[420px] rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-600"
         />
         <select
+          aria-label="Filter by provider"
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
           className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-100"
@@ -592,6 +593,7 @@ export default function Admin() {
             ))}
         </select>
         <select
+          aria-label="Filter by enabled state"
           value={enabledFilter}
           onChange={(e) => setEnabledFilter(e.target.value as never)}
           className="rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-100"
