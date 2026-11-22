@@ -255,3 +255,10 @@
   scope: frontend/src/components/Leaderboard.tsx
   summary: Previously-free rows show duplicate and potentially wrong status badges
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T128000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: src/benchmark/scheduler.ts
+  summary: Provider 5xx can shorten an existing provider cooldown to 30s
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

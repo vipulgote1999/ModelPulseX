@@ -241,6 +241,15 @@ D1 production queries, and direct API probes.
 - Fix: key the friendly badge on `free_status === "PREVIOUSLY_FREE"` and show
   the raw status only for other inactive states.
 
+### D29 — A transient provider 5xx can shorten an active cooldown
+
+- The 5xx branch called `setProviderCooldown(..., 30_000)`, overwriting an
+  existing longer cooldown (for example a 2-hour block from 429/quota). An
+  in-flight job could therefore re-open a provider that was meant to stay
+  parked.
+- Fix: route the 5xx branch through `escalateProviderCooldown`, which only ever
+  raises the remaining duration and respects `COOLDOWN_MAX_MS`.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

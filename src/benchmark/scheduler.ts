@@ -26,7 +26,6 @@ import { WORKLOADS } from "./workloads";
 import { providerFor } from "../providers/index";
 import { freeHardFilterWhere, tierIntervalMsFor } from "../providers/registry";
 import {
-  setProviderCooldown,
   setModelCooldown,
   clearModelCooldown,
   escalateProviderCooldown,
@@ -488,11 +487,12 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
           `PROVIDER_ERROR model-specific 5xx`,
         );
       } else {
-        await setProviderCooldown(
+        await escalateProviderCooldown(
           env.DB,
           job.provider,
           30_000,
           `PROVIDER_ERROR 5xx`,
+          cooldownMaxMs,
         );
         await setModelCooldown(
           env.DB,
