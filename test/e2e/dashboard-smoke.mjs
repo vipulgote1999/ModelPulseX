@@ -486,6 +486,20 @@ test("recommendation cards exclude previously-free inactive rows", async () => {
   assert.doesNotMatch(await summaryReliable.innerText(), /Old Free/);
 });
 
+test("chart selector exposes all six compare slots", async () => {
+  for (let i = 1; i <= 6; i++) {
+    assert.equal(
+      await page.locator(`select[aria-label="Compare slot ${i}"]`).count(),
+      1,
+      `compare slot ${i}`,
+    );
+  }
+  assert.match(
+    await page.locator("body").innerText(),
+    /pick up to 6 models/,
+  );
+});
+
 test("freshness banner shows LIVE when meta.is_stale is false", async () => {
   const banner = page.locator('div[class*="bg-emerald-950/30"]');
   assert.equal(await banner.count(), 1, "live banner element");

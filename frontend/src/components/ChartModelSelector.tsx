@@ -70,18 +70,19 @@ export default function ChartModelSelector({
 
   const clear = () => onChange([]);
 
-  // pad slots to 3 for UI
-  const slots: Array<number | ""> = [
-    selected[0] ?? "",
-    selected[1] ?? "",
-    selected[2] ?? "",
-  ];
+  // One slot per allowed pin (MAX_COMPARE = 6). The dashboard, leaderboard
+  // selection, and compare URL all already support six; rendering only three
+  // made the fourth-to-sixth pins invisible.
+  const slots: Array<number | ""> = Array.from(
+    { length: MAX_COMPARE },
+    (_, i) => selected[i] ?? "",
+  );
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 space-y-3 min-w-0 max-w-full overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold">
-          Graph comparison — pick up to 3 models
+          Graph comparison — pick up to {MAX_COMPARE} models
         </div>
         <div className="text-[11px] text-zinc-500">
           Top 3 for {providerLabel} · {benchmark} benchmark · affects all graphs
@@ -90,25 +91,25 @@ export default function ChartModelSelector({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
-        {[0, 1, 2].map((slot) => (
+        {slots.map((slotValue, slot) => (
           <div key={slot} className="flex gap-2 items-center min-w-0 max-w-full">
             <span className="text-xs font-mono text-zinc-500 w-6 shrink-0">
               {slot + 1}.
             </span>
             <select
               aria-label={`Compare slot ${slot + 1}`}
-              value={slots[slot] === "" ? "" : String(slots[slot])}
+              value={slotValue === "" ? "" : String(slotValue)}
               onChange={(e) => updateSlot(slot, e.target.value)}
               title={
-                slots[slot] === ""
+                slotValue === ""
                   ? "No model selected"
                   : (() => {
                       const cur = sortedByIntel.find(
-                        (r) => r.model_id === Number(slots[slot]),
+                        (r) => r.model_id === Number(slotValue),
                       );
                       return cur
                         ? `${cur.display_name} · ${cur.provider}`
-                        : String(slots[slot]);
+                        : String(slotValue);
                     })()
               }
               className="flex-1 min-w-0 w-full max-w-full truncate rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
@@ -148,7 +149,7 @@ export default function ChartModelSelector({
                 );
               })}
             </select>
-            {selected[slot] != null && String(slots[slot]) !== "" && (
+            {selected[slot] != null && String(slotValue) !== "" && (
               <button
                 onClick={() => removeSlot(slot)}
                 className="text-xs px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white"
@@ -162,7 +163,7 @@ export default function ChartModelSelector({
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        {selected.length < 3 && (
+        {selected.length < MAX_COMPARE && (
           <button
             onClick={addSlot}
             className="text-xs px-3 py-1.5 rounded bg-violet-900/40 border border-violet-800 text-violet-200 hover:bg-violet-900/60"
@@ -181,7 +182,7 @@ export default function ChartModelSelector({
         <span className="text-[11px] text-zinc-500 ml-auto">
           {selected.length === 0
             ? `No pins → charts show top 3 for ${providerLabel} automatically`
-            : `${selected.length}/6 selected · click leaderboard rows also toggles (max 6)`}
+            : `${selected.length}/${MAX_COMPARE} selected · click leaderboard rows also toggles (max ${MAX_COMPARE})`}
         </span>
       </div>
     </div>
