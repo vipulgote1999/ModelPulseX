@@ -56,7 +56,7 @@ React Vite Tailwind shadcn Recharts (SSE live) ← GET /api/leaderboard?range=&p
 - **Durable Object** `PerformanceDO` live SSE (fan-out, not history store) — `event: benchmark` `data: {model, provider, tps, ttft_ms}`
 - **Cron** four expressions (UTC): `*/5` scheduler + staleness watchdog, `*/10` 10-minute aggregates, `*/30` discovery, `0 *` hourly discovery + aggregates + leaderboard snapshot + retention cleanup
 
-Concurrency & cost protection (`wrangler.jsonc` vars — 40 global across 19 providers):
+Concurrency & cost protection (`wrangler.jsonc` vars — 40 global across 21 provider configurations):
 
 ```
 MAX_GLOBAL_CONCURRENCY=40 MAX_SAME_MODEL_CONCURRENCY=1
@@ -121,7 +121,7 @@ Query freshness meta included in leaderboard: `last_benchmark`, `last_aggregate`
 | ----------- | ------------- |
 | TPS now / 24h avg, TTFT now, Reliability 24h with `n=` when sparse, Intelligence Index clickable, sparkline trend, provider badge, sorted headers, last success | Same + **TPS 7d**, **TTFT 7d**, **7d Uptime** (not just 24h), **Overall Score** with profiles, **provider comparison with winner**, **Previously Free retention**, **coding benchmark**, **error/incident timelines**, **SSE live**, **methodology** |
 | Samples every 10m (Ollama Pro) vs 60m (Free/Zen) | Scheduler every 5m with caps (40 global) — frequent checks even for free tier; hourly aggregates keep cost low |
-| Ollama + Zen + Go coverage | **FREE-only across 19 providers** (13 with live rows in the 2026-09-10 leaderboard snapshot), dynamic discovery covers churn (no hard-code) |
+| Ollama + Zen + Go coverage | **FREE-only across 21 provider configurations** (13 with live rows in the 2026-09-10 leaderboard snapshot), dynamic discovery covers churn (no hard-code) |
 
 ## Quickstart
 
