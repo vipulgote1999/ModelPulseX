@@ -14,7 +14,7 @@ import {
 import { freeHardFilterWhere } from "../providers/registry";
 import { nowFor } from "../db/snapshot";
 import type { SnapshotRow } from "../db/snapshot";
-import { isoHoursAgo } from "./shared";
+import { isoHoursAgo, BENCHMARKS, SORTS, PROFILES, oneOf } from "./shared";
 
 /** Latest-run overlay status for one snapshot row. A missing overlay row
  *  (model filtered from the models query between refresh and read) carries no
@@ -34,13 +34,18 @@ export function leaderboardRoutes(env: Env) {
     const origin = url.origin;
     // Edge-cache shared across visitors (30s TTL below): each leaderboard hit costs
     // ~9k+ rows_read and SSE refetch storms multiply it by connected clients.
-    // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
-    const cache: Cache = (caches as unknown as { default: Cache }).default;
     const range = c.req.query("range") ?? "7d";
     const provider = c.req.query("provider");
     const benchmark = c.req.query("benchmark") ?? "all";
     const sort = c.req.query("sort") ?? "overall";
     const profile = c.req.query("profile") ?? "balanced";
+    if (!oneOf(benchmark, BENCHMARKS))
+      return c.json({ error: "invalid benchmark" }, 400);
+    if (!oneOf(sort, SORTS)) return c.json({ error: "invalid sort" }, 400);
+    if (!oneOf(profile, PROFILES))
+      return c.json({ error: "invalid profile" }, 400);
+    // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
+    const cache: Cache = (caches as unknown as { default: Cache }).default;
 
     // SEC-007: key the cache on the four params this response actually varies
     // by, not on the raw URL. With the raw URL as the key, `?x=<random>` minted

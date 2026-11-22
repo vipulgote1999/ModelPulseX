@@ -15,6 +15,25 @@ import {
 export const isoHoursAgo = (h: number): string =>
   new Date(Date.now() - h * 3600_000).toISOString();
 
+/** Query-parameter contracts published in /api/openapi.json. Accepting values
+ *  outside these sets silently fell back to a default (or, for benchmark,
+ *  returned a fully empty board with 200), which hides client bugs. */
+export const BENCHMARKS = ["all", "coding", "speed"] as const;
+export const SORTS = ["overall", "tps", "ttft", "uptime"] as const;
+export const PROFILES = [
+  "balanced",
+  "fastest",
+  "latency",
+  "reliable",
+  "coding",
+] as const;
+export const GRANULARITIES = ["hourly", "10m"] as const;
+
+/** True when a query value is in the documented enum. */
+export function oneOf(value: string, allowed: readonly string[]): boolean {
+  return allowed.includes(value);
+}
+
 /** Extract the admin bearer from an Authorization header, or null.
  *
  *  SEC-005: the `Bearer ` prefix is now REQUIRED. The previous code also

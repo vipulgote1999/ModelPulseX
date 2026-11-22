@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { parseRange } from "../db/queries";
 import { publicModelVisibilityWhere } from "../providers/registry";
+import { BENCHMARKS, GRANULARITIES, oneOf } from "./shared";
 
 export function historyRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -12,6 +13,10 @@ export function historyRoutes(env: Env) {
     const range = c.req.query("range") ?? "7d";
     const benchmark = c.req.query("benchmark") ?? "all";
     const granularity = c.req.query("granularity") ?? (range === "1h" ? "10m" : "hourly");
+    if (!oneOf(benchmark, BENCHMARKS))
+      return c.json({ error: "invalid benchmark" }, 400);
+    if (!oneOf(granularity, GRANULARITIES))
+      return c.json({ error: "invalid granularity" }, 400);
     const parsed = parseRange(range);
     if (!parsed) return c.json({ error: "invalid range" }, 400);
     const since = parsed.sinceIso;
