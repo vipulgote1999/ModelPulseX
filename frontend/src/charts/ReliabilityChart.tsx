@@ -51,15 +51,18 @@ export default function ReliabilityChart({
                 })}
               </div>
               <div className="w-[160px] text-[11px] text-zinc-400">
-                {pct == null ? "no samples" : `${pct}% hours up`}
+                {pct == null
+                  ? "no samples"
+                  : `${pct}% ${range === "1h" ? "10m buckets" : "hours"} up`}
               </div>
             </div>
           );
         })}
       </div>
       <div className="mt-2 text-[11px] text-zinc-500">
-        █ = hour up (≥50% success) ░ = degraded/unavailable. Data from hourly
-        aggregates (30–90d) + raw fallback.
+        █ = {range === "1h" ? "10m bucket" : "hour"} up (≥50% success) ░ =
+        degraded/unavailable. Data from hourly aggregates (30–90d) + raw
+        fallback.
       </div>
     </div>
   );
