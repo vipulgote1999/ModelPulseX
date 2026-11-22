@@ -4,11 +4,18 @@ tags:
   - web
   - smoke
 ---
-- openLink: https://modelpulsex.pages.dev/#/
+- clearState
+- openLink: https://modelpulsex.pages.dev/?dashboard=1#/
 - extendedWaitUntil:
     visible: "BEST OVERALL · 7D"
     timeout: 30000
 - assertVisible: "BEST OVERALL · 7D"
 - assertVisible: "BEST RELIABILITY"
+- swipe:
+    direction: UP
+    duration: 400
 - assertVisible: ".*Cooldowns.*per-model vs per-provider timeout.*"
+- swipe:
+    direction: UP
+    duration: 400
 - assertVisible: ".*Live leaderboard.*max 6.*"

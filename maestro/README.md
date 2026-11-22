@@ -30,8 +30,11 @@ Or through the Maestro MCP tool with the `chromium` device (the agent uses this)
 
 ## Conventions
 
-- Start each flow with a cache-busting query (`?flow=…#/`) so a real page load
-  resets the scroll position left by the previous flow.
+- Start each flow with `clearState` and a unique query (`?flow=…#/`); the MCP
+  browser reuses one tab, and the same URL does not reload it.
+- The Maestro Chromium window can be narrower than the `lg` breakpoint, so the
+  primary nav may be inside the hamburger. Use the `runFlow / when visible:
+  "Open navigation menu"` guard before tapping a nav item.
 - Text assertions are exact by default. Use `.*…*` regex when a rendered string
   carries a prefix/suffix (for example `▸ Cooldowns …`).
 - Do not assert attributes with `assertTrue` on web: Maestro evaluates it

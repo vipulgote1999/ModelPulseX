@@ -8,10 +8,18 @@ tags:
 # which can evaluate document attributes deterministically. Maestro's web
 # assertTrue does not run in the page context, so this flow verifies the
 # observable control state instead.
+- clearState
 - openLink: https://modelpulsex.pages.dev/?theme=1#/
 - extendedWaitUntil:
     visible: "BEST OVERALL · 7D"
     timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn:
     id: "Switch to light theme"
 - assertVisible:

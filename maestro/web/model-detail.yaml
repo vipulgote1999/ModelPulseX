@@ -4,6 +4,7 @@ tags:
   - web
   - model-detail
 ---
+- clearState
 - openLink: https://modelpulsex.pages.dev/?detail=1#/model/38
 - extendedWaitUntil:
     visible: "End-to-end TPS (includes TTFT)"

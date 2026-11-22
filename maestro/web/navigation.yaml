@@ -4,42 +4,92 @@ tags:
   - web
   - navigation
 ---
+- clearState
 - openLink: https://modelpulsex.pages.dev/?nav=1#/
 - extendedWaitUntil:
     visible: "BEST OVERALL · 7D"
     timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "Models"
 - scrollUntilVisible:
     element: "Models"
     direction: UP
     timeout: 15000
 - assertVisible: ".*Paid and unknown rows stay listed.*"
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "Pricing"
 - scrollUntilVisible:
     element: "Pricing"
     direction: UP
     timeout: 15000
 - assertVisible: ".*What the benchmarked providers cost.*"
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "vs Others"
 - scrollUntilVisible:
     element: "ModelPulseX vs others"
     direction: UP
     timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "Docs"
 - scrollUntilVisible:
     element: "API Documentation"
     direction: UP
     timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "/methodology"
 - scrollUntilVisible:
     element: "Methodology — ModelPulseX Transparency"
     direction: UP
     timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "Admin"
 - scrollUntilVisible:
     element: "Admin — ModelPulseX"
     direction: UP
     timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: "Open navigation menu"
+    commands:
+      - tapOn:
+          id: "Open navigation menu"
 - tapOn: "Dashboard"
 - scrollUntilVisible:
     element: "BEST OVERALL · 7D"
