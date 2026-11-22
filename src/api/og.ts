@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
+import { publicModelVisibilityWhere } from "../providers/registry";
 
 /** CRC-32 IEEE table */
 const CRC_TABLE = (() => {
@@ -349,14 +350,23 @@ export function ogRoutes(env: Env) {
         tps: number | null;
       }> = [];
       try {
-        // 7d bound: unscoped ORDER BY tps DESC full-scans + sorts all of benchmark_runs per OG hit (crawlers).
-        // One row per model (peak TPS): without GROUP BY a single spiky model
-        // occupies all 5 slots and the card lies about "top 5 models".
-        const weekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+        // Ranked share card: the same 7d end-to-end medians the dashboard
+        // ranks. The previous query used MAX(br.tps) over raw runs — one
+        // 1-token/1ms burst printed 16,200 TPS while the leaderboard's ranked
+        // end-to-end leader was ~516 TPS. Decode TPS is diagnostic-only here.
+        // The snapshot costs ~a few hundred rows instead of a 7d raw scan, and
+        // the visibility gate keeps admin-disabled rows off a public image.
         const rows = await env.DB.prepare(
-          `SELECT m.display_name as name, p.name as provider, MAX(br.tps) as tps FROM benchmark_runs br JOIN models m ON m.id=br.model_id JOIN providers p ON p.id=m.provider_id WHERE br.status='SUCCESS' AND m.free_status='FREE' AND br.started_at >= ? GROUP BY m.id ORDER BY tps DESC LIMIT 5`,
+          `SELECT s.display_name as name, s.provider, s.e2e_tps_7d as tps
+           FROM leaderboard_snapshot s
+           JOIN models m ON m.id=s.model_id
+           JOIN providers p ON p.id=m.provider_id
+           WHERE s.benchmark='all' AND s.free_status='FREE' AND s.active=1
+             AND s.e2e_tps_7d IS NOT NULL
+             AND ${publicModelVisibilityWhere("p", "m")}
+           ORDER BY s.e2e_tps_7d DESC LIMIT 5`,
         )
-          .bind(weekAgo)
+          .bind()
           .all<{ name: string; provider: string; tps: number | null }>();
         top = (rows.results ?? []).map((r, i) => ({
           rank: i + 1,
@@ -365,7 +375,7 @@ export function ogRoutes(env: Env) {
           tps: r.tps,
         }));
       } catch {
-        // pre-migration — ignore
+        // snapshot missing/pre-migration — render the card without rows
       }
       const png = await renderOgCard(top);
       return done(png);
