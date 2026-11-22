@@ -210,6 +210,8 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
   ".woff2": "font/woff2",
   ".map": "application/json; charset=utf-8",
 };
@@ -549,6 +551,20 @@ test("chart selector exposes all six compare slots", async () => {
   );
 });
 
+test("discovery assets are real files, not the SPA fallback", async () => {
+  for (const [path, type] of [
+    ["/robots.txt", "text/plain"],
+    ["/sitemap.xml", "application/xml"],
+    ["/favicon.ico", "image/"],
+  ]) {
+    const res = await page.request.get(baseUrl + path);
+    assert.equal(res.status(), 200, path);
+    assert.match(res.headers()["content-type"] ?? "", new RegExp(type), path);
+    const body = await res.text();
+    assert.doesNotMatch(body, /<!doctype html>/i, `${path} must not be the SPA`);
+  }
+});
+
 test("freshness banner shows LIVE when meta.is_stale is false", async () => {
   const banner = page.locator('div[class*="bg-emerald-950/30"]');
   assert.equal(await banner.count(), 1, "live banner element");
@@ -603,10 +619,6 @@ async function main() {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname.startsWith("/api/"))
       return handleApi(url.pathname, url, req, res);
-    if (url.pathname === "/favicon.ico") {
-      res.writeHead(204).end();
-      return;
-    }
     return void serveStatic(url.pathname, res);
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));

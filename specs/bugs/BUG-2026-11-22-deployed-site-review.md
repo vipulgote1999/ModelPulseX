@@ -172,6 +172,15 @@ D1 production queries, and direct API probes.
   the reliability timeline from Dashboard and ModelDetail; unit-test the
   labels.
 
+### D21 — Missing static assets are served as SPA HTML with 200
+
+- `/robots.txt`, `/sitemap.xml`, `/favicon.ico` and any other absent file fell
+  through the SPA rewrite and returned the dashboard HTML with
+  `text/html; 200`. Crawlers and icon fetchers saw an HTML document.
+- Fix: ship `robots.txt`, `sitemap.xml`, and a real 32×32 `favicon.ico`
+  generated from the brand SVG; add a browser gate that asserts content type
+  and rejects the HTML fallback.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

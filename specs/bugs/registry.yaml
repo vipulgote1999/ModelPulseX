@@ -199,3 +199,10 @@
   scope: frontend/src/charts/*
   summary: Chart titles hardcode 7-day while the range selector offers 24h/3d
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T120000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: frontend/public, frontend/index.html
+  summary: Missing robots/sitemap/favicon return SPA HTML with status 200
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
