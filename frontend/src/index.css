@@ -128,3 +128,27 @@ body { background:#0a0a0f; color:#e8e8ef; font-family: Inter, ui-sans-serif, sys
 [data-theme="light"] .bg-emerald-950\/20 { background-color: #ecfdf5; }
 [data-theme="light"] .bg-emerald-950\/40 { background-color: #ecfdf5; }
 
+/* Hover states: the dark theme lightens text/surfaces on hover; on white that
+   would erase the label. Flip both sides of the hover pair. */
+[data-theme="light"] .hover\:text-white:hover { color: #18181b; }
+[data-theme="light"] .hover\:text-zinc-200:hover { color: #27272a; }
+[data-theme="light"] .hover\:text-zinc-300:hover { color: #3f3f46; }
+[data-theme="light"] .hover\:text-cyan-100:hover,
+[data-theme="light"] .hover\:text-cyan-200:hover { color: #0e7490; }
+[data-theme="light"] .hover\:text-emerald-200:hover { color: #047857; }
+[data-theme="light"] .hover\:text-violet-200:hover,
+[data-theme="light"] .hover\:text-violet-300:hover { color: #5b21b6; }
+[data-theme="light"] .hover\:text-amber-200:hover { color: #92400e; }
+[data-theme="light"] .hover\:bg-zinc-100:hover,
+[data-theme="light"] .hover\:bg-zinc-800:hover,
+[data-theme="light"] .hover\:bg-zinc-800\/40:hover { background-color: #e4e4e7; }
+[data-theme="light"] .hover\:bg-zinc-700:hover { background-color: #d4d4d8; }
+[data-theme="light"] .hover\:bg-zinc-900:hover,
+[data-theme="light"] .hover\:bg-zinc-900\/30:hover,
+[data-theme="light"] .hover\:bg-zinc-900\/40:hover,
+[data-theme="light"] .hover\:bg-zinc-900\/50:hover { background-color: #ffffff; }
+[data-theme="light"] .hover\:bg-emerald-900\/40:hover,
+[data-theme="light"] .hover\:bg-emerald-900\/50:hover { background-color: #d1fae5; }
+[data-theme="light"] .hover\:bg-violet-900\/60:hover { background-color: #ddd6fe; }
+[data-theme="light"] .hover\:bg-rose-900\/60:hover { background-color: #fecdd3; }
+

@@ -408,6 +408,15 @@ test("theme preference survives reload under the CSP", async () => {
     "rgb(255, 255, 255)",
     "leaderboard toolbar must not stay a dark island",
   );
+  await page.getByRole("button", { name: "Models", exact: true }).hover();
+  const hoverColor = await page
+    .getByRole("button", { name: "Models", exact: true })
+    .evaluate((el) => getComputedStyle(el).color);
+  assert.notEqual(
+    hoverColor,
+    "rgb(255, 255, 255)",
+    "hover text must not turn white on a light surface",
+  );
   await page.locator('button[title="Switch to dark theme"]').click();
 });
 

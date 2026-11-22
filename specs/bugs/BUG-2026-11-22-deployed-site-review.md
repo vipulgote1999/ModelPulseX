@@ -154,6 +154,15 @@ D1 production queries, and direct API probes.
 - Fix: apply `publicModelVisibilityWhere` to the model join and pin it in the
   SEC-002 suite. Provider cooldowns stay ungated (provider names are public).
 
+### D19 — Light-theme hover states erase labels
+
+- Dark-theme hover pairs lighten text (`hover:text-white`) and darken surfaces
+  (`hover:bg-zinc-800`). In light mode the surface stays light but the label
+  still turns white — an invisible hover. The nav, table rows, buttons and
+  links all use these pairs.
+- Fix: flip both hover halves in the light-theme block and assert the nav
+  hover colour in Playwright.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
