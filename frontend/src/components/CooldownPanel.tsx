@@ -22,7 +22,7 @@ function adminPostHeaders(fallbackToken?: string | null): Record<string, string>
 }
 
 export default function CooldownPanel() {
-  const { data, refresh } = useCooldowns(10000);
+  const { data, loading, refresh } = useCooldowns(10000);
   const [busy, setBusy] = useState<string | null>(null);
   // ponytail: collapsed by default — ops detail, keeps leaderboard + charts near the top
   const [open, setOpen] = useState(false);
@@ -133,9 +133,11 @@ export default function CooldownPanel() {
           <span
             className={`text-xs px-2 py-1 rounded-full border ${hasAny ? "bg-amber-950/30 border-amber-800 text-amber-300" : "bg-emerald-950/30 border-emerald-800 text-emerald-300"}`}
           >
-            {hasAny
-              ? `${providers.length} provider • ${models.length} model cooling`
-              : "No active cooldowns"}
+            {loading && data == null
+              ? "Loading cooldowns…"
+              : hasAny
+                ? `${providers.length} provider • ${models.length} model cooling`
+                : "No active cooldowns"}
           </span>
           {open && hasAny && (
             <button
