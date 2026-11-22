@@ -52,9 +52,11 @@ export function countDayFailures(rows: DayFailureRow[]): {
     // limit permanently disable healthy models until an admin noticed.
     if (r.status !== "RATE_LIMITED" && r.http_status !== 429) failures++;
     if (
-      r.status === "MODEL_UNAVAILABLE" ||
-      r.http_status === 404 ||
-      isGoneModelErrorText(r.error_type)
+      r.status !== "RATE_LIMITED" &&
+      r.http_status !== 429 &&
+      (r.status === "MODEL_UNAVAILABLE" ||
+        r.http_status === 404 ||
+        isGoneModelErrorText(r.error_type))
     )
       goneHits++;
   }
