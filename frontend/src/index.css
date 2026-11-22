@@ -31,6 +31,9 @@
 }
 ::selection { background: rgba(139, 92, 246, 0.35); }
 :focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse, .animate-spin { animation: none !important; }
+}
 
 /* fonts loaded via preconnect in index.html, fallback system stack */
 body { background:#0a0a0f; color:#e8e8ef; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
@@ -89,10 +92,10 @@ body { background:#0a0a0f; color:#e8e8ef; font-family: Inter, ui-sans-serif, sys
 [data-theme="light"] .text-zinc-300 { color: #3f3f46; }
 [data-theme="light"] .text-zinc-400 { color: #52525b; }
 [data-theme="light"] .text-zinc-500 { color: #71717a; }
-[data-theme="light"] .text-zinc-600 { color: #a1a1aa; }
+[data-theme="light"] .text-zinc-600 { color: #52525b; }
 [data-theme="light"] .text-emerald-200 { color: #065f46; }
 [data-theme="light"] .text-emerald-300 { color: #047857; }
-[data-theme="light"] .text-emerald-400 { color: #059669; }
+[data-theme="light"] .text-emerald-400 { color: #047857; }
 [data-theme="light"] .text-violet-200 { color: #5b21b6; }
 [data-theme="light"] .text-violet-300 { color: #6d28d9; }
 [data-theme="light"] .text-cyan-300 { color: #0e7490; }

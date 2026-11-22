@@ -206,7 +206,8 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
         />
       </Suspense>
       <p className="text-xs text-zinc-500">
-        7-day window, hourly medians. See the methodology page for how TPS, TTFT and reliability are measured.
+        7-day window, all benchmarks, hourly medians. See the methodology page
+        for how TPS, TTFT and reliability are measured.
       </p>
     </div>
   );
