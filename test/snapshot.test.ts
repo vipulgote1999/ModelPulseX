@@ -269,7 +269,7 @@ describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)
         if (calls === 0) {
           return [
             { results: [{ id: 1, provider_model_id: "a:free", display_name: "A", free_status: "FREE", active: 1, provider: "pa" }] },
-            { results: [] },
+            { results: [rawRow(1, "coding", [10, 20, 30, 40, 50, 60])] },
             { results: [] },
           ];
         }
@@ -371,6 +371,36 @@ describe("overlayStatus (2026-09-24 prod: UNKNOWN was a join artifact)", () => {
 });
 
 describe("refreshLeaderboardSnapshot empty-refresh guard", () => {
+  it("skips the refresh when the catalog loads but raw runs are empty", async () => {
+    const { refreshLeaderboardSnapshot } = await import("../src/db/snapshot");
+    let deletes = 0;
+    let upserts = 0;
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          bind(..._a: unknown[]) { return stmt; },
+          all: async () => ({ results: [] }),
+          first: async () => null,
+          run: async () => {
+            if (sql.startsWith("DELETE FROM leaderboard_snapshot")) deletes++;
+            return { meta: { changes: 0 } };
+          },
+        };
+        if (sql.includes("INSERT INTO leaderboard_snapshot")) upserts++;
+        return stmt;
+      },
+      batch: async () => [
+        { results: [{ id: 1, provider_model_id: "a:free", display_name: "A", free_status: "FREE", active: 1, provider: "pa" }] },
+        { results: [] },
+        { results: [] },
+      ],
+    };
+    const res = await refreshLeaderboardSnapshot(db as never, Date.now());
+    expect(res).toEqual({ models: 0, rows: 0 });
+    expect(deletes).toBe(0);
+    expect(upserts).toBe(0);
+  });
+
   it("skips the sweep when models/raw come back empty", async () => {
     // Hazard: an outage-shaped empty refresh (no models, no raw) must not
     // DELETE the whole snapshot table — stale beats empty for an observatory.

@@ -274,6 +274,15 @@ D1 production queries, and direct API probes.
 - Fix: filter to rows with a real `e2e_tps_7d` before recommending; return null
   when none are measured. Add a regression test.
 
+### D33 — A partial empty snapshot refresh can blank the leaderboard
+
+- The refresh only skipped when the shaped row list was empty. If the catalog
+  query returned models but the raw-run query returned nothing (transient D1
+  issue), it wrote null medians for every model and swept the previous snapshot
+  — replacing valid data with blanks.
+- Fix: skip the entire refresh when either models or raw is empty; keep the
+  previous snapshot and let the freshness banner report its age.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

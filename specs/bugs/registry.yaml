@@ -283,3 +283,10 @@
   scope: src/api/compare.ts
   summary: Compare recommends a fastest provider when no e2e median exists
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T132000
+  date: '2026-11-22'
+  severity: high
+  priority: high
+  scope: src/db/snapshot.ts
+  summary: Partial empty snapshot refresh overwrites valid medians with blanks
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

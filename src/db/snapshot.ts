@@ -314,6 +314,14 @@ export async function refreshLeaderboardSnapshot(
     const models = (modelsRes?.results ?? []) as SnapshotMeta[];
     const raw = (rawRes?.results ?? []) as SnapshotRaw[];
     const spark = (sparkRes?.results ?? []) as SnapshotSpark[];
+    // A partial empty refresh is outage-shaped: D1 returned the catalog but no
+    // runs (or neither). Writing null rows and sweeping would replace valid
+    // medians with blanks. Keep the previous snapshot; the freshness banner
+    // already reports the age honestly.
+    if (models.length === 0 || raw.length === 0) {
+      console.warn("snapshot refresh: empty models/raw — skipping refresh");
+      return { models: 0, rows: 0 };
+    }
     const rows = buildSnapshotRows({ models, raw, spark, nowIso });
     // Upsert in chunks (stay under D1 batch variable limits).
     const CHUNK = 50;
