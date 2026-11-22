@@ -213,3 +213,10 @@
   scope: src/api/admin/index.ts
   summary: Admin benchmark accepts invalid model ids and benchmark types
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T122000
+  date: '2026-11-22'
+  severity: high
+  priority: high
+  scope: src/api/live.ts
+  summary: Live SSE per-IP cap becomes a global 5-client cap
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

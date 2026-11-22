@@ -189,6 +189,15 @@ D1 production queries, and direct API probes.
 - Fix: require a positive integer `model_id` and one of `coding`/`speed`;
   cover both 400s in the API validation suite.
 
+### D23 — Live SSE per-IP limit collapsed into a global 5-client cap
+
+- `/api/live` built a fresh `Request` with only `accept`. The Durable Object
+  saw no `cf-connecting-ip`, keyed every session as `"unknown"`, and enforced
+  its `MAX_PER_IP = 5` against all visitors. The sixth concurrent dashboard
+  got `too many clients for ip`.
+- Fix: forward `cf-connecting-ip`, `x-forwarded-for`, and `origin` into the
+  DO's request; add a route-level forwarding test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

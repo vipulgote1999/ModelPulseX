@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { PerformanceDO } from "../src/live/performance-do";
+import { liveRoutes } from "../src/api/live";
 
 function makeDO() {
   const setAlarm = vi.fn().mockResolvedValue(undefined);
@@ -94,5 +95,35 @@ describe("PerformanceDO", () => {
     const { do_, setAlarm } = makeDO();
     await do_.alarm();
     expect(setAlarm).not.toHaveBeenCalled();
+  });
+});
+
+describe("live route -> DO forwarding", () => {
+  it("forwards client IP and origin so the per-IP SSE cap is real", async () => {
+    let seen: Request | null = null;
+    const app = liveRoutes({
+      LIVE_DO: {
+        idFromName: () => "global",
+        get: () => ({
+          fetch: async (req: Request) => {
+            seen = req;
+            return new Response(": connected\n\n", {
+              headers: { "content-type": "text/event-stream" },
+            });
+          },
+        }),
+      },
+    } as never);
+    const res = await app.request("https://example.test/live", {
+      headers: {
+        accept: "text/event-stream",
+        "cf-connecting-ip": "203.0.113.7",
+        origin: "https://modelpulsex.pages.dev",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(seen!.headers.get("cf-connecting-ip")).toBe("203.0.113.7");
+    expect(seen!.headers.get("origin")).toBe("https://modelpulsex.pages.dev");
+    expect(seen!.headers.get("accept")).toBe("text/event-stream");
   });
 });
