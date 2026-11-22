@@ -26,7 +26,7 @@ Or through the Maestro MCP tool with the `chromium` device (the agent uses this)
 | `dashboard.yaml` | Dashboard boots; live banner, best-model card, summary, cooldown panel, leaderboard render |
 | `navigation.yaml` | Every primary nav target loads its page and its heading |
 | `theme.yaml` | Theme control toggles both directions (reload persistence is in the Playwright gate) |
-| `charts.yaml` | Full 6-slot chart selector, throughput view toggle, compare panel, model-detail reliability summary |
+| `model-detail.yaml` | Model detail stats, reliability timeline and the `% hours up` summary |
 
 ## Conventions
 

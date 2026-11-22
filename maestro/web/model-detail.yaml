@@ -1,0 +1,20 @@
+url: https://modelpulsex.pages.dev
+name: Model detail stats and reliability summary
+tags:
+  - web
+  - model-detail
+---
+- openLink: https://modelpulsex.pages.dev/?detail=1#/model/38
+- extendedWaitUntil:
+    visible: "End-to-end TPS (includes TTFT)"
+    timeout: 30000
+- assertVisible: "Decode TPS (excludes TTFT)"
+- assertVisible: "Uptime 7d"
+- swipe:
+    direction: UP
+    duration: 500
+- swipe:
+    direction: UP
+    duration: 500
+- assertVisible: ".*Reliability — 7-day availability timeline.*"
+- assertVisible: ".*% hours up.*"
