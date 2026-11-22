@@ -164,3 +164,10 @@
   scope: src/benchmark/scheduler.ts
   summary: Incident started_at is the third failure, under-reporting duration
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T115000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: package.json, deploy.bat, README.md
+  summary: Deploy commands could ship a stale frontend after the Pages cutover
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

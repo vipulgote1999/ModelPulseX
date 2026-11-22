@@ -130,6 +130,14 @@ D1 production queries, and direct API probes.
 - Fix: select `started_at` too and use the oldest failing run in the streak as
   the incident start; the current run remains the fallback.
 
+### D16 — Deploy tooling ships stale frontends
+
+- `npm run deploy` did not build, and `deploy.bat` deployed only the Worker.
+  After the Pages front-door cutover, both commands could leave the public SPA
+  on an old bundle.
+- Fix: make `npm run deploy` build first and update `deploy.bat`/README to
+  deploy Worker **and** Pages.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

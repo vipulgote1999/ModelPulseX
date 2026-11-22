@@ -138,7 +138,7 @@ npm run dev          # wrangler dev --local :8789  (or npm run dev:remote)
 ```
 
 One-click Windows: `run.bat`  (applies migrations, builds, starts dev)  
-One-click deploy: `deploy.bat` (typecheck + tests + migrations --remote + `wrangler deploy`)
+One-click deploy: `deploy.bat` (typecheck + tests + migrations --remote + Worker deploy + Pages deploy)
 
 ### Manual ops
 
@@ -156,6 +156,10 @@ curl -X POST http://127.0.0.1:8789/api/admin/cleanup -H "Authorization: Bearer $
 
 ### Deploy to Cloudflare
 
+The public host is the Pages project (`modelpulsex.pages.dev`). The Worker owns
+cron, queues, the Durable Object and D1; Pages serves the SPA and proxies
+`/api/*` over a service binding. Deploy both:
+
 ```bash
 wrangler login
 wrangler d1 create modelpulsex-db   # once — paste database_id into wrangler.jsonc
@@ -163,7 +167,9 @@ wrangler d1 migrations apply DB --remote
 wrangler secret put OPENCODE_API_KEY
 wrangler secret put OPENROUTER_API_KEY
 wrangler secret put ADMIN_TOKEN
-npm run deploy  # or deploy.bat on Windows
+npm run deploy        # builds then deploys the Worker
+npm run deploy:pages  # builds then deploys the Pages front door + Functions
+# or: deploy.bat on Windows (runs both)
 # verify
 curl https://modelpulsex.pages.dev/api/health
 ```
@@ -179,9 +185,12 @@ Wrangler bindings needed (already in `wrangler.jsonc`): D1 `DB`, Queues `BENCH_Q
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run build` | `vite build` (frontend → `dist/frontend` + typecheck) |
 | `npm run migrate` / `:local` | `wrangler d1 migrations apply` |
-| `npm run deploy` | `wrangler deploy` |
+| `npm run deploy` | build + deploy the Worker (cron/queue/DO/D1) |
+| `npm run deploy:pages` | build + deploy the Pages front door + API Functions |
+| `npm run test:e2e` | Playwright browser gate over the built `dist/frontend` |
+| `maestro test maestro/web` | Maestro web smoke flows (see `maestro/README.md`) |
 | `run.bat` / `run.sh` | one-click local |
-| `deploy.bat` | one-click deploy |
+| `deploy.bat` | one-click Worker + Pages deploy |
 
 ## Tests (no real credits)
 
