@@ -146,6 +146,14 @@ D1 production queries, and direct API probes.
   successful while production never saw it.
 - Fix: `migrate` now passes `--remote`; `migrate:local` remains the local one.
 
+### D18 — `/api/cooldowns` exposes model rows without the visibility gate
+
+- The public cooldown panel joined `model_cooldowns` to `models`/`providers`
+  with only the expiry predicate, so an admin-disabled model's id, name and
+  cooldown reason stayed public until retention cleanup ran.
+- Fix: apply `publicModelVisibilityWhere` to the model join and pin it in the
+  SEC-002 suite. Provider cooldowns stay ungated (provider names are public).
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

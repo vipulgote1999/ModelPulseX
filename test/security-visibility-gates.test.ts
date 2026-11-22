@@ -360,6 +360,20 @@ describe("GET /api/timeouts (SEC-002)", () => {
   });
 });
 
+describe("GET /api/cooldowns (SEC-002)", () => {
+  it("gates model cooldowns with the same visibility predicate", async () => {
+    installNoopCache();
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const res = await app.request("https://example.test/api/cooldowns");
+    expect(res.status).toBe(200);
+    const models = db.sql.find((s) => /FROM model_cooldowns/.test(s));
+    expect(models).toContain("benchmark_enabled");
+    expect(models).toContain("m.active=1");
+    expect(models).toContain("p.name !=");
+  });
+});
+
 describe("GET /api/models (SEC-007)", () => {
   it("bounds the catalogue read with a LIMIT", async () => {
     const db = dbStub();

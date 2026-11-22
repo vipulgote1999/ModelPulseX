@@ -1,4 +1,5 @@
 /** Cooldown helpers — per-model vs per-provider timeout, RPM-aware */
+import { publicModelVisibilityWhere } from "../providers/registry";
 
 export async function isProviderCooling(
   db: D1Database,
@@ -250,7 +251,7 @@ export async function getActiveCooldowns(db: D1Database): Promise<{
       }>();
     const modelRows = await db
       .prepare(
-        `SELECT mc.model_id, mc.cooldown_until, mc.reason, p.name as provider, m.provider_model_id FROM model_cooldowns mc JOIN models m ON m.id=mc.model_id JOIN providers p ON p.id=m.provider_id WHERE mc.cooldown_until > ? ORDER BY mc.cooldown_until ASC`,
+        `SELECT mc.model_id, mc.cooldown_until, mc.reason, p.name as provider, m.provider_model_id FROM model_cooldowns mc JOIN models m ON m.id=mc.model_id JOIN providers p ON p.id=m.provider_id WHERE mc.cooldown_until > ? AND ${publicModelVisibilityWhere("p", "m")} ORDER BY mc.cooldown_until ASC`,
       )
       .bind(now)
       .all<{

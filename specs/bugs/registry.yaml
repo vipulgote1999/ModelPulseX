@@ -178,3 +178,10 @@
   scope: package.json
   summary: npm run migrate applied migrations to local state, not production
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T117000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: src/db/cooldown.ts
+  summary: Public cooldown list exposes admin-disabled model rows
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
