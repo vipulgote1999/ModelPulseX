@@ -30,7 +30,7 @@ export default function App() {
   const navigate = useCallback((page: NavPage) => {
     if (page === "dashboard") {
       const cur = parseHash(window.location.hash);
-      window.location.hash = formatHash({ page, modelId: null, compare: cur.compare });
+      window.location.hash = formatHash({ page, modelId: null, compare: cur.compare, tpsView: cur.tpsView });
     } else {
       window.location.hash = formatHash({ page, modelId: null, compare: [] });
     }
