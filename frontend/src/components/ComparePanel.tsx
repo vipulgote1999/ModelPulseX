@@ -73,15 +73,19 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
   // Ranking and the best-cell highlight follow end-to-end throughput only;
   // decode stays visible but is never the comparison winner.
   const best = (k: "e2e_tps_7d" | "e2e_tps_24h") =>
-    rows.reduce(
-      (b, r) => ((r[k] ?? -1) > (b?.[k] ?? -1) ? r : b),
-      rows[0] as (typeof rows)[number],
-    );
+    rows.some((r) => r[k] != null)
+      ? rows.reduce(
+          (b, r) => ((r[k] ?? -1) > (b?.[k] ?? -1) ? r : b),
+          rows[0] as (typeof rows)[number],
+        )
+      : null;
   const bestTtft = (k: "ttft_7d" | "ttft_24h") =>
-    rows.reduce(
-      (b, r) => (r[k] != null && (b?.[k] == null || r[k]! < b[k]!) ? r : b),
-      rows[0] as (typeof rows)[number],
-    );
+    rows.some((r) => r[k] != null)
+      ? rows.reduce(
+          (b, r) => (r[k] != null && (b?.[k] == null || r[k]! < b[k]!) ? r : b),
+          rows[0] as (typeof rows)[number],
+        )
+      : null;
   const winner = (v: string) => data.recommended_provider === v;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
