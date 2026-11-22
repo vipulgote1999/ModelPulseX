@@ -59,8 +59,16 @@ export function recommendationCards(rows: LeaderboardRow[]): Record<string, Lead
   // assume coding rows are derived from benchmark_type=coding leaderboard elsewhere; here we use same set
   const scored = scoreLeaderboard(rows, "balanced");
   const bestOverall = [...scored].filter((r) => r.overall_score != null).sort((a, b) => (b.overall_score ?? -1) - (a.overall_score ?? -1))[0] ?? null;
-  const fastestNow = [...active].filter((r) => r.e2e_tps_now != null).sort((a, b) => (b.e2e_tps_now ?? -1) - (a.e2e_tps_now ?? -1))[0] ?? null;
-  const lowestTtft = [...active].filter((r) => r.ttft_now != null).sort((a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity))[0] ?? null;
+  const e2eOf = (r: (typeof active)[number]) =>
+    r.e2e_tps_now ?? r.e2e_tps_7d ?? null;
+  const fastestNow = [...active]
+    .filter((r) => e2eOf(r) != null)
+    .sort((a, b) => (e2eOf(b) ?? -1) - (e2eOf(a) ?? -1))[0] ?? null;
+  const ttftOf = (r: (typeof active)[number]) =>
+    r.ttft_now ?? r.ttft_7d ?? null;
+  const lowestTtft = [...active]
+    .filter((r) => ttftOf(r) != null)
+    .sort((a, b) => (ttftOf(a) ?? Infinity) - (ttftOf(b) ?? Infinity))[0] ?? null;
   const mostReliable = [...active].filter((r) => r.uptime_7d != null).sort((a, b) => (b.uptime_7d ?? -1) - (a.uptime_7d ?? -1))[0] ?? null;
   // Single-coding observatory: every row is already coding-filtered upstream,
   // so best_coding == best_overall. The old active[0] fallback crowned
