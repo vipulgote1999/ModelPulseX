@@ -1,6 +1,6 @@
 # ModelPulseX — LLM Performance Observatory
 
-> **Cloudflare-native** live benchmark for **FREE** models across **19 provider APIs** (OpenCode Zen, OpenRouter + 17 keyed providers) — *which free model should I use right now, and which has been best over the last 7 days?*
+> **Cloudflare-native** live benchmark for **FREE** models across **21 provider configurations** (OpenCode Zen/Go, Ollama Free/Pro, OpenRouter, and 17 other keyed providers) — *which free model should I use right now, and which has been best over the last 7 days?*
 
 Inspired by [TokenDyno](https://tokendyno.com) (TPS/TTFT leaderboard, sparkline trends, reliability with sample counts, Intelligence Index) but **FREE-only** with **provider comparison**, **7-day history**, **live SSE**, and **dynamic discovery** (no hard-coded model lists).
 
@@ -32,9 +32,9 @@ Single benchmark prompt — `short`/`medium` were collapsed into one determinist
 - Missing pricing → `FREE_STATUS=UNKNOWN` skip. **Never** queues unknown/paid.
 - Transition `FREE → PAID`: `active=0`, `free_status=PREVIOUSLY_FREE`, **retains last 7d results** (frozen hourly aggregates) and shows *Previously Free* badge — per “if that model is not there in free we should show its last result” requirement.
 - Re-discovery every 30 minutes (`*/30` cron) and hourly, plus manual `POST /api/admin/discover`.
-- **19 providers configured** (`PROVIDER_REGISTRY`, `src/providers/registry.ts`): the OpenCode Zen + OpenRouter catalogs above plus 17 keyed providers (Groq, Cerebras, Gemini, NVIDIA, SambaNova, Mistral, Agnes AI, AionLabs, Kilo Code, GLHF, Nscale, Speka, NexaAPI, OrcaRouter, NineRouter, TokenRouter, Ollama), each with its own models listing, free gate, secret and concurrency cap.
+- **21 provider configurations** (`PROVIDER_REGISTRY`, `src/providers/registry.ts`): the OpenCode Zen/Go, Ollama Free/Pro, OpenRouter catalogs above plus 16 other keyed providers (Groq, Cerebras, Gemini, NVIDIA, SambaNova, Mistral, Agnes AI, AionLabs, Kilo Code, GLHF, Nscale, Speka, NexaAPI, OrcaRouter, NineRouter, TokenRouter), each with its own models listing, free gate, secret and concurrency cap.
 
-Coverage snapshot (2026-09-10, prod `GET /api/leaderboard?range=7d`): **90 rows** across 13 providers — 68 FREE now, 22 previously-free with 0 samples in the last 24h (history retained), while `GET /api/providers` lists all 19 configured providers. Discovery moves these numbers, so the live endpoints are the source — this line is a dated snapshot, not a promise.
+Coverage snapshot (2026-09-10, prod `GET /api/leaderboard?range=7d`): **90 rows** across 13 providers — 68 FREE now, 22 previously-free with 0 samples in the last 24h (history retained), while `GET /api/providers` lists all 21 configured providers. Discovery moves these numbers, so the live endpoints are the source — this line is a dated snapshot, not a promise.
 
 ## Architecture — Cloudflare-first (no Redis/Postgres/K8s)
 
