@@ -436,6 +436,11 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
     await menu.click();
     const sheet = page.locator("#mobile-nav");
     await sheet.waitFor({ timeout: 5_000 });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator("#mobile-nav").count(), 0, "Escape closes the sheet");
+    await menu.click();
+    await sheet.waitFor({ timeout: 5_000 });
     for (const label of [
       "Dashboard",
       "Models",

@@ -33,6 +33,14 @@ export default function Header({
   // Route changes come from the hash listener in App; close the sheet so a
   // back/forward gesture never leaves an open menu over the new page.
   useEffect(() => setMenuOpen(false), [current]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
