@@ -22,6 +22,8 @@ function apiKeyFor(provider: string, env: Env): string | undefined {
   switch (provider) {
     case "opencode_zen":
       return e.OPENCODE_API_KEY;
+    case "opencode_go":
+      return e.OPENCODE_GO_API_KEY;
     case "openrouter":
       return e.OPENROUTER_API_KEY;
     case "groq":
@@ -58,6 +60,8 @@ function apiKeyFor(provider: string, env: Env): string | undefined {
       return e.TOKENROUTER_API_KEY;
     case "ollama":
       return e.OLLAMA_API_KEY;
+    case "ollama_pro":
+      return e.OLLAMA_PRO_API_KEY ?? e.OLLAMA_API_KEY;
     default:
       return undefined;
   }

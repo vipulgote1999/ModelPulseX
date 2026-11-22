@@ -318,6 +318,14 @@ D1 production queries, and direct API probes.
   “Xh of observed data in this 7-day window”, “7-day window”, or “No hourly
   samples yet”. The requested window stays 7d; the claim is now honest.
 
+### D38 — Playground had no API key for the Go/Pro catalogs
+
+- `apiKeyFor()` covered Zen/Ollama/OpenRouter and the keyed providers but not
+  `opencode_go` or `ollama_pro`, so the admin Playground sent those requests
+  unauthenticated even when the secrets were configured.
+- Fix: map `OPENCODE_GO_API_KEY` and `OLLAMA_PRO_API_KEY` (falling back to the
+  free Ollama key, matching discovery).
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
