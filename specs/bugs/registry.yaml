@@ -171,3 +171,10 @@
   scope: package.json, deploy.bat, README.md
   summary: Deploy commands could ship a stale frontend after the Pages cutover
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T116000
+  date: '2026-11-22'
+  severity: high
+  priority: high
+  scope: package.json
+  summary: npm run migrate applied migrations to local state, not production
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

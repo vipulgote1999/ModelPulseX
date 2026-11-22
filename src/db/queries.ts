@@ -696,6 +696,7 @@ export async function cleanupRetention(
   const tenminCut = new Date(
     Date.now() - tenminDays * 86400 * 1000,
   ).toISOString();
+  const loginCut = new Date(Date.now() - 15 * 60_000).toISOString();
   // Batch deletes — tenmin is best-effort if table not yet migrated
   const now = new Date().toISOString();
   const stmts: ReturnType<D1Database["prepare"]>[] = [
@@ -706,8 +707,11 @@ export async function cleanupRetention(
     db
       .prepare("DELETE FROM tenmin_model_stats WHERE bucket_start < ?")
       .bind(tenminCut),
-    // Bounded hygiene: expired cooldowns + stale login blocks never self-clean
+    // Bounded hygiene: expired cooldowns + stale login buckets never self-clean
     // (incidents/audit_log stay indefinite per convention — metadata, tiny).
+    // Login rows under the attempt cap have blocked_until NULL forever, so the
+    // old blocked-only predicate never pruned them. The throttle window is
+    // 15 minutes; anything older than that is logically expired.
     db
       .prepare("DELETE FROM provider_cooldowns WHERE cooldown_until < ?")
       .bind(now),
@@ -715,10 +719,8 @@ export async function cleanupRetention(
       .prepare("DELETE FROM model_cooldowns WHERE cooldown_until < ?")
       .bind(now),
     db
-      .prepare(
-        "DELETE FROM login_attempts WHERE blocked_until IS NOT NULL AND blocked_until < ?",
-      )
-      .bind(now),
+      .prepare("DELETE FROM login_attempts WHERE last_attempt_at < ?")
+      .bind(loginCut),
   ];
   try {
     await db.batch(stmts);

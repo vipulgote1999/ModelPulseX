@@ -138,6 +138,14 @@ D1 production queries, and direct API probes.
 - Fix: make `npm run deploy` build first and update `deploy.bat`/README to
   deploy Worker **and** Pages.
 
+### D17 — `npm run migrate` applies to the local DB, not production
+
+- The script ran `wrangler d1 migrations apply DB` without `--remote`; Wrangler
+  defaults to the local state directory. The README deploy section presented it
+  as the production migration command, so a new migration could be reported
+  successful while production never saw it.
+- Fix: `migrate` now passes `--remote`; `migrate:local` remains the local one.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
