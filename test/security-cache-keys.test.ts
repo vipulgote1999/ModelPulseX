@@ -140,4 +140,17 @@ describe("/api/timeouts cache key", () => {
     expect(key).toContain("range=7d");
     expect(key).not.toContain("junk");
   });
+
+  it("collapses an unrecognised param to the same key as the bare range request", async () => {
+    await get("/api/timeouts?range=7d");
+    await get("/api/timeouts?range=7d&junk=random-1");
+    await get("/api/timeouts?range=7d&junk=random-2");
+    expect(new Set([...matchKeys, ...putKeys]).size).toBe(1);
+  });
+
+  it("keeps genuinely different ranges in separate entries", async () => {
+    await get("/api/timeouts?range=7d");
+    await get("/api/timeouts?range=24h");
+    expect(new Set([...matchKeys, ...putKeys]).size).toBe(2);
+  });
 });

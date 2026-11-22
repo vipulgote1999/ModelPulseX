@@ -19,7 +19,13 @@ export function timeoutsRoutes(env: Env) {
     // 7d raw scan + GROUP BY per hit is the most expensive dashboard query.
     // SAFETY: Workers runtime exposes caches.default at runtime; DOM lib types omit it.
     const cache: Cache = (caches as unknown as { default: Cache }).default;
-    const cacheKey = new Request(c.req.url, { method: "GET" });
+    // SEC-007: key on origin + path + the validated range only. The raw URL as
+    // the key let `?junk=<random>` mint a new cache object AND force a fresh 7d
+    // raw scan for a byte-identical response.
+    const cacheKey = new Request(
+      `${new URL(c.req.url).origin}/api/timeouts?range=${range}`,
+      { method: "GET" },
+    );
     try {
       const hit = await cache.match(cacheKey);
       if (hit) return hit;
