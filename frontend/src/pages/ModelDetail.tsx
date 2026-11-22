@@ -46,9 +46,11 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
   const [model, setModel] = useState<ModelRecord | null>(null);
   const [summary, setSummary] = useState<CompareRow | null>(null);
   const [missing, setMissing] = useState(false);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     const ctl = new AbortController();
     setMissing(false);
+    setFailed(false);
     setModel(null);
     setSummary(null);
     fetch("/api/models/" + modelId, { signal: ctl.signal })
@@ -65,7 +67,9 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
           setModel((j as { model?: ModelRecord }).model as ModelRecord);
       })
       .catch(() => {
-        if (!ctl.signal.aborted) setMissing(true);
+        // A 429/500/network failure is not a missing model — telling the
+        // visitor "Model not found" under a rate limit is a lie with no retry.
+        if (!ctl.signal.aborted) setFailed(true);
       });
     fetch("/api/compare?models=" + modelId, { signal: ctl.signal })
       .then((r) => {
@@ -99,6 +103,23 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
         <a href={formatHash({ page: "models", modelId: null, compare: [] })} className="text-sm text-cyan-300 hover:text-cyan-100 mt-4 inline-block">
           Back to all models →
         </a>
+      </div>
+    );
+  if (failed)
+    return (
+      <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-10">
+        <h1 className="text-xl font-bold text-white">Could not load this model</h1>
+        <p className="text-sm text-zinc-400 mt-2">
+          The API request failed (rate limit, network, or server error). This is
+          not a missing model — refresh or try again in a moment.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="text-sm text-cyan-300 hover:text-cyan-100 mt-4"
+        >
+          Retry →
+        </button>
       </div>
     );
   if (model == null)

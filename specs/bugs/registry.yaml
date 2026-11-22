@@ -241,3 +241,10 @@
   scope: frontend/src/components/Leaderboard.tsx
   summary: Dashboard sort selector does not change the table order
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T126000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: frontend/src/pages/ModelDetail.tsx
+  summary: Transient model API errors render as Model not found
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

@@ -226,6 +226,13 @@ D1 production queries, and direct API probes.
   the parent sort changes. Header clicks remain a local override. Playwright
   proves Fastest puts the highest e2e row first.
 
+### D27 — Model detail reports a transient API failure as “Model not found”
+
+- Any rejected `/api/models/:id` fetch (429, 500, network) set `missing`,
+  showing “Model not found” — a false statement with no retry path.
+- Fix: only a real 404 sets `missing`; other failures render “Could not load
+  this model” with a Retry button.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
