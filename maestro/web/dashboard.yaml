@@ -1,0 +1,14 @@
+url: https://modelpulsex.pages.dev
+name: Dashboard core surfaces render
+tags:
+  - web
+  - smoke
+---
+- openLink: https://modelpulsex.pages.dev/#/
+- extendedWaitUntil:
+    visible: "BEST MODEL RIGHT NOW"
+    timeout: 30000
+- assertVisible: "BEST MODEL RIGHT NOW"
+- assertVisible: "BEST RELIABILITY"
+- assertVisible: ".*Cooldowns.*per-model vs per-provider timeout.*"
+- assertVisible: ".*Live leaderboard.*max 6.*"

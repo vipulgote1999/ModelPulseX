@@ -1,0 +1,22 @@
+url: https://modelpulsex.pages.dev
+name: Theme control toggles both directions
+tags:
+  - web
+  - theme
+---
+# Persistence across a real reload is covered by test/e2e/dashboard-smoke.mjs,
+# which can evaluate document attributes deterministically. Maestro's web
+# assertTrue does not run in the page context, so this flow verifies the
+# observable control state instead.
+- openLink: https://modelpulsex.pages.dev/?theme=1#/
+- extendedWaitUntil:
+    visible: "BEST MODEL RIGHT NOW"
+    timeout: 30000
+- tapOn:
+    id: "Switch to light theme"
+- assertVisible:
+    id: "Switch to dark theme"
+- tapOn:
+    id: "Switch to dark theme"
+- assertVisible:
+    id: "Switch to light theme"
