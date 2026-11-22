@@ -85,7 +85,8 @@ export function adminModelsRoutes(env: Env) {
   r.post("/admin/models/:id/toggle", async (c) => {
     if (!isAdmin(c, env)) return c.json({ error: "unauthorized" }, 401);
     const id = Number(c.req.param("id"));
-    if (!Number.isFinite(id)) return c.json({ error: "invalid id" }, 400);
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "invalid id" }, 400);
     const body = (await c.req.json().catch(() => ({}))) as {
       enabled?: number | boolean;
       benchmark_enabled?: number | boolean;

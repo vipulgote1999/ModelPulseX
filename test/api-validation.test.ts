@@ -103,4 +103,19 @@ describe("admin benchmark request contract", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("rejects a fractional model id on toggle", async () => {
+    const res = await app().request(
+      "https://example.test/api/admin/models/1.5/toggle",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ enabled: true }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
 });
