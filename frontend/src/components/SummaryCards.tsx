@@ -36,14 +36,19 @@ type Props = {
     display_name?: string;
     uptime_7d: number | null;
     overall_score: number | null;
+    active?: boolean;
+    free_status?: string;
   }>;
 };
 
 export default function SummaryCards({ summary, meta, leaderboard }: Props) {
-  // Most reliable model in one pass (also names it, like the TPS/TTFT cards do).
+  // Most reliable currently-usable model in one pass. Inactive PREVIOUSLY_FREE
+  // rows keep a frozen 7d uptime and could otherwise win with zero 24h samples.
   let mostReliable: { display_name?: string; uptime_7d: number | null } | null =
     null;
   for (const r of leaderboard ?? []) {
+    if (r.active === false || (r.free_status != null && r.free_status !== "FREE"))
+      continue;
     if (
       r.uptime_7d != null &&
       (mostReliable == null || r.uptime_7d > (mostReliable.uptime_7d ?? 0))
@@ -78,7 +83,7 @@ export default function SummaryCards({ summary, meta, leaderboard }: Props) {
       hint:
         (e2eBest?.display_name ?? e2eBest?.model ?? "") +
         (e2eIs7d ? " ·7d" : ""),
-      sub: `decode ${fmtTps(e2eBest?.tps_now ?? null)}`,
+      sub: `decode ${fmtTps(e2eBest?.tps_now ?? e2eBest?.tps_7d ?? null)}`,
     },
     {
       label: "BEST TTFT",
@@ -108,6 +113,7 @@ export default function SummaryCards({ summary, meta, leaderboard }: Props) {
       {cards.map((c) => (
         <div
           key={c.label}
+          data-testid="summary-card"
           className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3"
         >
           <div className="text-[11px] tracking-widest text-zinc-500 font-semibold">

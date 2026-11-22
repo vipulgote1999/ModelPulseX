@@ -28,6 +28,11 @@ describe("leaderboard e2e wiring", () => {
     expect(src).toContain("best_e2e_tps");
     expect(src).toContain("best_tps: bestE2e");
   });
+
+  it("summary leaders exclude inactive and previously-free rows", () => {
+    expect(src).toContain("recommendable");
+    expect(src).toContain('r.active && r.free_status === "FREE"');
+  });
 });
 
 describe("e2eSpeed fallback chain", () => {

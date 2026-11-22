@@ -100,11 +100,18 @@ export function leaderboardRoutes(env: Env) {
       // measured data; the UI appends `·7d` when it is used.
       const e2eHeadline = (r: LeaderboardRow) =>
         r.e2e_tps_now ?? r.e2e_tps_7d;
+      // Recommendations are about models a visitor can use now: active FREE
+      // rows only. An inactive PREVIOUSLY_FREE row can carry a 100% frozen
+      // uptime or an old burst speed and must never win "best right now".
+      const recommendable = scored.filter(
+        (r) => r.active && r.free_status === "FREE",
+      );
       const bestE2e =
-        scored
+        recommendable
           .filter((r) => e2eHeadline(r) != null)
           .sort((a, b) => (e2eHeadline(b) ?? -1) - (e2eHeadline(a) ?? -1))[0] ??
         null;
+      const ttftHeadline = (r: LeaderboardRow) => r.ttft_now ?? r.ttft_7d;
 
       const resp = c.json({
         leaderboard: ordered,
@@ -133,7 +140,9 @@ export function leaderboardRoutes(env: Env) {
           alert_channel: alertChannelState(env),
         },
         summary: {
-          free_models: scored.filter((r) => r.free_status === "FREE").length,
+          free_models: scored.filter(
+            (r) => r.active && r.free_status === "FREE",
+          ).length,
           online_now: scored.filter(
             (r) =>
               r.status === "SUCCESS" &&
@@ -143,10 +152,12 @@ export function leaderboardRoutes(env: Env) {
           best_tps: bestE2e,
           best_e2e_tps: bestE2e,
           best_ttft:
-            scored
-              .filter((r) => r.ttft_now != null)
+            recommendable
+              .filter((r) => ttftHeadline(r) != null)
               .sort(
-                (a, b) => (a.ttft_now ?? Infinity) - (b.ttft_now ?? Infinity),
+                (a, b) =>
+                  (ttftHeadline(a) ?? Infinity) -
+                  (ttftHeadline(b) ?? Infinity),
               )[0] ?? null,
           benchmarks_24h: meta?.benchmarks_24h ?? 0,
         },

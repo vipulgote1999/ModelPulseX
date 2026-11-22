@@ -40,6 +40,10 @@ const MODELS = [
     tps_1h: 74.2,
     tps_24h: 71.9,
     tps_7d: 68.4,
+    e2e_tps_now: 60.2,
+    e2e_tps_1h: 59.4,
+    e2e_tps_24h: 57.1,
+    e2e_tps_7d: 55.3,
     ttft_now: 210,
     ttft_7d: 231,
     itl_now: 14.2,
@@ -57,6 +61,10 @@ const MODELS = [
     tps_1h: 51.1,
     tps_24h: 49.8,
     tps_7d: 47.3,
+    e2e_tps_now: 40.1,
+    e2e_tps_1h: 39.5,
+    e2e_tps_24h: 38.2,
+    e2e_tps_7d: 37.4,
     ttft_now: 320,
     ttft_7d: 341,
     itl_now: 19.4,
@@ -74,6 +82,10 @@ const MODELS = [
     tps_1h: 30.4,
     tps_24h: 29.9,
     tps_7d: 28.1,
+    e2e_tps_now: 25.4,
+    e2e_tps_1h: 24.8,
+    e2e_tps_24h: 24.1,
+    e2e_tps_7d: 23.6,
     ttft_now: 480,
     ttft_7d: 502,
     itl_now: 26.7,
@@ -84,6 +96,31 @@ const MODELS = [
   },
 ];
 
+// A frozen PREVIOUSLY_FREE row: perfect uptime, a fast old burst, zero 24h
+// samples. It must stay visible in the table (retention policy) but never win
+// a "use this now" recommendation card.
+const INACTIVE_MODEL = {
+  model_id: 99,
+  model: "openrouter/retired-free",
+  display_name: "Old Free",
+  provider: "openrouter",
+  tps_now: 900,
+  tps_1h: 900,
+  tps_24h: 900,
+  tps_7d: 999,
+  e2e_tps_now: 999,
+  e2e_tps_1h: 999,
+  e2e_tps_24h: 999,
+  e2e_tps_7d: 999,
+  ttft_now: 90,
+  ttft_7d: 90,
+  itl_now: 1,
+  itl_7d: 1,
+  uptime_7d: 1,
+  error_rate_7d: 0,
+  overall_score: null,
+};
+
 const HOUR = 3600_000;
 
 function iso(msAgo) {
@@ -91,17 +128,29 @@ function iso(msAgo) {
 }
 
 function leaderboardRows() {
-  return MODELS.map((m, i) => ({
-    ...m,
-    rank: i + 1,
-    free_status: "FREE",
-    active: true,
-    status: "SUCCESS",
-    last_test: iso(90_000),
-    sampleCount24h: 12,
-    // 24 hourly median-TPS points for the Sparkline column
-    sparkline: Array.from({ length: 24 }, (_, h) => m.tps_7d + (h % 5) - 2),
-  }));
+  return [
+    ...MODELS.map((m, i) => ({
+      ...m,
+      rank: i + 1,
+      free_status: "FREE",
+      active: true,
+      status: "SUCCESS",
+      last_test: iso(90_000),
+      sampleCount24h: 12,
+      // 24 hourly median-TPS points for the Sparkline column
+      sparkline: Array.from({ length: 24 }, (_, h) => m.tps_7d + (h % 5) - 2),
+    })),
+    {
+      ...INACTIVE_MODEL,
+      rank: null,
+      free_status: "PREVIOUSLY_FREE",
+      active: false,
+      status: "SUCCESS",
+      last_test: iso(3 * 24 * HOUR),
+      sampleCount24h: 0,
+      sparkline: [],
+    },
+  ];
 }
 
 function leaderboardBody(state) {
@@ -140,6 +189,7 @@ function historyBody(ids) {
     history[String(id)] = Array.from({ length: 12 }, (_, i) => ({
       hour_start: new Date(now - (11 - i) * HOUR).toISOString().slice(0, 13) + ":00:00",
       median_tps: base.tps_7d + (i % 4),
+      median_e2e_tps: base.e2e_tps_7d + (i % 3),
       median_ttft: base.ttft_7d + (i % 3) * 10,
       median_itl: base.itl_7d,
       success_rate: base.uptime_7d,
@@ -390,16 +440,50 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
 
 test("leaderboard renders one row per model", async () => {
   const rows = page.locator("table tbody tr");
-  assert.equal(await rows.count(), MODELS.length);
+  assert.equal(await rows.count(), MODELS.length + 1);
   for (const m of MODELS)
     assert.equal(
       await page.locator("table tbody tr", { hasText: m.display_name }).count(),
       1,
       `row for ${m.display_name}`,
     );
+  assert.equal(
+    await page.locator("table tbody tr", { hasText: INACTIVE_MODEL.display_name })
+      .count(),
+    1,
+    "previously-free row stays visible",
+  );
   // TPS Now column value is the measured tps_now, not a placeholder
   const first = await rows.first().innerText();
   assert.match(first, /75\.5/);
+});
+
+test("recommendation cards exclude previously-free inactive rows", async () => {
+  const cards = page.locator('[data-testid="recommendation-card"]');
+  assert.equal(await cards.count(), 4);
+  for (const label of [
+    "BEST OVERALL",
+    "Fastest now (end-to-end)",
+    "LOWEST TTFT",
+    "MOST RELIABLE",
+  ]) {
+    const card = cards.filter({ hasText: label });
+    assert.equal(await card.count(), 1, `one ${label} card`);
+    assert.doesNotMatch(
+      await card.innerText(),
+      /Old Free/,
+      `${label} must not crown a previously-free inactive model`,
+    );
+  }
+  const reliableCard = cards.filter({ hasText: "MOST RELIABLE" });
+  assert.match(await reliableCard.innerText(), /Lingua Free/);
+  const fastestCard = cards.filter({ hasText: "Fastest now" });
+  assert.match(await fastestCard.innerText(), /Lingua Free/);
+  const summaryReliable = page
+    .locator('[data-testid="summary-card"]')
+    .filter({ hasText: "BEST RELIABILITY" });
+  assert.match(await summaryReliable.innerText(), /Lingua Free/);
+  assert.doesNotMatch(await summaryReliable.innerText(), /Old Free/);
 });
 
 test("freshness banner shows LIVE when meta.is_stale is false", async () => {
@@ -436,7 +520,7 @@ test("SSE benchmark.completed broadcast triggers a leaderboard refetch", async (
     `leaderboard refetch after the SSE event (hits stayed ${before})`,
   );
   assert.ok(
-    (await page.locator("table tbody tr").count()) === MODELS.length,
+    (await page.locator("table tbody tr").count()) === MODELS.length + 1,
     "rows still rendered after the refetch",
   );
 });

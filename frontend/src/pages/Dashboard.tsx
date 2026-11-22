@@ -399,8 +399,18 @@ export default function Dashboard() {
 
       {rows.length > 0 &&
         (() => {
+          // Recommendations are active FREE models only: a PREVIOUSLY_FREE row
+          // can top a user-selected sort (for example "Most Reliable") while no
+          // longer being benchmarked. Fall back to the first row only if the
+          // whole view is previously-free.
+          const bestRow =
+            rows.find(
+              (row) =>
+                row.active !== false &&
+                (row.free_status == null || row.free_status === "FREE"),
+            ) ?? rows[0];
           // SAFETY: rows[0] is the measured leader (API sorts by `sort`, default overall_score desc)
-          const r = rows[0] as unknown as {
+          const r = bestRow as unknown as {
             display_name: string;
             provider: string;
             e2e_tps_now: number | null;
