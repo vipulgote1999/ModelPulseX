@@ -38,6 +38,7 @@ export default tseslint.config(
         process: "readonly",
         setTimeout: "readonly",
         document: "readonly",
+        window: "readonly",
         getComputedStyle: "readonly",
       },
     },
