@@ -157,3 +157,10 @@
   scope: src/api/timeouts.ts
   summary: Public timeout aggregate names admin-disabled and inactive models
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T114000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: src/benchmark/scheduler.ts
+  summary: Incident started_at is the third failure, under-reporting duration
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

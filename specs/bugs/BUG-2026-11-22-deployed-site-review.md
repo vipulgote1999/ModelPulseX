@@ -122,6 +122,14 @@ D1 production queries, and direct API probes.
   gate in the SEC-002 suite. Provider-level counts stay ungated: they carry no
   model identity and are operational context.
 
+### D15 — Incident start is stamped at the third failure, not the first
+
+- `updateIncidents()` selected only `status` and inserted the current run's
+  timestamp. An outage opened on the third consecutive failure therefore
+  under-reported its duration by up to two benchmark intervals.
+- Fix: select `started_at` too and use the oldest failing run in the streak as
+  the incident start; the current run remains the fallback.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

@@ -635,27 +635,35 @@ async function updateIncidents(
   // The two reads are independent — run together instead of sequentially.
   const [recent, open] = await Promise.all([
     env.DB.prepare(
-      "SELECT status FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
+      "SELECT status, started_at FROM benchmark_runs WHERE model_id=? ORDER BY started_at DESC LIMIT ?",
     )
       .bind(modelId, threshold)
-      .all<{ status: string }>(),
+      .all<{ status: string; started_at: string }>(),
     env.DB.prepare(
       "SELECT id FROM availability_incidents WHERE model_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
     )
       .bind(modelId)
       .first<{ id: number }>(),
   ]);
-  const vals = (recent.results ?? []).map((r) => r.status);
+  const recentRuns = recent.results ?? [];
+  const vals = recentRuns.map((r) => r.status);
   const isFail = result.status !== "SUCCESS";
   // check if we have streak
   const failStreak = vals.filter((s) => s !== "SUCCESS").length;
   if (isFail && failStreak >= threshold && !open) {
+    // The outage began at the FIRST failure in the streak, not the one that
+    // crossed the threshold. The query is newest-first, so the oldest failure
+    // is the last failing row in this window. Using the current run's clock
+    // under-reported every incident by up to one benchmark interval.
+    const firstFailure = [...recentRuns]
+      .filter((r) => r.status !== "SUCCESS")
+      .at(-1);
     await env.DB.prepare(
       "INSERT INTO availability_incidents (model_id, started_at, reason, failure_count) VALUES (?,?,?,?)",
     )
       .bind(
         modelId,
-        result.request_started_at,
+        firstFailure?.started_at ?? result.request_started_at,
         result.error_type ?? result.status,
         failStreak,
       )
