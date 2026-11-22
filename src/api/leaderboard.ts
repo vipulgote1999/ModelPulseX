@@ -150,6 +150,8 @@ export function leaderboardRoutes(env: Env) {
           ).length,
           online_now: scored.filter(
             (r) =>
+              r.active &&
+              r.free_status === "FREE" &&
               r.status === "SUCCESS" &&
               r.last_test &&
               Date.now() - new Date(r.last_test).getTime() < 10 * 60 * 1000,
