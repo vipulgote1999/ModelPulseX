@@ -206,3 +206,10 @@
   scope: frontend/public, frontend/index.html
   summary: Missing robots/sitemap/favicon return SPA HTML with status 200
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T121000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: src/api/admin/index.ts
+  summary: Admin benchmark accepts invalid model ids and benchmark types
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

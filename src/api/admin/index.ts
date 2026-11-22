@@ -153,12 +153,16 @@ export function adminRoutes(env: Env) {
       model_id?: number;
       benchmark_type?: BenchmarkType;
     };
-    if (!body.model_id) return c.json({ error: "model_id required" }, 400);
-    const bt = (body.benchmark_type ?? "coding") as BenchmarkType;
+    const modelId = body.model_id;
+    if (typeof modelId !== "number" || !Number.isInteger(modelId) || modelId <= 0)
+      return c.json({ error: "model_id required" }, 400);
+    const bt = body.benchmark_type ?? "coding";
+    if (bt !== "coding" && bt !== "speed")
+      return c.json({ error: "invalid benchmark_type" }, 400);
     const job = await env.DB.prepare(
       "SELECT m.provider_model_id, p.name as provider, m.display_name FROM models m JOIN providers p ON p.id=m.provider_id WHERE m.id=?",
     )
-      .bind(body.model_id)
+      .bind(modelId)
       .first<{
         provider_model_id: string;
         provider: string;
@@ -166,7 +170,7 @@ export function adminRoutes(env: Env) {
       }>();
     if (!job) return c.json({ error: "model not found" }, 404);
     await env.BENCH_QUEUE.send({
-      model_id: body.model_id,
+      model_id: modelId,
       provider: job.provider,
       provider_model_id: job.provider_model_id,
       benchmark_type: bt,

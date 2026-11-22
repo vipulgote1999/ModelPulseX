@@ -181,6 +181,14 @@ D1 production queries, and direct API probes.
   generated from the brand SVG; add a browser gate that asserts content type
   and rejects the HTML fallback.
 
+### D22 — Admin benchmark accepts any benchmark_type string
+
+- `POST /api/admin/benchmark` cast the body value to `BenchmarkType` and sent
+  it straight to the queue. A typo (`"bogus"`) became a poison job that the
+  consumer could not map to a workload, instead of a 400 at the edge.
+- Fix: require a positive integer `model_id` and one of `coding`/`speed`;
+  cover both 400s in the API validation suite.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

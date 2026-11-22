@@ -62,3 +62,33 @@ describe("documented query enums", () => {
     expect(res.status).not.toBe(400);
   });
 });
+
+describe("admin benchmark request contract", () => {
+  const token = "test-admin-token-0123456789abcdef";
+  const app = () =>
+    createApi({
+      CORS_ORIGIN: "https://example.test",
+      ADMIN_TOKEN: token,
+      DB: dbStub(),
+      BENCH_QUEUE: { send: async () => undefined },
+    } as never);
+  const post = (body: unknown) =>
+    app().request("https://example.test/api/admin/benchmark", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+  it("rejects a non-integer model id before queueing", async () => {
+    const res = await post({ model_id: "abc", benchmark_type: "coding" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unknown benchmark type instead of poisoning the queue", async () => {
+    const res = await post({ model_id: 1, benchmark_type: "bogus" });
+    expect(res.status).toBe(400);
+  });
+});
