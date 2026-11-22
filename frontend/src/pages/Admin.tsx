@@ -302,10 +302,11 @@ export default function Admin() {
           </div>
           <form onSubmit={login} className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-zinc-400 tracking-widest uppercase">
+              <label htmlFor="admin-id" className="text-xs font-medium text-zinc-400 tracking-widest uppercase">
                 Admin ID
               </label>
               <input
+                id="admin-id"
                 value={user}
                 onChange={(e) => setUser(e.target.value)}
                 placeholder="admin"
@@ -314,10 +315,11 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-zinc-400 tracking-widest uppercase">
+              <label htmlFor="admin-password" className="text-xs font-medium text-zinc-400 tracking-widest uppercase">
                 Password
               </label>
               <input
+                id="admin-password"
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
                 placeholder="••••••••"
@@ -569,6 +571,7 @@ export default function Admin() {
       {/* filters */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-3 flex flex-wrap gap-2 items-center">
         <input
+          aria-label="Search models"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search model id or display name…"
