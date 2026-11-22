@@ -240,6 +240,9 @@ export async function renderOgCard(
     provider: string;
     tps: number | null;
   }>,
+  /** Snapshot refresh time. The card is precomputed medians, not a live read;
+   *  stamping render time made 40-minute-old data look freshly measured. */
+  measuredAt?: string | null,
 ): Promise<Uint8Array> {
   const W = 1200,
     H = 630;
@@ -299,7 +302,11 @@ export async function renderOgCard(
       y += 50;
     }
   }
-  const footer = `measured ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const stamp = measuredAt ? new Date(measuredAt) : new Date();
+  const when = Number.isNaN(stamp.getTime())
+    ? new Date().toISOString()
+    : stamp.toISOString();
+  const footer = `snapshot ${when.slice(0, 16).replace("T", " ")} UTC`;
   drawText(rgba, W, H, footer, 40, H - 40, 1, 113, 113, 122);
   return encodePng(W, H, rgba);
 }
@@ -349,6 +356,7 @@ export function ogRoutes(env: Env) {
         provider: string;
         tps: number | null;
       }> = [];
+      let snapshotAt: string | null = null;
       try {
         // Ranked share card: the same 7d end-to-end medians the dashboard
         // ranks. The previous query used MAX(br.tps) over raw runs — one
@@ -357,7 +365,7 @@ export function ogRoutes(env: Env) {
         // The snapshot costs ~a few hundred rows instead of a 7d raw scan, and
         // the visibility gate keeps admin-disabled rows off a public image.
         const rows = await env.DB.prepare(
-          `SELECT s.display_name as name, s.provider, s.e2e_tps_7d as tps
+          `SELECT s.display_name as name, s.provider, s.e2e_tps_7d as tps, s.snapshot_at
            FROM leaderboard_snapshot s
            JOIN models m ON m.id=s.model_id
            JOIN providers p ON p.id=m.provider_id
@@ -367,17 +375,23 @@ export function ogRoutes(env: Env) {
            ORDER BY s.e2e_tps_7d DESC LIMIT 5`,
         )
           .bind()
-          .all<{ name: string; provider: string; tps: number | null }>();
+          .all<{
+            name: string;
+            provider: string;
+            tps: number | null;
+            snapshot_at: string | null;
+          }>();
         top = (rows.results ?? []).map((r, i) => ({
           rank: i + 1,
           name: r.name,
           provider: r.provider,
           tps: r.tps,
         }));
+        snapshotAt = rows.results?.[0]?.snapshot_at ?? null;
       } catch {
         // snapshot missing/pre-migration — render the card without rows
       }
-      const png = await renderOgCard(top);
+      const png = await renderOgCard(top, snapshotAt);
       return done(png);
     } catch {
       const png = await renderOgCard([]);
