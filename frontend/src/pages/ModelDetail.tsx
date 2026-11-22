@@ -86,6 +86,17 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
     return () => ctl.abort();
   }, [modelId]);
 
+  // Keep the tab title specific to the model; the SPA otherwise leaves the
+  // generic dashboard title on every detail page (bad for history/bookmarks).
+  useEffect(() => {
+    if (model == null) return;
+    const previous = document.title;
+    document.title = `${model.display_name} — ModelPulseX`;
+    return () => {
+      document.title = previous;
+    };
+  }, [model]);
+
   const { data: history } = useHistory(modelId > 0 ? [modelId] : [], "7d", "all");
   const points = history[modelId] ?? [];
   const firstPoint = points[0]?.hour_start;
