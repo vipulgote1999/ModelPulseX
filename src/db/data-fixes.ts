@@ -29,6 +29,41 @@ const FIXES: Array<{ id: string; description: string; run: (db: D1Database) => P
       await db.prepare(`DELETE FROM models WHERE provider_id=? AND provider_model_id NOT IN (${placeholders})`).bind(pid, ...freeOllama).run();
     },
   },
+  {
+    id: "2026-11-22_close_incidents_for_retired_models",
+    description:
+      "close incidents left open by auto-disabled and previously-free models (they will never get the SUCCESS run that closes them)",
+    run: async (db) => {
+      // updateIncidents() closes an incident only on a SUCCESS run for the same
+      // model. An auto-disabled or no-longer-free model never runs again, so its
+      // last outage stayed open forever (162 rows live on 2026-11-22, some from
+      // August). Close them with the last observed failure time as the end.
+      await db
+        .prepare(
+          `UPDATE availability_incidents
+              SET ended_at = COALESCE(
+                    (SELECT MAX(br.started_at) FROM benchmark_runs br WHERE br.model_id = availability_incidents.model_id),
+                    started_at
+                  )
+            WHERE ended_at IS NULL
+              AND model_id IN (
+                SELECT id FROM models
+                 WHERE COALESCE(benchmark_enabled,1)=0
+                    OR (active=0 AND free_status!='FREE')
+              )`,
+        )
+        .run();
+      await db
+        .prepare(
+          `UPDATE availability_incidents
+              SET duration_seconds = MAX(0, CAST(
+                    (julianday(ended_at) - julianday(started_at)) * 86400 AS INTEGER
+                  ))
+            WHERE ended_at IS NOT NULL AND duration_seconds IS NULL`,
+        )
+        .run();
+    },
+  },
 ];
 
 async function tokenRouterId(db: D1Database): Promise<number> {

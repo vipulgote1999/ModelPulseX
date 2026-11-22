@@ -93,6 +93,16 @@ D1 production queries, and direct API probes.
 - The documented deploy command was therefore broken; add
   `--project-name modelpulsex`.
 
+### D12 — Incidents for retired models stay open forever
+
+- Production had 162 rows in `availability_incidents` with `ended_at IS NULL`,
+  some opened in August 2026.
+- `updateIncidents()` closes an incident only when the same model returns
+  SUCCESS. An auto-disabled model or a model that leaves FREE never runs again,
+  so its last outage remains "ongoing" indefinitely.
+- Fix: close on auto-disable, plus a one-shot data fix for existing retired
+  models (end = last observed run) and backfill `duration_seconds`.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

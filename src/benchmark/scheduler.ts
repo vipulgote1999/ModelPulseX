@@ -574,6 +574,18 @@ export async function handleBenchJob(env: Env, job: QueueJob): Promise<void> {
         await env.DB.prepare(`UPDATE models SET benchmark_enabled=0 WHERE id=?`)
           .bind(job.model_id)
           .run();
+        // No further runs means updateIncidents() can never see the SUCCESS
+        // that closes the outage. Close it now so the public incident history
+        // does not claim an outage that is still "ongoing" months later.
+        const closedAt = new Date().toISOString();
+        await env.DB.prepare(
+          `UPDATE availability_incidents
+              SET ended_at=?,
+                  duration_seconds=MAX(0, CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER))
+            WHERE model_id=? AND ended_at IS NULL`,
+        )
+          .bind(closedAt, closedAt, job.model_id)
+          .run();
       } catch (e) {
         const msg = String(e);
         if (

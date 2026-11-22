@@ -136,3 +136,10 @@
   scope: package.json
   summary: deploy:pages omits the Pages project name, so the documented deploy fails
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T111000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: src/db/data-fixes.ts, src/benchmark/scheduler.ts
+  summary: Incidents for auto-disabled and no-longer-free models stay open forever
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
