@@ -215,6 +215,17 @@ D1 production queries, and direct API probes.
   rather than an interpolated line.
 - Fix: drop `connectNulls` and pin the contract in a source test.
 
+### D26 — Dashboard sort selector does not sort the table
+
+- The API returned rows in the requested order, but `Leaderboard` kept its own
+  `sortKey = "overall_score"` and re-sorted every response by overall score.
+  Selecting “Fastest (end-to-end TPS)” left the table in overall order while
+  the caption claimed the other sort.
+- Fix: pass the dashboard sort into the table, derive its initial key/direction
+  (`tps` → `e2e_tps_7d` desc, `ttft` → `ttft_7d` asc, etc.), and resync when
+  the parent sort changes. Header clicks remain a local override. Playwright
+  proves Fastest puts the highest e2e row first.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

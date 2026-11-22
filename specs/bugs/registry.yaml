@@ -234,3 +234,10 @@
   scope: frontend/src/charts/*
   summary: Charts interpolate missing hours that methodology promises as gaps
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T125000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: frontend/src/components/Leaderboard.tsx
+  summary: Dashboard sort selector does not change the table order
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

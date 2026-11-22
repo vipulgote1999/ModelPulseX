@@ -542,6 +542,24 @@ test("recommendation cards exclude previously-free inactive rows", async () => {
   assert.doesNotMatch(await summaryReliable.innerText(), /Old Free/);
 });
 
+test("dashboard sort drives the visible table order", async () => {
+  const sortSelect = page.locator("select").nth(3);
+  await sortSelect.selectOption("tps");
+  await page.waitForTimeout(1800);
+  const rows = page.locator("table tbody tr");
+  assert.match(
+    await rows.first().innerText(),
+    /Old Free/,
+    "Fastest must put the highest e2e row first, not the highest overall score",
+  );
+  await sortSelect.selectOption("overall");
+  await page.waitForTimeout(1800);
+  assert.match(
+    await page.locator("table tbody tr").first().innerText(),
+    /Lingua Free/,
+  );
+});
+
 test("chart selector exposes all six compare slots", async () => {
   for (let i = 1; i <= 6; i++) {
     assert.equal(

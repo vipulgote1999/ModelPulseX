@@ -113,6 +113,7 @@ export default function Leaderboard({
   selected,
   tpsView = "both",
   onTpsViewChange,
+  sort = "overall",
 }: {
   rows: Row[];
   onSelect?: (ids: number[]) => void;
@@ -120,12 +121,29 @@ export default function Leaderboard({
   /** Throughput view; both renders end-to-end bold with decode underneath. */
   tpsView?: TpsView;
   onTpsViewChange?: (view: TpsView) => void;
+  /** Server-side sort requested by the dashboard; keeps the table order in
+   *  sync with the rank column instead of always re-sorting by overall score. */
+  sort?: string;
 }) {
+  const apiSortField = (s: string): keyof Row | "overall_score" =>
+    s === "tps"
+      ? "e2e_tps_7d"
+      : s === "ttft"
+        ? "ttft_7d"
+        : s === "uptime"
+          ? "uptime_7d"
+          : "overall_score";
   const [sortKey, setSortKey] = useState<keyof Row | "overall_score">(
-    "overall_score",
+    apiSortField(sort),
   );
-  const [dir, setDir] = useState<"asc" | "desc">("desc");
-  const sort = (k: keyof Row | "overall_score") => {
+  const [dir, setDir] = useState<"asc" | "desc">(
+    sort === "ttft" ? "asc" : "desc",
+  );
+  useEffect(() => {
+    setSortKey(apiSortField(sort));
+    setDir(sort === "ttft" ? "asc" : "desc");
+  }, [sort]);
+  const applySort = (k: keyof Row | "overall_score") => {
     if (sortKey === k) setDir((d) => (d === "desc" ? "asc" : "desc"));
     else {
       setSortKey(k);
@@ -364,21 +382,21 @@ export default function Leaderboard({
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white"
-                onClick={() => sort("ttft_now")}
+                onClick={() => applySort("ttft_now")}
               >
                 TTFT
               </th>
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom cursor-pointer hover:text-white hidden 2xl:table-cell"
-                onClick={() => sort("itl_now")}
+                onClick={() => applySort("itl_now")}
               >
                 ITL
               </th>
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
-                onClick={() => sort("uptime_24h")}
+                onClick={() => applySort("uptime_24h")}
                 title="24h reliability: share of successful runs in the last 24h"
               >
                 24h Rel
@@ -386,7 +404,7 @@ export default function Leaderboard({
               <th
                 rowSpan={2}
                 className="text-right px-2 py-2 align-bottom hidden lg:table-cell cursor-pointer hover:text-white"
-                onClick={() => sort("uptime_7d")}
+                onClick={() => applySort("uptime_7d")}
               >
                 7d Up
               </th>
@@ -425,7 +443,7 @@ export default function Leaderboard({
                 <th
                   key={w.label}
                   className={`text-right px-2 py-1 cursor-pointer hover:text-white ${w.headClass}`}
-                  onClick={() => sort(tpsView === "decode" ? w.decode : w.e2e)}
+                  onClick={() => applySort(tpsView === "decode" ? w.decode : w.e2e)}
                   title={`${tpsView === "decode" ? DECODE_LABEL : E2E_LABEL} · ${w.label}`}
                 >
                   {w.label}

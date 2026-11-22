@@ -693,6 +693,7 @@ export default function Dashboard() {
           }
           onSelect={setSelected}
           selected={selected}
+          sort={sort}
           tpsView={tpsView}
           onTpsViewChange={setTpsView}
         />
