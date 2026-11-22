@@ -239,13 +239,21 @@ async function serveStatic(pathname, res) {
     res.writeHead(200, {
       "content-type": MIME[extname(rel)] ?? "application/octet-stream",
       "cache-control": "no-store",
+      // Mirror the edge CSP so a regression (for example, reintroducing an
+      // inline script or adding a third-party fetch) fails this gate.
+      "content-security-policy":
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; base-uri 'self'; object-src 'none'; form-action 'self'",
     });
     res.end(file);
   } catch {
     // SPA fallback (mirrors wrangler assets not_found_handling: single-page-application)
     try {
       const index = await readFile(join(DIST, "index.html"));
-      res.writeHead(200, { "content-type": MIME[".html"] });
+      res.writeHead(200, {
+        "content-type": MIME[".html"],
+        "content-security-policy":
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; base-uri 'self'; object-src 'none'; form-action 'self'",
+      });
       res.end(index);
     } catch {
       res.writeHead(500, { "content-type": "text/plain" });
@@ -291,13 +299,6 @@ let page;
 let baseUrl;
 const consoleErrors = [];
 const pageErrors = [];
-// Chromium refuses `frame-ancestors` when it arrives via <meta> and logs an
-// error on every load (frontend/index.html:12). Edge headers are the real
-// clickjacking gate, so this specific notice is not a dashboard failure — it is
-// allowlisted by exact message and reported in the summary.
-const CSP_META_NOTICE =
-  /Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element\./;
-const ignoredConsole = [];
 
 test("dashboard loads (title + header, no console/page errors)", async () => {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -312,6 +313,32 @@ test("dashboard loads (title + header, no console/page errors)", async () => {
     [],
     `console errors: ${consoleErrors.join(" | ")}`,
   );
+});
+
+test("theme preference survives reload under the CSP", async () => {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+  await page.locator('button[title="Switch to light theme"]').click();
+  assert.equal(
+    await page.evaluate(() =>
+      document.documentElement.getAttribute("data-theme"),
+    ),
+    "light",
+  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+  assert.equal(
+    await page.evaluate(() =>
+      document.documentElement.getAttribute("data-theme"),
+    ),
+    "light",
+    "theme-init.js must restore the preference before React mounts",
+  );
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    "rgb(244, 244, 245)",
+  );
+  await page.locator('button[title="Switch to dark theme"]').click();
 });
 
 test("leaderboard renders one row per model", async () => {
@@ -398,9 +425,7 @@ async function main() {
   page = await context.newPage();
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
-    const text = msg.text().slice(0, 300);
-    if (CSP_META_NOTICE.test(text)) ignoredConsole.push(text);
-    else consoleErrors.push(text);
+    consoleErrors.push(msg.text().slice(0, 300));
   });
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 300)));
 
@@ -434,10 +459,6 @@ async function main() {
   console.log(
     `\n  ${tests.length - failures.length} passed, ${failures.length} failed in ${secs}s`,
   );
-  if (ignoredConsole.length)
-    console.log(
-      `  note: ignored ${ignoredConsole.length} browser CSP meta notice(s): ${ignoredConsole[0]}`,
-    );
   if (failures.length) {
     for (const f of failures)
       console.error(`\n✗ ${f.name}\n${f.error?.stack ?? String(f.error)}`);
