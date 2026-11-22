@@ -41,7 +41,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:8787",
+      "/api": "http://127.0.0.1:8789",
     },
     // Security: restrict file system access to project root (prevent --fs.allow escape)
     fs: {
@@ -57,7 +57,7 @@ export default defineConfig({
       "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
       "Cross-Origin-Opener-Policy": "same-origin",
       "Content-Security-Policy":
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:5173 https: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 http://127.0.0.1:8789 ws://127.0.0.1:5173 https: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
     },
   },
 });
