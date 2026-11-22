@@ -325,3 +325,10 @@
   scope: src/api/admin/playground.ts
   summary: Playground omits API keys for OpenCode Go and Ollama Pro
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T138000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/components/Header.tsx
+  summary: Header shows a LIVE badge regardless of pipeline staleness
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

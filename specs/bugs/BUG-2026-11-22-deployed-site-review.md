@@ -326,6 +326,13 @@ D1 production queries, and direct API probes.
 - Fix: map `OPENCODE_GO_API_KEY` and `OLLAMA_PRO_API_KEY` (falling back to the
   free Ollama key, matching discovery).
 
+### D39 — Header says LIVE regardless of pipeline health
+
+- The header tagline hardcoded a pulsing “LIVE” dot even when the dashboard
+  banner said STALE; the two surfaces contradicted each other during a stall.
+- Fix: remove the unconditional LIVE claim from the header. The dashboard
+  freshness banner (driven by `meta.is_stale`) is the single truthful status.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

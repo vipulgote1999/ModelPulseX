@@ -99,11 +99,7 @@ export default function Header({
         <div className="flex items-center gap-3 min-w-0">
           <Logo variant="full" size={36} />
           <span className="hidden md:inline text-[11px] tracking-widest text-zinc-400 font-medium whitespace-nowrap">
-            21 Providers — FREE MODELS{" "}
-            <span className="inline-flex items-center gap-1 text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />{" "}
-              LIVE
-            </span>
+            21 Providers — FREE MODELS
           </span>
         </div>
         <nav
