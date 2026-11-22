@@ -413,6 +413,7 @@ export function leaderboardRoutes(env: Env) {
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as gc_e2e_1h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_1h,
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
+          SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok1h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as gc_tps_24h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as gc_e2e_24h,
           GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as gc_ttft_24h,
@@ -427,6 +428,7 @@ export function leaderboardRoutes(env: Env) {
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt7,
           SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok7,
           SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt24,
+          SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok24,
           count(*) as cnt_all
         FROM benchmark_runs
         WHERE ${providerSubquery} ${benchmarkFilter}
@@ -478,6 +480,7 @@ export function leaderboardRoutes(env: Env) {
       since1h,
       since1h,
       since1h,
+      since1h,
       since24h,
       since24h,
       since24h,
@@ -491,6 +494,7 @@ export function leaderboardRoutes(env: Env) {
       since7dIso,
       since7dIso,
       since7dIso,
+      since24h,
       since24h,
       ...providerBind,
       ...(benchmarkVal ? [benchmarkVal] : []),
@@ -550,6 +554,7 @@ export function leaderboardRoutes(env: Env) {
       gc_e2e_1h: string | null;
       gc_ttft_1h: string | null;
       cnt_1h: number | null;
+      ok1h: number | null;
       gc_tps_24h: string | null;
       gc_e2e_24h: string | null;
       gc_ttft_24h: string | null;
@@ -564,6 +569,7 @@ export function leaderboardRoutes(env: Env) {
       cnt7: number | null;
       ok7: number | null;
       cnt24: number | null;
+      ok24: number | null;
       cnt_all: number | null;
     }
     type MetaRow = {
@@ -584,6 +590,7 @@ export function leaderboardRoutes(env: Env) {
             gc_e2e_1h: string | null;
             gc_ttft_1h: string | null;
             cnt_1h: number | null;
+            ok1h: number | null;
             gc_tps_24h: string | null;
             gc_e2e_24h: string | null;
             gc_ttft_24h: string | null;
@@ -598,6 +605,7 @@ export function leaderboardRoutes(env: Env) {
             cnt7: number | null;
             ok7: number | null;
             cnt24: number | null;
+            ok24: number | null;
             cnt_all: number | null;
             now_tps: number | null;
             now_e2e: number | null;
@@ -699,49 +707,49 @@ export function leaderboardRoutes(env: Env) {
         h.t_1h,
         h.cnt_1h,
         raw?.gc_tps_1h ?? null,
-        raw?.cnt_1h ?? null,
+        raw?.ok1h ?? null,
         MIN_SAMPLES.w1h,
       );
       const tps_24h = gatedMedian(
         h.t_24h,
         h.cnt_24,
         raw?.gc_tps_24h ?? null,
-        raw?.cnt24 ?? null,
+        raw?.ok24 ?? null,
         MIN_SAMPLES.w24h,
       );
       const tps_7d = gatedMedian(
         h.t_7d,
         h.cnt7h,
         raw?.gc_tps_7d ?? null,
-        raw?.cnt7 ?? null,
+        raw?.ok7 ?? null,
         MIN_SAMPLES.w7d,
       );
       const ttft_1h = gatedMedian(
         h.tt_1h,
         h.cnt_1h,
         raw?.gc_ttft_1h ?? null,
-        raw?.cnt_1h ?? null,
+        raw?.ok1h ?? null,
         MIN_SAMPLES.w1h,
       );
       const ttft_24h = gatedMedian(
         h.tt_24h,
         h.cnt_24,
         raw?.gc_ttft_24h ?? null,
-        raw?.cnt24 ?? null,
+        raw?.ok24 ?? null,
         MIN_SAMPLES.w24h,
       );
       const ttft_7d = gatedMedian(
         h.tt_7d,
         h.cnt7h,
         raw?.gc_ttft_7d ?? null,
-        raw?.cnt7 ?? null,
+        raw?.ok7 ?? null,
         MIN_SAMPLES.w7d,
       );
       const itl_7d = gatedMedian(
         h.itl_7d,
         h.cnt7h,
         raw?.gc_itl_7d ?? null,
-        raw?.cnt7 ?? null,
+        raw?.ok7 ?? null,
         MIN_SAMPLES.w7d,
       );
       // End-to-end throughput follows the same hourly-median → raw-median
@@ -750,21 +758,21 @@ export function leaderboardRoutes(env: Env) {
         h.e_1h,
         h.cnt_1h,
         raw?.gc_e2e_1h ?? null,
-        raw?.cnt_1h ?? null,
+        raw?.ok1h ?? null,
         MIN_SAMPLES.w1h,
       );
       const e2e_tps_24h = gatedMedian(
         h.e_24h,
         h.cnt_24,
         raw?.gc_e2e_24h ?? null,
-        raw?.cnt24 ?? null,
+        raw?.ok24 ?? null,
         MIN_SAMPLES.w24h,
       );
       const e2e_tps_7d = gatedMedian(
         h.e_7d,
         h.cnt7h,
         raw?.gc_e2e_7d ?? null,
-        raw?.cnt7 ?? null,
+        raw?.ok7 ?? null,
         MIN_SAMPLES.w7d,
       );
       // Chunk median is raw-only and gates on SUCCESS count: the badge makes a

@@ -39,6 +39,7 @@ function rawRow(
     model_id,
     benchmark_type,
     cnt_1h: n,
+    ok_1h: ok ?? n,
     g_tps_1h: gc,
     g_e2e_1h: gc,
     g_ttft_1h: gc,
@@ -83,7 +84,8 @@ describe("buildSnapshotRows", () => {
   });
 
   it("nulls windows below min-sample gates", () => {
-    // 3 samples: 1h(2)✓ 24h(3)✓ 7d(5)✗
+    // 3 runs, 2 successful measurements: 1h(2)✓ 24h(3)✗ 7d(5)✗ for TPS.
+    // Reliability still uses all 3 runs as its denominator.
     const rows = buildSnapshotRows({
       models: [models[0]!],
       raw: [rawRow(1, "coding", [10, 20, 30], 2)],
@@ -94,11 +96,31 @@ describe("buildSnapshotRows", () => {
       (r) => r.model_id === 1 && r.benchmark === "coding",
     )!;
     expect(coding.tps_1h).toBeCloseTo(20);
-    expect(coding.tps_24h).toBeCloseTo(20);
+    expect(coding.tps_24h).toBeNull();
     expect(coding.tps_7d).toBeNull();
     expect(coding.uptime_7d).toBeNull();
-    // 24h gate (3) passes with 3 samples: 2/3 success
+    // 24h gate (3 runs) passes with 3 runs: 2/3 success
     expect(coding.uptime_24h).toBeCloseTo(2 / 3);
+  });
+
+  it("gates throughput medians on SUCCESS samples, not failed runs", () => {
+    // Six runs but only one success: the TPS multiset has one usable sample.
+    // Counting all runs would let a single measured run pass the 5-sample gate.
+    const rows = buildSnapshotRows({
+      models: [models[0]!],
+      raw: [rawRow(1, "coding", [10, 20, 30, 40, 50, 60], 1)],
+      spark: [],
+      nowIso: new Date().toISOString(),
+    });
+    const coding = rows.find(
+      (r) => r.model_id === 1 && r.benchmark === "coding",
+    )!;
+    expect(coding.tps_1h).toBeNull();
+    expect(coding.tps_24h).toBeNull();
+    expect(coding.tps_7d).toBeNull();
+    expect(coding.e2e_tps_7d).toBeNull();
+    // The reliability rate still uses all six runs as its denominator.
+    expect(coding.uptime_7d).toBeCloseTo(1 / 6);
   });
 
   it("nulls uptime_24h below the 24h min-sample gate", () => {
@@ -272,6 +294,32 @@ describe("refreshLeaderboardSnapshot sweep (2026-09-24 prod: dead row ranked #1)
 });
 
 describe("refreshLeaderboardSnapshot e2e binds", () => {
+  it("binds one value per placeholder in the raw sweep", async () => {
+    const stmts: Array<{ sql: string; args: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          sql,
+          args: [] as unknown[],
+          bind(...a: unknown[]) {
+            stmt.args = a;
+            return stmt;
+          },
+          all: async () => ({ results: [] }),
+          first: async () => null,
+          run: async () => ({ meta: { changes: 0 } }),
+        };
+        stmts.push(stmt);
+        return stmt;
+      },
+      batch: async () => [{ results: [] }, { results: [] }, { results: [] }],
+    };
+    await refreshLeaderboardSnapshot(db as never, Date.now());
+    const raw = stmts.find((s) => /as cnt_1h/.test(s.sql))!;
+    const placeholders = (raw.sql.match(/\?/g) ?? []).length;
+    expect(raw.args.length).toBe(placeholders);
+  });
+
   it("binds e2e medians and the chunk median into the upsert", async () => {
     const upserts: Array<{ sql: string; args: unknown[] }> = [];
     let reads = 0;

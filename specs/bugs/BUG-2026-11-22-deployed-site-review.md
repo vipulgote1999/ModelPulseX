@@ -198,6 +198,16 @@ D1 production queries, and direct API probes.
 - Fix: forward `cf-connecting-ip`, `x-forwarded-for`, and `origin` into the
   DO's request; add a route-level forwarding test.
 
+### D24 — Throughput medians gate on total runs, not successful samples
+
+- `buildSnapshotRows` and the live raw fallback gated `tps_*`, `e2e_tps_*`,
+  `ttft_*` and `itl_7d` on `cnt` (all runs). A model with six runs and one
+  success passed the five-sample gate and published a median from one value.
+- Fix: carry `ok_1h`/`ok_24h`/`ok_7d` through the sweep and gate throughput
+  medians on successful samples. Reliability rates still use all runs as their
+  denominator; the chunk badge already used success counts. Add a placeholder/
+  bind parity test for the sweep.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

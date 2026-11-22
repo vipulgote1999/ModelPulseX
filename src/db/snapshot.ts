@@ -19,6 +19,7 @@ export interface SnapshotRaw {
   model_id: number;
   benchmark_type: string;
   cnt_1h: number | null;
+  ok_1h: number | null;
   g_tps_1h: string | null;
   g_e2e_1h: string | null;
   g_ttft_1h: string | null;
@@ -120,6 +121,7 @@ export function buildSnapshotRows(input: {
     bench: string,
   ): {
     cnt_1h: number;
+    ok_1h: number;
     g_tps_1h: string | null;
     g_e2e_1h: string | null;
     g_ttft_1h: string | null;
@@ -154,6 +156,7 @@ export function buildSnapshotRows(input: {
       lists.reduce((s, r) => s + (pick(r) ?? 0), 0);
     return {
       cnt_1h: sum((r) => r.cnt_1h),
+      ok_1h: sum((r) => r.ok_1h),
       g_tps_1h: cat((r) => r.g_tps_1h),
       g_e2e_1h: cat((r) => r.g_e2e_1h),
       g_ttft_1h: cat((r) => r.g_ttft_1h),
@@ -216,19 +219,19 @@ export function buildSnapshotRows(input: {
         provider_model_id: m.provider_model_id,
         free_status: m.free_status,
         active: m.active,
-        tps_1h: gatedRaw(g.g_tps_1h, g.cnt_1h, MIN_SAMPLES.w1h),
-        tps_24h: gatedRaw(g.g_tps_24h, g.cnt_24h, MIN_SAMPLES.w24h),
-        tps_7d: gatedRaw(g.g_tps_7d, g.cnt7, MIN_SAMPLES.w7d),
-        e2e_tps_1h: gatedRaw(g.g_e2e_1h, g.cnt_1h, MIN_SAMPLES.w1h),
-        e2e_tps_24h: gatedRaw(g.g_e2e_24h, g.cnt_24h, MIN_SAMPLES.w24h),
-        e2e_tps_7d: gatedRaw(g.g_e2e_7d, g.cnt7, MIN_SAMPLES.w7d),
+        tps_1h: gatedRaw(g.g_tps_1h, g.ok_1h, MIN_SAMPLES.w1h),
+        tps_24h: gatedRaw(g.g_tps_24h, g.ok_24h, MIN_SAMPLES.w24h),
+        tps_7d: gatedRaw(g.g_tps_7d, g.ok_7d, MIN_SAMPLES.w7d),
+        e2e_tps_1h: gatedRaw(g.g_e2e_1h, g.ok_1h, MIN_SAMPLES.w1h),
+        e2e_tps_24h: gatedRaw(g.g_e2e_24h, g.ok_24h, MIN_SAMPLES.w24h),
+        e2e_tps_7d: gatedRaw(g.g_e2e_7d, g.ok_7d, MIN_SAMPLES.w7d),
         // Chunk median gates on SUCCESS count: only successful runs have a
         // meaningful chunk count, and the badge is evidence about delivery.
         median_chunks_7d: gatedRaw(g.g_chunks_7d, g.ok_7d, MIN_SAMPLES.w7d),
-        ttft_1h: gatedRaw(g.g_ttft_1h, g.cnt_1h, MIN_SAMPLES.w1h),
-        ttft_24h: gatedRaw(g.g_ttft_24h, g.cnt_24h, MIN_SAMPLES.w24h),
-        ttft_7d: gatedRaw(g.g_ttft_7d, g.cnt7, MIN_SAMPLES.w7d),
-        itl_7d: gatedRaw(g.g_itl_7d, g.cnt7, MIN_SAMPLES.w7d),
+        ttft_1h: gatedRaw(g.g_ttft_1h, g.ok_1h, MIN_SAMPLES.w1h),
+        ttft_24h: gatedRaw(g.g_ttft_24h, g.ok_24h, MIN_SAMPLES.w24h),
+        ttft_7d: gatedRaw(g.g_ttft_7d, g.ok_7d, MIN_SAMPLES.w7d),
+        itl_7d: gatedRaw(g.g_itl_7d, g.ok_7d, MIN_SAMPLES.w7d),
         uptime_7d,
         uptime_24h,
         error_rate_7d: uptime_7d != null ? 1 - uptime_7d : null,
@@ -265,6 +268,7 @@ export async function refreshLeaderboardSnapshot(
         .prepare(
           `SELECT model_id, benchmark_type,
            SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) as cnt_1h,
+           SUM(CASE WHEN started_at >= ? AND status='SUCCESS' THEN 1 ELSE 0 END) as ok_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN tps END) as g_tps_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN e2e_tps END) as g_e2e_1h,
            GROUP_CONCAT(CASE WHEN started_at >= ? THEN ttft_ms END) as g_ttft_1h,
@@ -286,6 +290,7 @@ export async function refreshLeaderboardSnapshot(
          GROUP BY model_id, benchmark_type`,
         )
         .bind(
+          new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
           new Date(nowMs - 1 * 3600 * 1000).toISOString(),
