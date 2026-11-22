@@ -311,3 +311,10 @@
   scope: frontend/src/App.tsx
   summary: Hash navigation keeps the previous page's scroll position
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T136000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/pages/ModelDetail.tsx
+  summary: Model detail claims 7 days of data for short or empty histories
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

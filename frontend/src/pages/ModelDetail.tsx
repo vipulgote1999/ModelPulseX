@@ -88,6 +88,14 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
 
   const { data: history } = useHistory(modelId > 0 ? [modelId] : [], "7d", "all");
   const points = history[modelId] ?? [];
+  const firstPoint = points[0]?.hour_start;
+  const observedHours =
+    firstPoint != null
+      ? Math.max(
+          1,
+          Math.round((Date.now() - new Date(firstPoint).getTime()) / 3_600_000),
+        )
+      : null;
   const label = model != null ? model.display_name : "model " + modelId;
   const provider = model?.provider_name ?? "";
   const meta = model != null ? getAAMeta(model.provider_model_id) : null;
@@ -227,8 +235,13 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
         />
       </Suspense>
       <p className="text-xs text-zinc-500">
-        7-day window, all benchmarks, hourly medians. See the methodology page
-        for how TPS, TTFT and reliability are measured.
+        {observedHours == null
+          ? "No hourly samples yet"
+          : observedHours < 168
+            ? `${observedHours}h of observed data in this 7-day window`
+            : "7-day window"}
+        , all benchmarks, hourly medians. See the methodology page for how TPS,
+        TTFT and reliability are measured.
       </p>
     </div>
   );

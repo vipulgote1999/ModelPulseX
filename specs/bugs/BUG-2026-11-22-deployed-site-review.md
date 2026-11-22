@@ -309,6 +309,15 @@ D1 production queries, and direct API probes.
 - Fix: reset scroll on `page`/`modelId` changes and assert the reset in
   Playwright.
 
+### D37 — Model detail always claims a 7-day window
+
+- The footer said “7-day window” for every model, including ones with only a
+  few hours of history (or none), contrary to the project's “show Xh of
+  observed data” rule.
+- Fix: derive the observed span from the first history point and say
+  “Xh of observed data in this 7-day window”, “7-day window”, or “No hourly
+  samples yet”. The requested window stays 7d; the claim is now honest.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
