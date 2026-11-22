@@ -336,7 +336,7 @@ export default function Admin() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full rounded-md bg-white text-zinc-900 font-semibold py-2.5 text-sm hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-md bg-violet-600 text-white font-semibold py-2.5 text-sm hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loginLoading ? "Signing in…" : "Sign in"}
             </button>
