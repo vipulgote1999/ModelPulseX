@@ -143,3 +143,10 @@
   scope: src/db/data-fixes.ts, src/benchmark/scheduler.ts
   summary: Incidents for auto-disabled and no-longer-free models stay open forever
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T112000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: frontend/src/index.css
+  summary: Light theme leaves a dark leader card, toolbar, and mobile nav sheet
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

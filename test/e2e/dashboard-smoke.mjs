@@ -390,6 +390,24 @@ test("theme preference survives reload under the CSP", async () => {
     await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
     "rgb(244, 244, 245)",
   );
+  const lightSurfaces = await page.evaluate(() => {
+    const banner = document.querySelector('div[class*="from-violet-950"]');
+    const toolbar = document.querySelector('div[class*="bg-zinc-900/70"]');
+    return {
+      banner: banner ? getComputedStyle(banner).backgroundImage : "",
+      toolbar: toolbar ? getComputedStyle(toolbar).backgroundColor : "",
+    };
+  });
+  assert.match(
+    lightSurfaces.banner,
+    /237, 233, 254/,
+    "leader card gradient must flip for the light theme",
+  );
+  assert.equal(
+    lightSurfaces.toolbar,
+    "rgb(255, 255, 255)",
+    "leaderboard toolbar must not stay a dark island",
+  );
   await page.locator('button[title="Switch to dark theme"]').click();
 });
 

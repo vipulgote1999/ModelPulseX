@@ -103,6 +103,16 @@ D1 production queries, and direct API probes.
 - Fix: close on auto-disable, plus a one-shot data fix for existing retired
   models (end = last observed run) and backfill `duration_seconds`.
 
+### D13 — Light theme leaves dark islands and an unreadable leader card
+
+- Gradients and a few fractional surface utilities were not in the light-theme
+  block. The BEST OVERALL card stayed a dark violet gradient while its text
+  flipped dark (low contrast), the leaderboard toolbar stayed
+  `rgba(24,24,27,.7)`, and the mobile nav sheet stayed `#0a0a0f/95` in light
+  mode.
+- Fix: theme the gradient variables, `bg-zinc-900/70`, `bg-zinc-800/80`, and
+  `bg-[#0a0a0f]/95`; assert the card gradient and toolbar colour in Playwright.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
