@@ -33,6 +33,12 @@ describe("leaderboard e2e wiring", () => {
     expect(src).toContain("recommendable");
     expect(src).toContain('r.active && r.free_status === "FREE"');
   });
+
+  it("gates snapshot reads so a newly disabled model cannot linger for an hour", () => {
+    expect(src).toMatch(
+      /FROM leaderboard_snapshot WHERE benchmark=\?[\s\S]{0,500}publicModelVisibilityWhere/,
+    );
+  });
 });
 
 describe("e2eSpeed fallback chain", () => {

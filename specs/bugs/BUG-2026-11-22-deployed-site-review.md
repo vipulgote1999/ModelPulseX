@@ -283,6 +283,15 @@ D1 production queries, and direct API probes.
 - Fix: skip the entire refresh when either models or raw is empty; keep the
   previous snapshot and let the freshness banner report its age.
 
+### D34 — Snapshot reads can serve a just-hidden model for up to an hour
+
+- The snapshot fast path selected from `leaderboard_snapshot` without the public
+  visibility gate. The hourly sweep was the only thing removing a disabled
+  model, so it stayed on the public leaderboard until the next refresh.
+- Fix: gate the snapshot read with `publicModelVisibilityWhere` (the same
+  predicate as `/api/models` and the live fallback) and pin it in the
+  leaderboard source test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

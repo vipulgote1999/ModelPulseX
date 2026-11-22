@@ -11,7 +11,7 @@ import {
   measuredTpsLabel,
   assignRanks,
 } from "../utils/metrics";
-import { freeHardFilterWhere } from "../providers/registry";
+import { freeHardFilterWhere, publicModelVisibilityWhere } from "../providers/registry";
 import { nowFor } from "../db/snapshot";
 import type { SnapshotRow } from "../db/snapshot";
 import { isoHoursAgo, BENCHMARKS, SORTS, PROFILES, oneOf } from "./shared";
@@ -285,7 +285,11 @@ export function leaderboardRoutes(env: Env) {
                     tps_1h, tps_24h, tps_7d, ttft_1h, ttft_24h, ttft_7d, itl_7d,
                     e2e_tps_1h, e2e_tps_24h, e2e_tps_7d, median_chunks_7d,
                     uptime_7d, uptime_24h, error_rate_7d, sparkline, sample_count_24h, request_count_7d
-             FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}`,
+             FROM leaderboard_snapshot WHERE benchmark=?${provider ? " AND provider=?" : ""}
+               AND model_id IN (
+                 SELECT m.id FROM models m JOIN providers p ON p.id=m.provider_id
+                 WHERE ${publicModelVisibilityWhere("p", "m")}
+               )`,
           ).bind(...(provider ? [benchmark, provider] : [benchmark])),
           // Overlay coverage: keyed by snapshot model_ids (no benchmark_enabled /
           // free-status filter) so every served snapshot row gets its latest-run
