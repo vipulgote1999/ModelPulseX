@@ -102,6 +102,6 @@ describe("compare e2e", () => {
 describe("compare cache key", () => {
   it("busts old decode-era cache entries", () => {
     const src = readFileSync("src/api/compare.ts", "utf8");
-    expect(src).toContain("&v=2");
+    expect(src).toContain("&v=3");
   });
 });
