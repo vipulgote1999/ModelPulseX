@@ -19,8 +19,9 @@ session:
     url: https://modelpulsex.pages.dev
     legacy_url_disabled: https://modelpulsex.vipulgote5.workers.dev
     account_id: ed6fb32a7350321cd036ee4f2f54462a
-    deployed_at: 2026-10-24
-    worker_version: 877c472d-0ec9-470a-9b70-e74e75ff20c4
+    deployed_at: 2026-11-22
+    worker_version: 0f3e5f43-9cab-4891-8911-4fac526579bd
+    pages_deployment: b5ca8197-c9c8-4e32-b5f3-02cc4e26deee
   handoff:
     next_skill: null
     summary: >-
