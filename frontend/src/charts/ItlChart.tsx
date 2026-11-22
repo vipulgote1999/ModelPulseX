@@ -1,4 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
+import { rangeLabel } from "../lib/rangeLabel";
 const COLORS = ["#a78bfa", "#22d3ee", "#34d399", "#fbbf24", "#fb7185", "#60a5fa"];
 export default function ItlChart({ series, range }: { series: Array<{ id: number; label: string; points: Array<{ hour_start: string; median_itl: number | null }> }>; range?: string }) {
   const isTenMin = range === "1h";
@@ -16,7 +17,7 @@ export default function ItlChart({ series, range }: { series: Array<{ id: number
   if (series.length === 0) return <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center text-zinc-500">Select models to compare ITL (p50 per {isTenMin ? "10m" : "hour"}).</div>;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="text-sm font-semibold mb-2 flex items-center justify-between"><span>{isTenMin ? "1-hour ITL (median per 10m) — lower is better" : "7-day ITL (median, ms) — lower is better"}</span><span className="text-[11px] text-zinc-500">{isTenMin ? "10m buckets • 6 points per hour" : "ITL = median gap between streamed chunks"}</span></div>
+      <div className="text-sm font-semibold mb-2 flex items-center justify-between"><span>{isTenMin ? "1-hour ITL (median per 10m) — lower is better" : `${rangeLabel(range)} ITL (median, ms) — lower is better`}</span><span className="text-[11px] text-zinc-500">{isTenMin ? "10m buckets • 6 points per hour" : "ITL = median gap between streamed chunks"}</span></div>
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows}>

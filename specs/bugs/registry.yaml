@@ -192,3 +192,10 @@
   scope: frontend/src/index.css
   summary: Light-theme hover states turn labels white on light surfaces
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T119000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/charts/*
+  summary: Chart titles hardcode 7-day while the range selector offers 24h/3d
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

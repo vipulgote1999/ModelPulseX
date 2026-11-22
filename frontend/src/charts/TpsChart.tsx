@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { rangeLabel } from "../lib/rangeLabel";
 import {
   LineChart,
   Line,
@@ -98,7 +99,7 @@ export default function TpsChart({
         <span>
           {isTenMin
             ? "1-hour TPS (median per 10m)"
-            : "7-day TPS (median per hour)"}{" "}
+            : `${rangeLabel(range)} TPS (median per hour)`}{" "}
           —{" "}
           {metric === "both"
             ? "End-to-end vs Decode"

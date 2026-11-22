@@ -728,7 +728,7 @@ export default function Dashboard() {
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>
-        <ReliabilityChart models={reliabilityModels} />
+        <ReliabilityChart models={reliabilityModels} range={range} />
       </Suspense>
 
       <Suspense fallback={<ChartFallback />}>

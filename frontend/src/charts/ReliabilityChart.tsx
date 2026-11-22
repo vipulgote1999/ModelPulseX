@@ -1,24 +1,27 @@
 import { HOUR_UP_THRESHOLD, hoursUpPercent } from "../lib/reliability";
+import { rangeLabel } from "../lib/rangeLabel";
 
 export default function ReliabilityChart({
   models,
+  range,
 }: {
   models: Array<{
     display_name: string;
     provider: string;
     points: Array<{ hour_start: string; success_rate: number | null }>;
   }>;
+  range?: string;
 }) {
   if (models.length === 0)
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-6 text-center text-zinc-500">
-        Select models to see 7-day availability timeline (█ online ░ unavailable).
+        Select models to see the availability timeline (█ online ░ unavailable).
       </div>
     );
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
       <div className="text-sm font-semibold mb-2">
-        Reliability — 7-day availability timeline
+        Reliability — {rangeLabel(range)} availability timeline
       </div>
       <div className="space-y-3">
         {models.map((m) => {

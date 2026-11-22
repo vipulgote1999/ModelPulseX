@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { rangeLabel } from "../lib/rangeLabel";
 const COLORS = [
   "#a78bfa",
   "#22d3ee",
@@ -59,7 +60,7 @@ export default function TtftChart({
         <span>
           {isTenMin
             ? "1-hour TTFT (median per 10m) — lower is better"
-            : "7-day TTFT (median, ms) — lower is better"}
+            : `${rangeLabel(range)} TTFT (median, ms) — lower is better`}
         </span>
         <span className="text-[11px] text-zinc-500">
           {isTenMin

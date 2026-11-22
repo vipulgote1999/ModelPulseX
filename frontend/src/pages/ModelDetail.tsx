@@ -201,6 +201,7 @@ export default function ModelDetail({ modelId }: { modelId: number }) {
           series={[{ id: model.id, label, points: points.map((p) => ({ hour_start: p.hour_start, median_ttft: p.median_ttft })) }]}
         />
         <ReliabilityChart
+          range="7d"
           models={[{ display_name: model.display_name, provider, points: points.map((p) => ({ hour_start: p.hour_start, success_rate: p.success_rate })) }]}
         />
       </Suspense>

@@ -163,6 +163,15 @@ D1 production queries, and direct API probes.
 - Fix: flip both hover halves in the light-theme block and assert the nav
   hover colour in Playwright.
 
+### D20 — Chart titles always claim “7-day”
+
+- The range selector offers 1h/24h/3d/7d, but `TpsChart`, `TtftChart`,
+  `ItlChart` and `ReliabilityChart` hardcoded “7-day” for every non-1h view.
+  Selecting 24h showed a “7-day” chart, contradicting the controls.
+- Fix: shared `rangeLabel`/`bucketLabel` helpers; pass the selected range into
+  the reliability timeline from Dashboard and ModelDetail; unit-test the
+  labels.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.
