@@ -41,6 +41,7 @@ export default function App() {
   return (
     <div className="min-h-screen overflow-x-clip bg-[#0a0a0f] text-zinc-100">
       <Header onNavigate={navigate} current={route.page} />
+      <main id="main">
       <Suspense
         fallback={
           <div className="max-w-[1400px] mx-auto px-4 py-10 text-zinc-400 animate-pulse">
@@ -66,6 +67,7 @@ export default function App() {
           <Methodology />
         )}
       </Suspense>
+      </main>
       <footer className="border-t border-zinc-800 mt-10 py-6 text-center text-xs text-zinc-500">
         <span className="inline-flex items-center gap-2 text-zinc-400">
           <Logo variant="mark" size={18} withTile={false} label="ModelPulseX" />
