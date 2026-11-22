@@ -276,3 +276,10 @@
   scope: src/api/admin/maintenance.ts
   summary: Cooldown reset with model_id 0 falls through and clears all cooldowns
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T131000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: src/api/compare.ts
+  summary: Compare recommends a fastest provider when no e2e median exists
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md

@@ -206,10 +206,12 @@ export function compareRoutes(env: Env) {
     }
     let recommended: unknown = null;
     if (out.length >= 2) {
-      const sorted = [
-        ...(out as Array<{ e2e_tps_7d: number | null; provider: string }>),
-      ].sort((a, b) => (b.e2e_tps_7d ?? -1) - (a.e2e_tps_7d ?? -1));
-      recommended = sorted[0]?.provider ?? null;
+      const measured = (
+        out as Array<{ e2e_tps_7d: number | null; provider: string }>
+      )
+        .filter((r) => r.e2e_tps_7d != null)
+        .sort((a, b) => (b.e2e_tps_7d ?? -1) - (a.e2e_tps_7d ?? -1));
+      recommended = measured[0]?.provider ?? null;
     }
     const resp = c.json({ compare: out, recommended_provider: recommended });
     resp.headers.set(

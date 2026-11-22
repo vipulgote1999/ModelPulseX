@@ -266,6 +266,14 @@ D1 production queries, and direct API probes.
 - Fix: treat a present `model_id` as authoritative, require a positive integer,
   and only use the all-clear branch when neither id nor provider is supplied.
 
+### D32 — Compare names a “fastest provider” with no measured e2e data
+
+- `recommended_provider` sorted rows by `e2e_tps_7d ?? -1` and always took the
+  first, so a comparison of two models without enough e2e samples still
+  declared a winner (alphabetically first provider).
+- Fix: filter to rows with a real `e2e_tps_7d` before recommending; return null
+  when none are measured. Add a regression test.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

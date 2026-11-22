@@ -74,6 +74,21 @@ describe("compare e2e", () => {
     expect(j.recommended_provider).toBe("beta");
   });
 
+  it("does not name a fastest provider when nobody has an e2e median", async () => {
+    const { env } = fakeEnv([
+      { model_id: 1, provider: "alpha", e2e_tps_7d: null },
+      { model_id: 2, provider: "beta", e2e_tps_7d: null },
+    ]);
+    const app = compareRoutes(env);
+    const res = await app.request("/compare?models=1,2");
+    const j = (await res.json()) as {
+      compare: unknown[];
+      recommended_provider: string | null;
+    };
+    expect(j.compare).toHaveLength(2);
+    expect(j.recommended_provider).toBeNull();
+  });
+
   it("derives medians from raw runs when no snapshot row exists", async () => {    const { env } = fakeEnv(
       [],
       [
