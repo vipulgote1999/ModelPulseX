@@ -431,6 +431,21 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
     await page.waitForTimeout(200);
     assert.match(await page.locator("body").innerText(), /BEST MODEL RIGHT NOW/);
     assert.equal(await page.locator("#mobile-nav").count(), 0, "sheet closes on navigate");
+
+    // Narrowest supported phone: the full lockup must not overlap the menu
+    // button. The descriptor hides below 360px, leaving the mark + wordmark.
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+    const logo = await page.locator("header span.inline-flex").first().boundingBox();
+    const menuBtn = await page
+      .locator('header button[aria-label="Open navigation menu"]')
+      .boundingBox();
+    assert.ok(logo && menuBtn, "logo and menu button have boxes");
+    assert.ok(
+      logo.x + logo.width <= menuBtn.x,
+      `logo overlaps menu at 320px (logo right ${logo.x + logo.width}, menu left ${menuBtn.x})`,
+    );
   } finally {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
