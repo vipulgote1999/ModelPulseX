@@ -11,7 +11,6 @@
  *
  * Usage: npm run build first, then npm run test:e2e:parity.
  */
-/* global window */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
