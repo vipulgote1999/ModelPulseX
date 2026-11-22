@@ -134,7 +134,9 @@ function leaderboardRows() {
       rank: i + 1,
       free_status: "FREE",
       active: true,
-      status: "SUCCESS",
+      // Top model's latest run failed: the 7d rank stays, but the banner must
+      // disclose the latest status instead of implying it is healthy now.
+      status: i === 0 ? "STREAM_ERROR" : "SUCCESS",
       last_test: iso(90_000),
       sampleCount24h: 12,
       // 24 hourly median-TPS points for the Sparkline column
@@ -429,7 +431,12 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
     );
     await sheet.getByRole("button", { name: "Dashboard", exact: true }).click();
     await page.waitForTimeout(200);
-    assert.match(await page.locator("body").innerText(), /BEST MODEL RIGHT NOW/);
+    assert.match(await page.locator("body").innerText(), /BEST OVERALL · 7D/);
+    assert.match(
+      await page.locator("body").innerText(),
+      /latest STREAM_ERROR/,
+      "a failing latest run is disclosed on the 7d leader card",
+    );
     assert.equal(await page.locator("#mobile-nav").count(), 0, "sheet closes on navigate");
 
     // Narrowest supported phone: the full lockup must not overlap the menu

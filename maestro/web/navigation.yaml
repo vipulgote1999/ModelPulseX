@@ -6,7 +6,7 @@ tags:
 ---
 - openLink: https://modelpulsex.pages.dev/?nav=1#/
 - extendedWaitUntil:
-    visible: "BEST MODEL RIGHT NOW"
+    visible: "BEST OVERALL · 7D"
     timeout: 30000
 - tapOn: "Models"
 - scrollUntilVisible:
@@ -42,6 +42,6 @@ tags:
     timeout: 15000
 - tapOn: "Dashboard"
 - scrollUntilVisible:
-    element: "BEST MODEL RIGHT NOW"
+    element: "BEST OVERALL · 7D"
     direction: UP
     timeout: 30000

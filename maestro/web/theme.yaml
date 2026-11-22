@@ -10,7 +10,7 @@ tags:
 # observable control state instead.
 - openLink: https://modelpulsex.pages.dev/?theme=1#/
 - extendedWaitUntil:
-    visible: "BEST MODEL RIGHT NOW"
+    visible: "BEST OVERALL · 7D"
     timeout: 30000
 - tapOn:
     id: "Switch to light theme"

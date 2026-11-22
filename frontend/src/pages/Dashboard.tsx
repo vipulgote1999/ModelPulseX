@@ -399,20 +399,30 @@ export default function Dashboard() {
 
       {rows.length > 0 &&
         (() => {
-          // Recommendations are active FREE models only: a PREVIOUSLY_FREE row
-          // can top a user-selected sort (for example "Most Reliable") while no
-          // longer being benchmarked. Fall back to the first row only if the
-          // whole view is previously-free.
+          // "Best overall" is the highest 7d score among active FREE models,
+          // independent of the table's current sort. A user sorting by TTFT
+          // must not silently relabel that row as the best model overall.
           const bestRow =
+            [...rows]
+              .filter(
+                (row) =>
+                  row.active !== false &&
+                  (row.free_status == null || row.free_status === "FREE"),
+              )
+              .sort(
+                (a, b) => (b.overall_score ?? -1) - (a.overall_score ?? -1),
+              )[0] ??
             rows.find(
               (row) =>
                 row.active !== false &&
                 (row.free_status == null || row.free_status === "FREE"),
-            ) ?? rows[0];
+            ) ??
+            rows[0];
           // SAFETY: rows[0] is the measured leader (API sorts by `sort`, default overall_score desc)
           const r = bestRow as unknown as {
             display_name: string;
             provider: string;
+            status: string | null;
             e2e_tps_now: number | null;
             e2e_tps_7d: number | null;
             tps_now: number | null;
@@ -432,13 +442,21 @@ export default function Dashboard() {
               <span className="text-sm">🏆</span>
               <div className="min-w-0">
                 <div className="text-[11px] tracking-widest text-violet-300/80 font-semibold">
-                  BEST MODEL RIGHT NOW
+                  BEST OVERALL · 7D
                 </div>
                 <div className="font-semibold truncate" title={r.display_name}>
                   {r.display_name}{" "}
                   <span className="text-xs font-normal text-zinc-400">
                     · {r.provider}
                   </span>
+                  {r.status != null && r.status !== "SUCCESS" && (
+                    <span
+                      className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-800 align-middle"
+                      title="Status of the latest measured run; the 7d ranking still uses windowed medians."
+                    >
+                      latest {r.status}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex gap-4 text-sm ml-auto">
