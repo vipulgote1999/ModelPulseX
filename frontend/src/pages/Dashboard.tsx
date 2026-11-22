@@ -552,6 +552,7 @@ export default function Dashboard() {
       {/* controls */}
       <div className="flex flex-wrap gap-2 items-center">
         <select
+          aria-label="Time range"
           value={range}
           onChange={(e) => setRange(e.target.value)}
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
@@ -562,6 +563,7 @@ export default function Dashboard() {
           <option value="7d">7d</option>
         </select>
         <select
+          aria-label="Benchmark"
           value={benchmark}
           onChange={(e) => setBenchmark(e.target.value)}
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
@@ -570,6 +572,7 @@ export default function Dashboard() {
           <option value="coding">Coding</option>
         </select>
         <select
+          aria-label="Provider"
           value={provider ?? ""}
           onChange={(e) => setProvider(e.target.value || undefined)}
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
@@ -606,6 +609,7 @@ export default function Dashboard() {
           )}
         </select>
         <select
+          aria-label="Sort"
           value={sort}
           onChange={(e) => setSort(e.target.value)}
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"
@@ -616,6 +620,7 @@ export default function Dashboard() {
           <option value="uptime">Most Reliable</option>
         </select>
         <select
+          aria-label="Scoring profile"
           value={profile}
           onChange={(e) => setProfile(e.target.value)}
           className="rounded-md bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm"

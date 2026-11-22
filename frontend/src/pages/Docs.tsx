@@ -51,9 +51,9 @@ export default function Docs() {
   // template strings so each command renders on its own line.
   const quickstart =
     `curl ${base}/api/leaderboard?range=7d | jq .leaderboard[0]\n` +
-    `curl ${base}/api/history?ids=1,2,3&range=7d | jq .history\n` +
+    `curl ${base}/api/history?ids=38,13&range=7d | jq .history\n` +
     `curl ${base}/api/health?freshness=15\n` +
-    `# share card\nopen ${base}/api/og.png`;
+    `# share card\ncurl -o og.png ${base}/api/og.png`;
 
   return (
     <div className="max-w-[900px] mx-auto px-4 sm:px-6 py-8 space-y-8 text-zinc-300 leading-relaxed">
