@@ -27,7 +27,7 @@ export default function ReliabilityChart({
         {models.map((m) => {
           const pct = hoursUpPercent(m.points);
           return (
-            <div key={m.display_name} className="flex items-center gap-3">
+            <div key={`${m.display_name}\u0000${m.provider}`} className="flex items-center gap-3">
               <div className="w-[220px] truncate text-xs font-medium text-zinc-300">
                 {m.display_name}{" "}
                 <span className="text-[11px] text-zinc-500">{m.provider}</span>

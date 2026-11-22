@@ -146,7 +146,7 @@ export default function ComparePanel({ selected }: { selected: number[] }) {
           <tbody>
             {rows.map((r) => (
               <tr
-                key={r.display_name + r.provider}
+                key={`${r.display_name}::${r.provider}`}
                 className="border-b border-zinc-800/60"
               >
                 <td className="px-3 py-2 font-medium">
