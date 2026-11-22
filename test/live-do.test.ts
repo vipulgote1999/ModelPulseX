@@ -48,6 +48,8 @@ describe("PerformanceDO", () => {
       "https://modelpulsex.pages.dev",
       "http://127.0.0.1:8787",
       "http://localhost:8787",
+      "http://127.0.0.1:8789",
+      "http://localhost:8789",
     ]) {
       const { do_ } = makeDO();
       const res = await do_.fetch(
