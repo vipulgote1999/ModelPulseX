@@ -258,6 +258,14 @@ D1 production queries, and direct API probes.
 - Fix: exclude rate-limit rows from the dead-model failure count while still
   tracking gone-model signals; add a unit test.
 
+### D31 — Cooldown reset with model_id 0 clears every cooldown
+
+- The handler used `if (body.model_id)`; `0` (or `NaN`/a bad value) fell through
+  to the “clear all” branch. A malformed admin request was more destructive
+  than the valid one.
+- Fix: treat a present `model_id` as authoritative, require a positive integer,
+  and only use the all-clear branch when neither id nor provider is supplied.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

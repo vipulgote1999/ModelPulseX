@@ -120,8 +120,11 @@ export function adminMaintenanceRoutes(env: Env) {
       clearAll?: boolean;
     };
     let cleared: number;
-    if (body.model_id) {
-      await clearModelCooldown(env.DB, Number(body.model_id));
+    const modelId = body.model_id;
+    if (modelId !== undefined) {
+      if (!Number.isInteger(modelId) || modelId <= 0)
+        return c.json({ error: "invalid model_id" }, 400);
+      await clearModelCooldown(env.DB, modelId);
       cleared = 1;
     } else if (body.provider) {
       if (body.clearAll) {

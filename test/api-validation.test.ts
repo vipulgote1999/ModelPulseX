@@ -91,4 +91,16 @@ describe("admin benchmark request contract", () => {
     const res = await post({ model_id: 1, benchmark_type: "bogus" });
     expect(res.status).toBe(400);
   });
+
+  it("does not clear all cooldowns when model_id is zero", async () => {
+    const res = await app().request("https://example.test/api/admin/cooldown/reset", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ model_id: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
