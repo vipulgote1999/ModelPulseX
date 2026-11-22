@@ -59,3 +59,73 @@
   summary: No guard or visibility around the D1 rows-read budget
   file: specs/bugs/BUG-2026-09-10-rows-read-guard.md
   github: 12
+- bug_id: BUG-2026-11-22T100000
+  date: '2026-11-22'
+  severity: high
+  priority: high
+  scope: src/api/history.ts, src/api/compare.ts
+  summary: Batch history and id-based compare bypass the public visibility gate
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T101000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: src/api/og.ts
+  summary: OG share card ranks by peak single-run decode TPS, not 7d end-to-end medians
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T102000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: frontend/index.html, frontend/public/_headers
+  summary: Inline theme restore script blocked by CSP; theme preference never persists
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T103000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: frontend/src/components/Header.tsx
+  summary: Mobile and tablet header clips nav links and theme toggle
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T104000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: frontend/src/charts/ReliabilityChart.tsx
+  summary: Reliability "hours fully up" percentage counts 100% only, contradicting >=50% bars
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T105000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: frontend/src/components/SummaryCards.tsx, frontend/src/components/RecommendationCards.tsx
+  summary: Recommendation cards can crown inactive previously-free models
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T106000
+  date: '2026-11-22'
+  severity: medium
+  priority: medium
+  scope: src/api/timeouts.ts
+  summary: Timeouts cache keys on raw URL, allowing junk-param cache flooding
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T107000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: src/api/models.ts
+  summary: Per-model history raw fallback omits end-to-end TPS and ITL fields
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T108000
+  date: '2026-11-22'
+  severity: low
+  priority: medium
+  scope: src/api/leaderboard.ts, src/api/history.ts, src/api/openapi.ts
+  summary: Leaderboard and history silently accept out-of-contract enum values
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T109000
+  date: '2026-11-22'
+  severity: low
+  priority: low
+  scope: frontend/src/components/ChartModelSelector.tsx
+  summary: Chart selector supports 3 slots while MAX_COMPARE is 6
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
