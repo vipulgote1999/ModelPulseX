@@ -478,7 +478,10 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
     const bars = page.locator('[data-testid="reliability-bars"]').first();
     await bars.scrollIntoViewIfNeeded();
     const barBox = await bars.boundingBox();
-    assert.ok(barBox && barBox.width > 100, `reliability bars width ${barBox?.width}`);
+    assert.ok(
+      barBox && barBox.width > 100 && barBox.height >= 10,
+      `reliability bars ${barBox?.width}x${barBox?.height}`,
+    );
 
     // Narrowest supported phone: the full lockup must not overlap the menu
     // button. The descriptor hides below 360px, leaving the mark + wordmark.

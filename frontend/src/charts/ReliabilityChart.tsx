@@ -40,7 +40,7 @@ export default function ReliabilityChart({
                   {pct == null ? "no samples" : `${pct}% ${range === "1h" ? "10m buckets" : "hours"} up`}
                 </span>
               </div>
-              <div data-testid="reliability-bars" className="flex-1 min-w-0 flex gap-[1px] h-4 sm:h-6 rounded overflow-hidden border border-zinc-800 bg-zinc-900">
+              <div data-testid="reliability-bars" className="w-full sm:flex-1 min-w-0 flex gap-[1px] h-4 sm:h-6 rounded overflow-hidden border border-zinc-800 bg-zinc-900">
                 {m.points.length === 0 && (
                   <span className="text-[11px] text-zinc-500 px-2 self-center">
                     no hourly samples yet — check raw history
