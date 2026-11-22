@@ -123,7 +123,7 @@ export default function Logo({
             X
           </span>
         </span>
-        <span className="mt-1 block text-[10px] font-medium tracking-[0.18em] text-zinc-400">
+        <span className="mt-1 block text-[10px] font-medium tracking-[0.18em] text-zinc-400 whitespace-nowrap">
           LLM PERFORMANCE OBSERVATORY
         </span>
       </span>

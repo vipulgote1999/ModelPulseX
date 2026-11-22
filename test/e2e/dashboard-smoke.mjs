@@ -341,6 +341,53 @@ test("theme preference survives reload under the CSP", async () => {
   await page.locator('button[title="Switch to dark theme"]').click();
 });
 
+test("mobile header exposes every nav item and the theme toggle", async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  try {
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+    assert.equal(
+      await page.locator('header nav[aria-label="Main"]').isVisible(),
+      false,
+      "desktop nav must be hidden on a phone",
+    );
+    const menu = page.locator('button[aria-label="Open navigation menu"]');
+    await menu.click();
+    const sheet = page.locator("#mobile-nav");
+    await sheet.waitFor({ timeout: 5_000 });
+    for (const label of [
+      "Dashboard",
+      "Models",
+      "Pricing",
+      "vs Others",
+      "Docs",
+      "/methodology",
+      "Admin",
+    ]) {
+      const item = sheet.getByRole("button", { name: label, exact: true });
+      assert.equal(await item.count(), 1, `mobile item ${label}`);
+      const box = await item.boundingBox();
+      assert.ok(
+        box && box.x >= 0 && box.x + box.width <= 390,
+        `mobile item ${label} is clipped (${JSON.stringify(box)})`,
+      );
+    }
+    assert.equal(
+      await sheet.locator('button[aria-label="Switch to light theme"]').count(),
+      1,
+      "theme toggle reachable from the mobile sheet",
+    );
+    await sheet.getByRole("button", { name: "Dashboard", exact: true }).click();
+    await page.waitForTimeout(200);
+    assert.match(await page.locator("body").innerText(), /BEST MODEL RIGHT NOW/);
+    assert.equal(await page.locator("#mobile-nav").count(), 0, "sheet closes on navigate");
+  } finally {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("table tbody tr", { timeout: 15_000 });
+  }
+});
+
 test("leaderboard renders one row per model", async () => {
   const rows = page.locator("table tbody tr");
   assert.equal(await rows.count(), MODELS.length);
