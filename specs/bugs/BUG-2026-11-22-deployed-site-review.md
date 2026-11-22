@@ -113,6 +113,15 @@ D1 production queries, and direct API probes.
 - Fix: theme the gradient variables, `bg-zinc-900/70`, `bg-zinc-800/80`, and
   `bg-[#0a0a0f]/95`; assert the card gradient and toolbar colour in Playwright.
 
+### D14 — `/api/timeouts` names top failing hidden models
+
+- The `topModels` aggregate grouped raw runs with no model-visibility gate, so
+  admin-disabled and inactive rows appeared by name in a public response —
+  exactly the rows `/api/models` and `/api/models/:id` work to hide (SEC-002).
+- Fix: restrict the named aggregate to `publicModelVisibilityWhere` and pin the
+  gate in the SEC-002 suite. Provider-level counts stay ungated: they carry no
+  model identity and are operational context.
+
 ## Fix plan (atomic commits)
 
 1. Gate `/api/history` and `/api/compare?models=`; extend SEC-002 tests.

@@ -346,6 +346,20 @@ describe("GET /api/compare (SEC-002 + SEC-007)", () => {
   });
 });
 
+describe("GET /api/timeouts (SEC-002)", () => {
+  it("gates the named top-models aggregate", async () => {
+    installNoopCache();
+    const db = gatedDbStub();
+    const app = createApi({ CORS_ORIGIN: "https://example.test", DB: db } as never);
+    const res = await app.request("https://example.test/api/timeouts?range=7d");
+    expect(res.status).toBe(200);
+    const top = db.sql.find((s) => /GROUP BY provider, model/.test(s));
+    expect(top).toContain("benchmark_enabled");
+    expect(top).toContain("p.name !=");
+    expect(top).toContain("m.active=1");
+  });
+});
+
 describe("GET /api/models (SEC-007)", () => {
   it("bounds the catalogue read with a LIMIT", async () => {
     const db = dbStub();

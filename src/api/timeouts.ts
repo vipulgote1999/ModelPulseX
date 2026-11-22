@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { parseRange } from "../db/queries";
+import { publicModelVisibilityWhere } from "../providers/registry";
 
 export function timeoutsRoutes(env: Env) {
   const r = new Hono<{ Bindings: Env }>();
@@ -50,6 +51,10 @@ export function timeoutsRoutes(env: Env) {
       env.DB.prepare(
         `SELECT provider, model, COUNT(*) AS n FROM benchmark_runs
          WHERE started_at >= ? AND status != 'SUCCESS'
+           AND model_id IN (
+             SELECT m.id FROM models m JOIN providers p ON p.id=m.provider_id
+             WHERE ${publicModelVisibilityWhere("p", "m")}
+           )
          GROUP BY provider, model ORDER BY n DESC LIMIT 10`,
       ).bind(sinceIso),
     ]);

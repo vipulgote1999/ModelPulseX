@@ -150,3 +150,10 @@
   scope: frontend/src/index.css
   summary: Light theme leaves a dark leader card, toolbar, and mobile nav sheet
   file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
+- bug_id: BUG-2026-11-22T113000
+  date: '2026-11-22'
+  severity: medium
+  priority: high
+  scope: src/api/timeouts.ts
+  summary: Public timeout aggregate names admin-disabled and inactive models
+  file: specs/bugs/BUG-2026-11-22-deployed-site-review.md
