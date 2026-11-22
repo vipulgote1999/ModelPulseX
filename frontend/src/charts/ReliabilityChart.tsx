@@ -27,12 +27,20 @@ export default function ReliabilityChart({
         {models.map((m) => {
           const pct = hoursUpPercent(m.points);
           return (
-            <div key={`${m.display_name}\u0000${m.provider}`} className="flex items-center gap-3">
-              <div className="w-[220px] truncate text-xs font-medium text-zinc-300">
-                {m.display_name}{" "}
-                <span className="text-[11px] text-zinc-500">{m.provider}</span>
+            <div
+              key={`${m.display_name}\u0000${m.provider}`}
+              className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3"
+            >
+              <div className="flex items-center justify-between gap-2 sm:block sm:w-[220px] truncate text-xs font-medium text-zinc-300">
+                <span className="truncate">
+                  {m.display_name}{" "}
+                  <span className="text-[11px] text-zinc-500">{m.provider}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-zinc-400 sm:hidden">
+                  {pct == null ? "no samples" : `${pct}% ${range === "1h" ? "10m buckets" : "hours"} up`}
+                </span>
               </div>
-              <div className="flex-1 flex gap-[1px] h-6 rounded overflow-hidden border border-zinc-800 bg-zinc-900">
+              <div data-testid="reliability-bars" className="flex-1 min-w-0 flex gap-[1px] h-4 sm:h-6 rounded overflow-hidden border border-zinc-800 bg-zinc-900">
                 {m.points.length === 0 && (
                   <span className="text-[11px] text-zinc-500 px-2 self-center">
                     no hourly samples yet — check raw history
@@ -50,7 +58,7 @@ export default function ReliabilityChart({
                   );
                 })}
               </div>
-              <div className="w-[160px] text-[11px] text-zinc-400">
+              <div className="hidden sm:block w-[160px] text-[11px] text-zinc-400">
                 {pct == null
                   ? "no samples"
                   : `${pct}% ${range === "1h" ? "10m buckets" : "hours"} up`}

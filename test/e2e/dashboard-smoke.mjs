@@ -473,6 +473,13 @@ test("mobile header exposes every nav item and the theme toggle", async () => {
     );
     assert.equal(await page.locator("#mobile-nav").count(), 0, "sheet closes on navigate");
 
+    // Reliability bars must keep a usable width on a phone; fixed side columns
+    // previously squeezed them to a few pixels.
+    const bars = page.locator('[data-testid="reliability-bars"]').first();
+    await bars.scrollIntoViewIfNeeded();
+    const barBox = await bars.boundingBox();
+    assert.ok(barBox && barBox.width > 100, `reliability bars width ${barBox?.width}`);
+
     // Narrowest supported phone: the full lockup must not overlap the menu
     // button. The descriptor hides below 360px, leaving the mark + wordmark.
     await page.setViewportSize({ width: 320, height: 800 });
